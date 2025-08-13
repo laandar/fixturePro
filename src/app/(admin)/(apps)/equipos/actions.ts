@@ -9,7 +9,10 @@ import type { NewEquipo, NewCategoria, NewEntrenador } from '@/db/types'
 
 export async function getEquipos() {
   try {
-    return await equipoQueries.getAll()
+    const equipos = await equipoQueries.getAllWithRelations()
+    //console.log("Equipos con relaciones:", equipos)
+    return equipos
+    return await equipoQueries.getAllWithRelations()
   } catch (error) {
     console.error('Error al obtener equipos:', error)
     throw new Error('Error al obtener equipos')

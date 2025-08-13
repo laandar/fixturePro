@@ -29,6 +29,34 @@
       "when": 1753589207068,
       "tag": "0003_harsh_serpent_society",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1754578885505,
+      "tag": "0004_free_felicia_hardy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1754579549644,
+      "tag": "0005_optimal_mikhail_rasputin",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1754584782816,
+      "tag": "0006_dear_enchantress",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1754605948645,
+      "tag": "0007_gigantic_justice",
+      "breakpoints": true
     }
   ]
 }

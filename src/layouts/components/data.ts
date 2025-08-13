@@ -21,6 +21,7 @@ import {
   TbSitemap,
   TbStackFront,
   TbStar,
+  TbTrophy,
   TbUserCircle,
   TbUserHexagon,
 } from 'react-icons/tb'
@@ -89,6 +90,18 @@ export const menuItems: MenuItemType[] = [
     url: '/dashboard',
   },
   { key: 'landing', label: 'Landing Page', icon: TbStackFront, url: '/landing' },
+  { key: 'apps', label: 'Aplicaciones', isTitle: true },
+  {
+    key: 'sports',
+    label: 'Gestión Deportiva',
+    icon: TbTrophy,
+    children: [
+      { key: 'equipos', label: 'Equipos', url: '/equipos' },
+      { key: 'categorias', label: 'Categorías', url: '/categorias' },
+      { key: 'jugadores', label: 'Jugadores', url: '/jugadores' },
+      { key: 'torneos', label: 'Torneos', url: '/torneos' },
+    ],
+  },
   { key: 'custom', label: 'Custom Pages', isTitle: true },
   {
     key: 'auth',

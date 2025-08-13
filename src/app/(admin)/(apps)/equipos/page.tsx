@@ -30,8 +30,13 @@ const columnHelper = createColumnHelper<EquipoWithRelations>()
 
 // Función de filtro personalizada para categorías
 const categoriaFilterFn = (row: any, columnId: string, filterValue: string) => {
-  const categoria = row.getValue(columnId) as any
-  return categoria?.nombre === filterValue
+  const equipo = row.original as EquipoWithRelations
+  console.log('Filtro categoría:', {
+    filterValue,
+    categoriaNombre: equipo.categoria?.nombre,
+    coincide: equipo.categoria?.nombre === filterValue
+  })
+  return equipo.categoria?.nombre === filterValue
 }
 
 const Page = () => {

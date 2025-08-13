@@ -32,6 +32,7 @@
     "react-dom": "^19.1.0",
     "react-flatpickr": "^4.0.10",
     "react-icons": "^5.5.0",
+    "react-range": "^1.10.0",
     "simplebar-react": "3.3.0",
     "usehooks-ts": "^3.1.1"
   },
