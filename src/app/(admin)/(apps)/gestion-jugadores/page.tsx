@@ -383,9 +383,9 @@ const GestionJugadores = () => {
                                                                         size="sm"
                                                                         onClick={() => setShowSelectionModalA(true)}
                                                                         title="Editar jugadores seleccionados"
+                                                                        style={{ padding: '4px 8px' }}
                                                                     >
-                                                                        <TbUsers className="me-1" />
-                                                                        Editar
+                                                                        <TbUsers />
                                                                     </Button>
                                                                     <span className="badge rounded-pill" style={{
                                                                         background: 'linear-gradient(45deg, #28a745, #20c997)',
@@ -544,9 +544,9 @@ const GestionJugadores = () => {
                                                                         size="sm"
                                                                         onClick={() => setShowSelectionModalB(true)}
                                                                         title="Editar jugadores seleccionados"
+                                                                        style={{ padding: '4px 8px' }}
                                                                     >
-                                                                        <TbUsers className="me-1" />
-                                                                        Editar
+                                                                        <TbUsers />
                                                                     </Button>
                                                                     <span className="badge rounded-pill" style={{
                                                                         background: 'linear-gradient(45deg, #dc3545, #fd7e14)',
