@@ -76,3 +76,23 @@
     min-width: unset;
     width: 1rem;
 }
+
+.badge-amarillo {
+    background-color: #ffc107;
+    width: 10px;
+    height: 15px;
+    display: inline-block;
+    padding: 0;
+    border: 1px solid #c79810;
+    vertical-align: middle;
+}
+
+.badge-rojo {
+    background-color: #dc3545;
+    width: 10px;
+    height: 15px;
+    display: inline-block;
+    padding: 0;
+    border: 1px solid #a82734;
+    vertical-align: middle;
+}

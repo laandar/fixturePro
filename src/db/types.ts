@@ -38,6 +38,9 @@ export interface EntrenadorWithEquipos extends Entrenador {
 export interface JugadorWithEquipo extends Jugador {
   categoria: Categoria | null;
   equipo: Equipo | null;
+  amarillas?: number;
+  rojas?: number;
+  goles?: number;
 }
 
 // Tipos para torneos con relaciones
@@ -70,3 +73,40 @@ export interface FixtureCompleto {
   jornadas: FixtureJornada[];
   equiposDescansan?: Record<number, number>; // jornada -> equipo_id que descansa
 } 
+
+// Tipos para gestión de partidos
+export type PlayerChange = {
+    id: string
+    equipoA: string
+    jugadorSale: string
+    jugadorEntra: string
+    minuto: number
+    tiempo: 'primer' | 'segundo'
+}
+
+export type CardType = {
+    id: string
+    jugador: string
+    equipo: string
+    tipo: 'amarilla' | 'roja'
+    minuto: number
+    tiempo: 'primer' | 'segundo'
+    motivo: string
+}
+
+export type Goal = {
+    id: string
+    jugador: string
+    equipo: string
+    minuto: number
+    tiempo: 'primer' | 'segundo'
+    tipo: 'gol' | 'penal' | 'autogol'
+}
+
+export type Signature = {
+    vocal: string
+    arbitro: string
+    capitanA: string
+    capitanB: string
+    fechaFirma: string
+}
