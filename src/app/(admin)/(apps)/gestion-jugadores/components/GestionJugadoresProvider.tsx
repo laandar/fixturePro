@@ -1,5 +1,7 @@
 'use client'
+'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { Modal, Button, Form, Row, Col } from 'react-bootstrap'
 import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJugadoresContext'
 import { getJugadores } from '../../jugadores/actions'
 import { getEquipos } from '../../equipos/actions'
@@ -185,5 +187,91 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         handleQuickGoal,
     }
 
-    return <GestionJugadoresContext.Provider value={value}>{children}</GestionJugadoresContext.Provider>
+    const jugadoresDisponiblesSale = nuevoCambio.equipoA === equipos[0]?.id.toString()
+        ? jugadoresParticipantesA
+        : jugadoresParticipantesB
+
+    const jugadoresDisponiblesEntra = (nuevoCambio.equipoA === equipos[0]?.id.toString() ? jugadoresEquipoA : jugadoresEquipoB).filter(
+        (j) => !(nuevoCambio.equipoA === equipos[0]?.id.toString() ? jugadoresParticipantesA : jugadoresParticipantesB).some(p => p.id === j.id)
+    )
+
+    return (
+        <GestionJugadoresContext.Provider value={value}>
+            {children}
+            <Modal show={showCambioModal} onHide={() => setShowCambioModal(false)} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>Añadir Cambio</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form>
+                        <Form.Group as={Row} className="mb-3">
+                            <Form.Label column sm={3}>Equipo</Form.Label>
+                            <Col sm={9}>
+                                <Form.Select
+                                    value={nuevoCambio.equipoA || ''}
+                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, equipoA: e.target.value, jugadorSale: undefined, jugadorEntra: undefined })}
+                                >
+                                    <option value="">Seleccione un equipo</option>
+                                    {equipos.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                                </Form.Select>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={Row} className="mb-3">
+                            <Form.Label column sm={3}>Sale</Form.Label>
+                            <Col sm={9}>
+                                <Form.Select
+                                    value={nuevoCambio.jugadorSale || ''}
+                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, jugadorSale: e.target.value })}
+                                    disabled={!nuevoCambio.equipoA}
+                                >
+                                    <option value="">Seleccione jugador que sale</option>
+                                    {jugadoresDisponiblesSale.map(j => <option key={j.id} value={j.id}>{j.apellido_nombre}</option>)}
+                                </Form.Select>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={Row} className="mb-3">
+                            <Form.Label column sm={3}>Entra</Form.Label>
+                            <Col sm={9}>
+                                <Form.Select
+                                    value={nuevoCambio.jugadorEntra || ''}
+                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, jugadorEntra: e.target.value })}
+                                    disabled={!nuevoCambio.equipoA}
+                                >
+                                    <option value="">Seleccione jugador que entra</option>
+                                    {jugadoresDisponiblesEntra.map(j => <option key={j.id} value={j.id}>{j.apellido_nombre}</option>)}
+                                </Form.Select>
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={Row} className="mb-3">
+                            <Form.Label column sm={3}>Minuto</Form.Label>
+                            <Col sm={9}>
+                                <Form.Control
+                                    type="number"
+                                    placeholder="Minuto del cambio"
+                                    value={nuevoCambio.minuto || ''}
+                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, minuto: parseInt(e.target.value) })}
+                                />
+                            </Col>
+                        </Form.Group>
+                        <Form.Group as={Row} className="mb-3">
+                            <Form.Label column sm={3}>Tiempo</Form.Label>
+                            <Col sm={9}>
+                                <Form.Select
+                                    value={nuevoCambio.tiempo || 'primer'}
+                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, tiempo: e.target.value as 'primer' | 'segundo' })}
+                                >
+                                    <option value="primer">1er Tiempo</option>
+                                    <option value="segundo">2do Tiempo</option>
+                                </Form.Select>
+                            </Col>
+                        </Form.Group>
+                    </Form>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowCambioModal(false)}>Cancelar</Button>
+                    <Button variant="primary" onClick={handleAddCambio}>Guardar Cambio</Button>
+                </Modal.Footer>
+            </Modal>
+        </GestionJugadoresContext.Provider>
+    )
 }
