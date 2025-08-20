@@ -103,6 +103,19 @@ export const encuentros = pgTable('encuentros', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Tabla de canchas
+export const canchas = pgTable('canchas', {
+  id: serial('id').primaryKey(),
+  nombre: text('nombre').notNull(),
+  ubicacion: text('ubicacion'),
+  tipo: text('tipo'), // futbol, futsal, basquet, tenis, voley, otro
+  capacidad: integer('capacidad'),
+  descripcion: text('descripcion'),
+  estado: boolean('estado').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Relaciones
 export const categoriasRelations = relations(categorias, ({ many }) => ({
   equipos: many(equipos),

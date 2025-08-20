@@ -1,5 +1,5 @@
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros } from './schema';
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas } from './schema';
 
 // Tipos para selección (lectura)
 export type Equipo = InferSelectModel<typeof equipos>;
@@ -9,6 +9,7 @@ export type Jugador = InferSelectModel<typeof jugadores>;
 export type Torneo = InferSelectModel<typeof torneos>;
 export type EquipoTorneo = InferSelectModel<typeof equiposTorneo>;
 export type Encuentro = InferSelectModel<typeof encuentros>;
+export type Cancha = InferSelectModel<typeof canchas>;
 
 // Tipos para inserción
 export type NewEquipo = InferInsertModel<typeof equipos>;
@@ -18,6 +19,7 @@ export type NewJugador = InferInsertModel<typeof jugadores>;
 export type NewTorneo = InferInsertModel<typeof torneos>;
 export type NewEquipoTorneo = InferInsertModel<typeof equiposTorneo>;
 export type NewEncuentro = InferInsertModel<typeof encuentros>;
+export type NewCancha = InferInsertModel<typeof canchas>;
 
 // Tipos para equipos con relaciones
 export interface EquipoWithRelations extends Equipo {

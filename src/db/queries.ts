@@ -1,7 +1,7 @@
 import { db } from './index'
 import { eq, asc, count, and, desc } from 'drizzle-orm'
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros } from './schema'
-import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro } from './types'
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas } from './schema'
+import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha } from './types'
 
 // ===== EQUIPOS =====
 export const equipoQueries = {
@@ -463,4 +463,39 @@ export const statsQueries = {
     const result = await db.select({ count: count() }).from(jugadores).where(eq(jugadores.estado, true));
     return result[0].count;
   },
-}; 
+};
+
+// ===== CANCHAS =====
+export const canchaQueries = {
+  // Obtener todas las canchas
+  getAll: async () => {
+    return await db.select().from(canchas).orderBy(asc(canchas.nombre));
+  },
+
+  // Obtener cancha por ID
+  getById: async (id: number) => {
+    const result = await db.select().from(canchas).where(eq(canchas.id, id));
+    return result[0];
+  },
+
+  // Crear cancha
+  create: async (canchaData: NewCancha) => {
+    const result = await db.insert(canchas).values(canchaData).returning();
+    return result[0];
+  },
+
+  // Actualizar cancha
+  update: async (id: number, canchaData: Partial<NewCancha>) => {
+    const result = await db
+      .update(canchas)
+      .set({ ...canchaData, updatedAt: new Date() })
+      .where(eq(canchas.id, id))
+      .returning();
+    return result[0];
+  },
+
+  // Eliminar cancha
+  delete: async (id: number) => {
+    return await db.delete(canchas).where(eq(canchas.id, id));
+  },
+};
