@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { torneoQueries, equipoTorneoQueries, encuentroQueries } from '@/db/queries'
+import { torneoQueries, equipoTorneoQueries, encuentroQueries, equiposDescansanQueries } from '@/db/queries'
 import { generateFixture } from '@/lib/fixture-generator'
 import type { NewTorneo, NewEquipoTorneo, EquipoWithRelations } from '@/db/types'
 
@@ -159,6 +159,7 @@ export async function generateFixtureForTorneo(
     canchas?: string[]
     arbitros?: string[]
     unavailableByJornada?: Record<number, number[]>
+    intercambiosInteligentes?: boolean
   } = {}
 ) {
   try {
@@ -172,13 +173,14 @@ export async function generateFixtureForTorneo(
     await encuentroQueries.deleteByTorneoId(torneoId)
 
     // Generar nuevo fixture
-    const fixtureResult = generateFixture(equipos, torneoId, {
+    const fixtureResult = await generateFixture(equipos, torneoId, {
       permiteRevancha: Boolean(torneo.permite_revancha ?? false),
       fechaInicio: options.fechaInicio || new Date(String(torneo.fecha_inicio)),
       diasEntreJornadas: options.diasEntreJornadas || 7,
       canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
       arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
       unavailableByJornada: options.unavailableByJornada,
+      intercambiosInteligentes: options.intercambiosInteligentes ?? true,
     })
 
     // Crear todos los encuentros
@@ -239,5 +241,429 @@ export async function getEncuentrosByJornada(torneoId: number, jornada: number) 
     return await encuentroQueries.getByJornada(torneoId, jornada)
   } catch (error) {
     throw new Error('Error al obtener encuentros de la jornada')
+  }
+}
+
+export async function regenerateFixtureFromJornada(
+  torneoId: number,
+  desdeJornada: number,
+  options: {
+    unavailableByJornada?: Record<number, number[]>
+    diasEntreJornadas?: number
+    canchas?: string[]
+    arbitros?: string[]
+    intercambiosInteligentes?: boolean
+  } = {}
+) {
+  try {
+    // Verificar que el torneo existe
+    const torneo = await torneoQueries.getByIdWithRelations(torneoId)
+    if (!torneo) {
+      throw new Error('Torneo no encontrado')
+    }
+
+    // Obtener todos los encuentros del torneo
+    const todosEncuentros = await encuentroQueries.getByTorneoId(torneoId)
+    
+    // Separar encuentros jugados y futuros
+    const encuentrosJugados = todosEncuentros.filter(e => 
+      e.jornada! < desdeJornada || 
+      e.estado === 'finalizado' || 
+      e.estado === 'en_curso'
+    )
+    
+    const encuentrosAFuturo = todosEncuentros.filter(e => 
+      e.jornada! >= desdeJornada && 
+      e.estado === 'programado'
+    )
+
+    // Eliminar solo los encuentros futuros
+    for (const encuentro of encuentrosAFuturo) {
+      await encuentroQueries.delete(encuentro.id)
+    }
+
+    // Obtener equipos del torneo
+    const equiposTorneo = torneo.equiposTorneo || []
+    const equipos = equiposTorneo.map(et => et.equipo!).filter(e => e)
+
+    // Calcular la fecha de inicio para las nuevas jornadas
+    const ultimaFechaJugada = encuentrosJugados.length > 0 
+      ? Math.max(...encuentrosJugados.map(e => e.fecha_programada ? new Date(e.fecha_programada).getTime() : 0))
+      : new Date(String(torneo.fecha_inicio)).getTime()
+    
+    const fechaInicioNuevas = new Date(ultimaFechaJugada)
+    fechaInicioNuevas.setDate(fechaInicioNuevas.getDate() + (options.diasEntreJornadas || 7))
+
+    // Generar nuevo fixture solo para las jornadas futuras
+    const fixtureResult = await generateFixture(equipos, torneoId, {
+      permiteRevancha: Boolean(torneo.permite_revancha ?? false),
+      fechaInicio: fechaInicioNuevas,
+      diasEntreJornadas: options.diasEntreJornadas || 7,
+      canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
+      arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
+      unavailableByJornada: options.unavailableByJornada,
+      jornadaInicial: desdeJornada, // Nueva opción para empezar desde una jornada específica
+      intercambiosInteligentes: options.intercambiosInteligentes ?? true,
+      encuentrosExistentes: encuentrosJugados, // Pasar encuentros ya jugados para evitar repeticiones
+    })
+
+    // Filtrar solo los encuentros de las jornadas futuras
+    const encuentrosFuturos = fixtureResult.encuentros.filter(e => e.jornada! >= desdeJornada)
+
+    // Crear los nuevos encuentros
+    for (const encuentro of encuentrosFuturos) {
+      await encuentroQueries.create(encuentro)
+    }
+
+    revalidatePath(`/torneos/${torneoId}`)
+    return {
+      encuentrosCreados: encuentrosFuturos.length,
+      encuentrosEliminados: encuentrosAFuturo.length,
+      equiposDescansan: fixtureResult.equiposDescansan
+    }
+  } catch (error) {
+    throw new Error('Error al regenerar fixture')
+  }
+}
+
+export async function generateSingleJornada(
+  torneoId: number,
+  jornada: number,
+  options: {
+    unavailableByJornada?: Record<number, number[]>
+    diasEntreJornadas?: number
+    canchas?: string[]
+    arbitros?: string[]
+  } = {}
+) {
+  try {
+    // Verificar que el torneo existe
+    const torneo = await torneoQueries.getByIdWithRelations(torneoId)
+    if (!torneo) {
+      throw new Error('Torneo no encontrado')
+    }
+
+    // Verificar que la jornada no existe ya
+    const jornadaExistente = await encuentroQueries.getByJornada(torneoId, jornada)
+    if (jornadaExistente.length > 0) {
+      throw new Error(`La jornada ${jornada} ya existe`)
+    }
+
+    // Obtener todos los encuentros del torneo para validar emparejamientos
+    const todosEncuentros = await encuentroQueries.getByTorneoId(torneoId)
+    
+    // Obtener descansos guardados en la base de datos
+    const descansosGuardados = await equiposDescansanQueries.getByTorneoId(torneoId)
+    console.log(`Descansos guardados en BD para torneo ${torneoId}:`, descansosGuardados)
+    
+    // Obtener equipos del torneo
+    const equiposTorneo = torneo.equiposTorneo || []
+    const equipos = equiposTorneo.map(et => et.equipo!).filter(e => e)
+
+    // Calcular la fecha para esta jornada
+    const fechaInicio = new Date(String(torneo.fecha_inicio))
+    const fechaJornada = new Date(fechaInicio)
+    fechaJornada.setDate(fechaInicio.getDate() + (jornada - 1) * (options.diasEntreJornadas || 7))
+
+    // Crear un objeto de restricciones que incluya las restricciones de jornadas anteriores
+    const restriccionesCompletas = { ...options.unavailableByJornada }
+    
+    // Agregar restricciones de jornadas anteriores para evitar que equipos descansen múltiples veces
+    for (let j = 1; j < jornada; j++) {
+      if (options.unavailableByJornada?.[j]) {
+        // Si hay restricciones en jornadas anteriores, agregarlas a la jornada actual
+        if (!restriccionesCompletas[jornada]) {
+          restriccionesCompletas[jornada] = []
+        }
+        restriccionesCompletas[jornada].push(...options.unavailableByJornada[j])
+        console.log(`Jornada ${jornada}: Agregando restricciones de jornada ${j}: [${options.unavailableByJornada[j].join(', ')}]`)
+      }
+    }
+    
+    // Agregar restricciones basadas en descansos guardados en la base de datos
+    const descansosAnteriores = descansosGuardados.filter(d => d.jornada < jornada)
+    if (descansosAnteriores.length > 0) {
+      if (!restriccionesCompletas[jornada]) {
+        restriccionesCompletas[jornada] = []
+      }
+      
+      const equiposQueDescansaron = descansosAnteriores.map(d => d.equipo_id)
+      restriccionesCompletas[jornada].push(...equiposQueDescansaron)
+      console.log(`Jornada ${jornada}: Agregando restricciones por descansos anteriores: [${equiposQueDescansaron.join(', ')}]`)
+    }
+
+    console.log(`Jornada ${jornada}: Restricciones finales:`, restriccionesCompletas[jornada] || [])
+    console.log(`Jornada ${jornada}: Objeto completo de restricciones:`, restriccionesCompletas)
+
+    console.log(`Generando fixture para jornada ${jornada} con ${equipos.length} equipos`)
+    console.log(`Número de equipos: ${equipos.length} (${equipos.length % 2 === 0 ? 'par' : 'impar'})`)
+    
+    // Generar solo esta jornada
+    const fixtureResult = await generateFixture(equipos, torneoId, {
+      permiteRevancha: Boolean(torneo.permite_revancha ?? false),
+      fechaInicio: fechaJornada,
+      diasEntreJornadas: options.diasEntreJornadas || 7,
+      canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
+      arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
+      unavailableByJornada: restriccionesCompletas,
+      jornadaInicial: jornada,
+      jornadaFinal: jornada, // Solo generar esta jornada
+      encuentrosExistentes: todosEncuentros, // Pasar todos los encuentros existentes
+    })
+
+    // Filtrar solo los encuentros de esta jornada
+    const encuentrosJornada = fixtureResult.encuentros.filter(e => e.jornada === jornada)
+
+    // Guardar los encuentros de esta jornada
+    for (const encuentro of encuentrosJornada) {
+      await encuentroQueries.create(encuentro)
+    }
+
+    // Guardar el descanso en la base de datos
+    console.log(`FixtureResult equiposDescansan:`, fixtureResult.equiposDescansan)
+    console.log(`Jornada ${jornada} - Equipo que descansa:`, fixtureResult.equiposDescansan?.[jornada])
+    
+    if (fixtureResult.equiposDescansan?.[jornada]) {
+      const equipoQueDescansa = fixtureResult.equiposDescansan[jornada]
+      console.log(`Intentando guardar descanso para equipo ${equipoQueDescansa} en jornada ${jornada}`)
+      
+      try {
+        // Verificar si ya existe un descanso para esta jornada
+        const descansoExistente = await equiposDescansanQueries.getByJornada(torneoId, jornada)
+        console.log(`Descanso existente para jornada ${jornada}:`, descansoExistente)
+        
+        if (descansoExistente) {
+          // Actualizar el descanso existente
+          console.log(`Eliminando descanso existente para jornada ${jornada}`)
+          await equiposDescansanQueries.deleteByJornada(torneoId, jornada)
+        }
+        
+        // Crear el nuevo registro de descanso
+        console.log(`Creando nuevo descanso:`, { torneo_id: torneoId, equipo_id: equipoQueDescansa, jornada: jornada })
+        const descansoCreado = await equiposDescansanQueries.create({
+          torneo_id: torneoId,
+          equipo_id: equipoQueDescansa,
+          jornada: jornada
+        })
+        
+        console.log(`Descanso guardado exitosamente en BD:`, descansoCreado)
+      } catch (error) {
+        console.error(`Error al guardar descanso:`, error)
+        throw new Error(`Error al guardar descanso: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+      }
+    } else {
+      console.log(`No hay descanso para guardar en jornada ${jornada}`)
+    }
+
+    revalidatePath(`/torneos/${torneoId}`)
+    return {
+      encuentrosCreados: encuentrosJornada.length,
+      equipoQueDescansa: fixtureResult.equiposDescansan?.[jornada],
+      jornada: jornada
+    }
+  } catch (error) {
+    throw new Error(`Error al generar jornada ${jornada}: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+  }
+}
+
+export async function regenerateSingleJornada(
+  torneoId: number,
+  jornada: number,
+  options: {
+    unavailableByJornada?: Record<number, number[]>
+    diasEntreJornadas?: number
+    canchas?: string[]
+    arbitros?: string[]
+  } = {}
+) {
+  try {
+    // Verificar que el torneo existe
+    const torneo = await torneoQueries.getByIdWithRelations(torneoId)
+    if (!torneo) {
+      throw new Error('Torneo no encontrado')
+    }
+
+    // Verificar que la jornada existe
+    const jornadaExistente = await encuentroQueries.getByJornada(torneoId, jornada)
+    if (jornadaExistente.length === 0) {
+      throw new Error(`La jornada ${jornada} no existe`)
+    }
+
+    // Verificar que la jornada no esté cerrada (jugada)
+    const jornadaCerrada = jornadaExistente.every(encuentro => 
+      encuentro.estado === 'finalizado' || encuentro.estado === 'en_curso'
+    )
+    if (jornadaCerrada) {
+      throw new Error(`La jornada ${jornada} está cerrada (ya fue jugada) y no se puede regenerar`)
+    }
+
+    // Obtener todos los encuentros del torneo para validar emparejamientos
+    const todosEncuentros = await encuentroQueries.getByTorneoId(torneoId)
+    
+    // Obtener descansos guardados en la base de datos
+    const descansosGuardados = await equiposDescansanQueries.getByTorneoId(torneoId)
+    console.log(`Descansos guardados en BD para torneo ${torneoId}:`, descansosGuardados)
+    
+    // Obtener equipos del torneo
+    const equiposTorneo = torneo.equiposTorneo || []
+    const equipos = equiposTorneo.map(et => et.equipo!).filter(e => e)
+
+    // Calcular la fecha para esta jornada
+    const fechaInicio = new Date(String(torneo.fecha_inicio))
+    const fechaJornada = new Date(fechaInicio)
+    fechaJornada.setDate(fechaInicio.getDate() + (jornada - 1) * (options.diasEntreJornadas || 7))
+
+    // Crear un objeto de restricciones que incluya las restricciones de jornadas anteriores
+    const restriccionesCompletas = { ...options.unavailableByJornada }
+    
+    // Agregar restricciones de jornadas anteriores para evitar que equipos descansen múltiples veces
+    for (let j = 1; j < jornada; j++) {
+      if (options.unavailableByJornada?.[j]) {
+        // Si hay restricciones en jornadas anteriores, agregarlas a la jornada actual
+        if (!restriccionesCompletas[jornada]) {
+          restriccionesCompletas[jornada] = []
+        }
+        restriccionesCompletas[jornada].push(...options.unavailableByJornada[j])
+        console.log(`Jornada ${jornada}: Agregando restricciones de jornada ${j}: [${options.unavailableByJornada[j].join(', ')}]`)
+      }
+    }
+    
+    // Agregar restricciones basadas en descansos guardados en la base de datos
+    const descansosAnteriores = descansosGuardados.filter(d => d.jornada < jornada)
+    if (descansosAnteriores.length > 0) {
+      if (!restriccionesCompletas[jornada]) {
+        restriccionesCompletas[jornada] = []
+      }
+      
+      const equiposQueDescansaron = descansosAnteriores.map(d => d.equipo_id)
+      restriccionesCompletas[jornada].push(...equiposQueDescansaron)
+      console.log(`Jornada ${jornada}: Agregando restricciones por descansos anteriores: [${equiposQueDescansaron.join(', ')}]`)
+    }
+
+    console.log(`Jornada ${jornada}: Restricciones finales:`, restriccionesCompletas[jornada] || [])
+    console.log(`Jornada ${jornada}: Objeto completo de restricciones:`, restriccionesCompletas)
+
+    console.log(`Regenerando fixture para jornada ${jornada} con ${equipos.length} equipos`)
+    console.log(`Número de equipos: ${equipos.length} (${equipos.length % 2 === 0 ? 'par' : 'impar'})`)
+    
+    // Eliminar encuentros existentes de esta jornada
+    for (const encuentro of jornadaExistente) {
+      await encuentroQueries.delete(encuentro.id)
+    }
+
+    // Eliminar descanso existente de esta jornada
+    const descansoExistente = await equiposDescansanQueries.getByJornada(torneoId, jornada)
+    if (descansoExistente) {
+      await equiposDescansanQueries.deleteByJornada(torneoId, jornada)
+    }
+    
+    // Generar solo esta jornada
+    const fixtureResult = await generateFixture(equipos, torneoId, {
+      permiteRevancha: Boolean(torneo.permite_revancha ?? false),
+      fechaInicio: fechaJornada,
+      diasEntreJornadas: options.diasEntreJornadas || 7,
+      canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
+      arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
+      unavailableByJornada: restriccionesCompletas,
+      jornadaInicial: jornada,
+      jornadaFinal: jornada, // Solo generar esta jornada
+      encuentrosExistentes: todosEncuentros.filter(e => e.jornada !== jornada), // Excluir encuentros de esta jornada
+    })
+
+    // Filtrar solo los encuentros de esta jornada
+    const encuentrosJornada = fixtureResult.encuentros.filter(e => e.jornada === jornada)
+
+    // Guardar los encuentros de esta jornada
+    for (const encuentro of encuentrosJornada) {
+      await encuentroQueries.create(encuentro)
+    }
+
+    // Guardar el descanso en la base de datos
+    console.log(`FixtureResult equiposDescansan:`, fixtureResult.equiposDescansan)
+    console.log(`Jornada ${jornada} - Equipo que descansa:`, fixtureResult.equiposDescansan?.[jornada])
+    
+    if (fixtureResult.equiposDescansan?.[jornada]) {
+      const equipoQueDescansa = fixtureResult.equiposDescansan[jornada]
+      console.log(`Intentando guardar descanso para equipo ${equipoQueDescansa} en jornada ${jornada}`)
+      
+      try {
+        // Crear el nuevo registro de descanso
+        console.log(`Creando nuevo descanso:`, { torneo_id: torneoId, equipo_id: equipoQueDescansa, jornada: jornada })
+        const descansoCreado = await equiposDescansanQueries.create({
+          torneo_id: torneoId,
+          equipo_id: equipoQueDescansa,
+          jornada: jornada
+        })
+        
+        console.log(`Descanso guardado exitosamente en BD:`, descansoCreado)
+      } catch (error) {
+        console.error(`Error al guardar descanso:`, error)
+        throw new Error(`Error al guardar descanso: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+      }
+    } else {
+      console.log(`No hay descanso para guardar en jornada ${jornada}`)
+    }
+
+    revalidatePath(`/torneos/${torneoId}`)
+    return {
+      encuentrosCreados: encuentrosJornada.length,
+      encuentrosEliminados: jornadaExistente.length,
+      equipoQueDescansa: fixtureResult.equiposDescansan?.[jornada],
+      jornada: jornada
+    }
+  } catch (error) {
+    throw new Error(`Error al regenerar jornada ${jornada}: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+  }
+}
+
+export async function deleteJornada(
+  torneoId: number,
+  jornada: number
+) {
+  try {
+    // Verificar que el torneo existe
+    const torneo = await torneoQueries.getByIdWithRelations(torneoId)
+    if (!torneo) {
+      throw new Error('Torneo no encontrado')
+    }
+
+    // Obtener todos los encuentros de la jornada
+    const encuentrosJornada = await encuentroQueries.getByJornada(torneoId, jornada)
+    if (encuentrosJornada.length === 0) {
+      throw new Error(`La jornada ${jornada} no existe`)
+    }
+
+    // Verificar que la jornada no esté cerrada (jugada)
+    const jornadaCerrada = encuentrosJornada.every(encuentro => 
+      encuentro.estado === 'finalizado' || encuentro.estado === 'en_curso'
+    )
+    if (jornadaCerrada) {
+      throw new Error(`La jornada ${jornada} está cerrada (ya fue jugada) y no se puede eliminar`)
+    }
+
+    // Eliminar todos los encuentros de la jornada
+    let encuentrosEliminados = 0
+    for (const encuentro of encuentrosJornada) {
+      await encuentroQueries.delete(encuentro.id)
+      encuentrosEliminados++
+    }
+
+    // Eliminar el registro de descanso de esta jornada si existe
+    let descansoEliminado = false
+    const descansoExistente = await equiposDescansanQueries.getByJornada(torneoId, jornada)
+    if (descansoExistente) {
+      await equiposDescansanQueries.deleteByJornada(torneoId, jornada)
+      descansoEliminado = true
+    }
+
+    revalidatePath(`/torneos/${torneoId}`)
+    return {
+      jornada: jornada,
+      encuentrosEliminados: encuentrosEliminados,
+      descansoEliminado: descansoEliminado,
+      mensaje: `Jornada ${jornada} eliminada exitosamente`
+    }
+  } catch (error) {
+    throw new Error(`Error al eliminar jornada ${jornada}: ${error instanceof Error ? error.message : 'Error desconocido'}`)
   }
 }

@@ -1,6 +1,6 @@
 import { db } from './index'
-import { eq, asc, count, and, desc } from 'drizzle-orm'
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas } from './schema'
+import { eq, asc, count, and, desc, inArray } from 'drizzle-orm'
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan } from './schema'
 import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha } from './types'
 
 // ===== EQUIPOS =====
@@ -472,16 +472,89 @@ export const canchaQueries = {
     return await db.select().from(canchas).orderBy(asc(canchas.nombre));
   },
 
+  // Obtener todas las canchas con sus categorías
+  getAllWithCategorias: async () => {
+    const canchasData = await db.select().from(canchas).orderBy(asc(canchas.nombre));
+    
+    const canchasConCategorias = await Promise.all(
+      canchasData.map(async (cancha) => {
+        const categoriasData = await db
+          .select({
+            id: categorias.id,
+            nombre: categorias.nombre,
+            permite_revancha: categorias.permite_revancha,
+            createdAt: categorias.createdAt,
+            updatedAt: categorias.updatedAt,
+          })
+          .from(categorias)
+          .innerJoin(canchasCategorias, eq(categorias.id, canchasCategorias.categoria_id))
+          .where(eq(canchasCategorias.cancha_id, cancha.id));
+        
+        return {
+          ...cancha,
+          categorias: categoriasData,
+        };
+      })
+    );
+    
+    return canchasConCategorias;
+  },
+
   // Obtener cancha por ID
   getById: async (id: number) => {
     const result = await db.select().from(canchas).where(eq(canchas.id, id));
     return result[0];
   },
 
+  // Obtener cancha por ID con sus categorías
+  getByIdWithCategorias: async (id: number) => {
+    const cancha = await db.select().from(canchas).where(eq(canchas.id, id));
+    if (!cancha[0]) return null;
+    
+    const categoriasData = await db
+      .select({
+        id: categorias.id,
+        nombre: categorias.nombre,
+        permite_revancha: categorias.permite_revancha,
+        createdAt: categorias.createdAt,
+        updatedAt: categorias.updatedAt,
+      })
+      .from(categorias)
+      .innerJoin(canchasCategorias, eq(categorias.id, canchasCategorias.categoria_id))
+      .where(eq(canchasCategorias.cancha_id, id));
+    
+    return {
+      ...cancha[0],
+      categorias: categoriasData,
+    };
+  },
+
   // Crear cancha
   create: async (canchaData: NewCancha) => {
     const result = await db.insert(canchas).values(canchaData).returning();
     return result[0];
+  },
+
+  // Crear cancha con categorías
+  createWithCategorias: async (canchaData: NewCancha, categoriaIds: number[]) => {
+    const result = await db.insert(canchas).values(canchaData).returning();
+    const cancha = result[0];
+    
+    if (categoriaIds.length > 0) {
+      const categoriasData = categoriaIds.map(categoriaId => ({
+        cancha_id: cancha.id,
+        categoria_id: categoriaId,
+      }));
+      
+      try {
+        await db.insert(canchasCategorias).values(categoriasData);
+      } catch (error) {
+        // Si hay duplicados, ignorar el error debido al índice único
+        console.log('Algunas categorías ya estaban asignadas a esta cancha');
+      }
+    }
+    
+    return cancha;
   },
 
   // Actualizar cancha
@@ -494,8 +567,137 @@ export const canchaQueries = {
     return result[0];
   },
 
+  // Actualizar cancha con categorías
+  updateWithCategorias: async (id: number, canchaData: Partial<NewCancha>, categoriaIds: number[]) => {
+    // Actualizar datos de la cancha
+    const result = await db
+      .update(canchas)
+      .set({ ...canchaData, updatedAt: new Date() })
+      .where(eq(canchas.id, id))
+      .returning();
+    
+    // Eliminar categorías existentes
+    await db.delete(canchasCategorias).where(eq(canchasCategorias.cancha_id, id));
+    
+    // Insertar nuevas categorías
+    if (categoriaIds.length > 0) {
+      const categoriasData = categoriaIds.map(categoriaId => ({
+        cancha_id: id,
+        categoria_id: categoriaId,
+      }));
+      
+      await db.insert(canchasCategorias).values(categoriasData);
+    }
+    
+    return result[0];
+  },
+
   // Eliminar cancha
   delete: async (id: number) => {
+    // Eliminar relaciones con categorías primero
+    await db.delete(canchasCategorias).where(eq(canchasCategorias.cancha_id, id));
     return await db.delete(canchas).where(eq(canchas.id, id));
+  },
+
+  // Asignar categorías a una cancha
+  assignCategorias: async (canchaId: number, categoriaIds: number[]) => {
+    const categoriasData = categoriaIds.map(categoriaId => ({
+      cancha_id: canchaId,
+      categoria_id: categoriaId,
+    }));
+    
+    try {
+      return await db.insert(canchasCategorias).values(categoriasData);
+    } catch (error) {
+      // Si hay duplicados, ignorar el error debido al índice único
+      console.log('Algunas categorías ya estaban asignadas a esta cancha');
+      return [];
+    }
+  },
+
+  // Desasignar categorías de una cancha
+  unassignCategorias: async (canchaId: number, categoriaIds: number[]) => {
+    return await db
+      .delete(canchasCategorias)
+      .where(
+        and(
+          eq(canchasCategorias.cancha_id, canchaId),
+          inArray(canchasCategorias.categoria_id, categoriaIds)
+        )
+      );
+  },
+
+  // Obtener categorías de una cancha
+  getCategoriasByCanchaId: async (canchaId: number) => {
+    return await db
+      .select({
+        id: categorias.id,
+        nombre: categorias.nombre,
+        permite_revancha: categorias.permite_revancha,
+        createdAt: categorias.createdAt,
+        updatedAt: categorias.updatedAt,
+      })
+      .from(categorias)
+      .innerJoin(canchasCategorias, eq(categorias.id, canchasCategorias.categoria_id))
+      .where(eq(canchasCategorias.cancha_id, canchaId));
+  },
+
+  // Obtener canchas por categoría
+  getCanchasByCategoriaId: async (categoriaId: number) => {
+    return await db
+      .select()
+      .from(canchas)
+      .innerJoin(canchasCategorias, eq(canchas.id, canchasCategorias.cancha_id))
+      .where(eq(canchasCategorias.categoria_id, categoriaId))
+      .orderBy(asc(canchas.nombre));
+  },
+};
+
+// ===== EQUIPOS QUE DESCANSAN =====
+export const equiposDescansanQueries = {
+  // Obtener todos los descansos de un torneo
+  getByTorneoId: async (torneoId: number) => {
+    return await db
+      .select()
+      .from(equiposDescansan)
+      .where(eq(equiposDescansan.torneo_id, torneoId))
+      .orderBy(asc(equiposDescansan.jornada));
+  },
+
+  // Obtener descanso por jornada específica
+  getByJornada: async (torneoId: number, jornada: number) => {
+    const result = await db
+      .select()
+      .from(equiposDescansan)
+      .where(
+        and(
+          eq(equiposDescansan.torneo_id, torneoId),
+          eq(equiposDescansan.jornada, jornada)
+        )
+      );
+    return result[0];
+  },
+
+  // Crear registro de descanso
+  create: async (data: { torneo_id: number; equipo_id: number; jornada: number }) => {
+    const result = await db.insert(equiposDescansan).values(data).returning();
+    return result[0];
+  },
+
+  // Eliminar descanso por jornada
+  deleteByJornada: async (torneoId: number, jornada: number) => {
+    return await db
+      .delete(equiposDescansan)
+      .where(
+        and(
+          eq(equiposDescansan.torneo_id, torneoId),
+          eq(equiposDescansan.jornada, jornada)
+        )
+      );
+  },
+
+  // Eliminar todos los descansos de un torneo
+  deleteByTorneoId: async (torneoId: number) => {
+    return await db.delete(equiposDescansan).where(eq(equiposDescansan.torneo_id, torneoId));
   },
 };

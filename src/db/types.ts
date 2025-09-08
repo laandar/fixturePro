@@ -1,5 +1,5 @@
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas } from './schema';
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias } from './schema';
 
 // Tipos para selección (lectura)
 export type Equipo = InferSelectModel<typeof equipos>;
@@ -10,6 +10,7 @@ export type Torneo = InferSelectModel<typeof torneos>;
 export type EquipoTorneo = InferSelectModel<typeof equiposTorneo>;
 export type Encuentro = InferSelectModel<typeof encuentros>;
 export type Cancha = InferSelectModel<typeof canchas>;
+export type CanchaCategoria = InferSelectModel<typeof canchasCategorias>;
 
 // Tipos para inserción
 export type NewEquipo = InferInsertModel<typeof equipos>;
@@ -20,6 +21,7 @@ export type NewTorneo = InferInsertModel<typeof torneos>;
 export type NewEquipoTorneo = InferInsertModel<typeof equiposTorneo>;
 export type NewEncuentro = InferInsertModel<typeof encuentros>;
 export type NewCancha = InferInsertModel<typeof canchas>;
+export type NewCanchaCategoria = InferInsertModel<typeof canchasCategorias>;
 
 // Tipos para equipos con relaciones
 export interface EquipoWithRelations extends Equipo {
@@ -74,6 +76,21 @@ export interface FixtureCompleto {
   torneo: TorneoWithRelations;
   jornadas: FixtureJornada[];
   equiposDescansan?: Record<number, number>; // jornada -> equipo_id que descansa
+}
+
+// Tipo para equipos que descansan
+export interface EquipoDescansa {
+  id: number;
+  torneo_id: number;
+  equipo_id: number;
+  jornada: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EquipoDescansaWithRelations extends EquipoDescansa {
+  equipo: EquipoWithRelations | null;
+  torneo: TorneoWithRelations | null;
 } 
 
 // Tipos para gestión de partidos
@@ -111,4 +128,13 @@ export type Signature = {
     capitanA: string
     capitanB: string
     fechaFirma: string
+}
+
+// Tipos para canchas con relaciones
+export interface CanchaWithCategorias extends Cancha {
+  categorias?: Categoria[];
+}
+
+export interface CategoriaWithCanchas extends Categoria {
+  canchas?: Cancha[];
 }

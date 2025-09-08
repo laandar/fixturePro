@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "unique_cancha_categoria" ON "canchas_categorias" USING btree ("cancha_id","categoria_id");

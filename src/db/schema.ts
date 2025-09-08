@@ -1,4 +1,4 @@
-import { pgTable, serial, text, varchar, timestamp, boolean, integer, date } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, varchar, timestamp, boolean, integer, date, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Tabla de categorías
@@ -103,6 +103,16 @@ export const encuentros = pgTable('encuentros', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Tabla para guardar el historial de equipos que descansan por jornada
+export const equiposDescansan = pgTable('equipos_descansan', {
+  id: serial('id').primaryKey(),
+  torneo_id: integer('torneo_id').references(() => torneos.id).notNull(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  jornada: integer('jornada').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Tabla de canchas
 export const canchas = pgTable('canchas', {
   id: serial('id').primaryKey(),
@@ -116,10 +126,21 @@ export const canchas = pgTable('canchas', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Tabla intermedia para relación muchos a muchos entre canchas y categorías
+export const canchasCategorias = pgTable('canchas_categorias', {
+  id: serial('id').primaryKey(),
+  cancha_id: integer('cancha_id').references(() => canchas.id).notNull(),
+  categoria_id: integer('categoria_id').references(() => categorias.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  uniqueCanchaCategoria: uniqueIndex('unique_cancha_categoria').on(table.cancha_id, table.categoria_id),
+}));
+
 // Relaciones
 export const categoriasRelations = relations(categorias, ({ many }) => ({
   equipos: many(equipos),
   jugadores: many(jugadores),
+  canchasCategorias: many(canchasCategorias),
 }));
 
 export const entrenadoresRelations = relations(entrenadores, ({ many }) => ({
@@ -145,6 +166,7 @@ export const torneosRelations = relations(torneos, ({ one, many }) => ({
   }),
   equiposTorneo: many(equiposTorneo),
   encuentros: many(encuentros),
+  equiposDescansan: many(equiposDescansan),
 }));
 
 export const equiposTorneoRelations = relations(equiposTorneo, ({ one }) => ({
@@ -173,6 +195,18 @@ export const encuentrosRelations = relations(encuentros, ({ one }) => ({
   }),
 }));
 
+// Relaciones para equipos que descansan
+export const equiposDescansanRelations = relations(equiposDescansan, ({ one }) => ({
+  torneo: one(torneos, {
+    fields: [equiposDescansan.torneo_id],
+    references: [torneos.id],
+  }),
+  equipo: one(equipos, {
+    fields: [equiposDescansan.equipo_id],
+    references: [equipos.id],
+  }),
+}));
+
 // Relaciones adicionales para equipos
 export const equiposRelations = relations(equipos, ({ one, many }) => ({
   categoria: one(categorias, {
@@ -187,4 +221,21 @@ export const equiposRelations = relations(equipos, ({ one, many }) => ({
   equiposTorneo: many(equiposTorneo),
   encuentrosLocal: many(encuentros, { relationName: 'equipoLocal' }),
   encuentrosVisitante: many(encuentros, { relationName: 'equipoVisitante' }),
+}));
+
+// Relaciones para canchas
+export const canchasRelations = relations(canchas, ({ many }) => ({
+  canchasCategorias: many(canchasCategorias),
+}));
+
+// Relaciones para la tabla intermedia
+export const canchasCategoriasRelations = relations(canchasCategorias, ({ one }) => ({
+  cancha: one(canchas, {
+    fields: [canchasCategorias.cancha_id],
+    references: [canchas.id],
+  }),
+  categoria: one(categorias, {
+    fields: [canchasCategorias.categoria_id],
+    references: [categorias.id],
+  }),
 }));

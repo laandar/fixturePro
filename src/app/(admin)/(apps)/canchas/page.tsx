@@ -23,22 +23,24 @@ import Link from 'next/link'
 import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
 import { LuSearch, LuMapPin } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash } from 'react-icons/tb'
-import { getCanchas, createCancha, updateCancha, deleteCancha } from './actions'
-import type { Cancha } from '@/db/types'
+import { getCanchasWithCategorias, createCancha, updateCancha, deleteCancha } from './actions'
+import { getCategorias } from '../categorias/actions'
+import type { CanchaWithCategorias, Categoria } from '@/db/types'
 
-const columnHelper = createColumnHelper<Cancha>()
+const columnHelper = createColumnHelper<CanchaWithCategorias>()
 
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
   
-  const [data, setData] = useState<Cancha[]>([])
+  const [data, setData] = useState<CanchaWithCategorias[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null)
-  const [editingCancha, setEditingCancha] = useState<Cancha | null>(null)
+  const [editingCancha, setEditingCancha] = useState<CanchaWithCategorias | null>(null)
   const [editFormError, setEditFormError] = useState<string | null>(null)
   const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
   
@@ -60,6 +62,23 @@ const Page = () => {
             </h5>
             <p className="text-muted fs-xs mb-0">ID: {row.original.id}</p>
           </div>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('categorias', {
+      header: 'Categorías',
+      enableColumnFilter: true,
+      cell: ({ row }) => (
+        <div className="d-flex flex-wrap gap-1">
+          {row.original.categorias && row.original.categorias.length > 0 ? (
+            row.original.categorias.map((categoria) => (
+              <span key={categoria.id} className="badge bg-primary-subtle text-primary badge-label">
+                {categoria.nombre}
+              </span>
+            ))
+          ) : (
+            <span className="text-muted fs-xs">Sin categorías</span>
+          )}
         </div>
       ),
     }),
@@ -116,7 +135,7 @@ const Page = () => {
     }),
     {
       header: 'Acciones',
-      cell: ({ row }: { row: TableRow<Cancha> }) => (
+      cell: ({ row }: { row: TableRow<CanchaWithCategorias> }) => (
         <div className="d-flex gap-1">
           <Button 
             variant="light" 
@@ -142,7 +161,7 @@ const Page = () => {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
-  const [canchaToDelete, setCanchaToDelete] = useState<Cancha | null>(null)
+  const [canchaToDelete, setCanchaToDelete] = useState<CanchaWithCategorias | null>(null)
 
   const table = useReactTable({
     data,
@@ -159,6 +178,17 @@ const Page = () => {
     globalFilterFn: 'includesString',
     enableColumnFilters: true,
     enableRowSelection: false,
+    filterFns: {
+      categoriasFilter: (row, columnId, filterValue) => {
+        const categorias = row.getValue(columnId) as Categoria[];
+        if (filterValue === 'has') {
+          return categorias && categorias.length > 0;
+        } else if (filterValue === 'empty') {
+          return !categorias || categorias.length === 0;
+        }
+        return true;
+      },
+    },
   })
 
   const pageIndex = table.getState().pagination.pageIndex
@@ -177,7 +207,7 @@ const Page = () => {
     }
   }
 
-  const handleDeleteSingle = (cancha: Cancha) => {
+  const handleDeleteSingle = (cancha: CanchaWithCategorias) => {
     if (loading) return
     
     setCanchaToDelete(cancha)
@@ -206,7 +236,7 @@ const Page = () => {
     }
   }
 
-  const handleEditClick = (cancha: Cancha) => {
+  const handleEditClick = (cancha: CanchaWithCategorias) => {
     setEditingCancha(cancha)
     setEditFormError(null)
     setEditFormSuccess(null)
@@ -241,8 +271,12 @@ const Page = () => {
     try {
       setLoading(true)
       setError(null)
-      const canchasData = await getCanchas()
+      const [canchasData, categoriasData] = await Promise.all([
+        getCanchasWithCategorias(),
+        getCategorias(),
+      ])
       setData(canchasData)
+      setCategorias(categoriasData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar canchas')
     } finally {
@@ -355,6 +389,33 @@ const Page = () => {
                   </select>
                 </div>
 
+                <div className="app-search">
+                  <select
+                    className="form-select form-control my-1 my-md-0"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === 'Todos') {
+                        setGlobalFilter('');
+                      } else if (value === 'Con Categorías') {
+                        // Filtrar canchas que tienen categorías
+                        const filteredData = data.filter(cancha => 
+                          cancha.categorias && cancha.categorias.length > 0
+                        );
+                        setData(filteredData);
+                      } else if (value === 'Sin Categorías') {
+                        // Filtrar canchas que no tienen categorías
+                        const filteredData = data.filter(cancha => 
+                          !cancha.categorias || cancha.categorias.length === 0
+                        );
+                        setData(filteredData);
+                      }
+                    }}>
+                    <option value="Todos">Categorías</option>
+                    <option value="Con Categorías">Con Categorías</option>
+                    <option value="Sin Categorías">Sin Categorías</option>
+                  </select>
+                </div>
+
                 <div>
                   <select
                     className="form-select form-control my-1 my-md-0"
@@ -370,7 +431,7 @@ const Page = () => {
               </div>
             </CardHeader>
 
-            <DataTable<Cancha> table={table} emptyMessage="No se encontraron registros" />
+            <DataTable<CanchaWithCategorias> table={table} emptyMessage="No se encontraron registros" />
 
             {table.getRowModel().rows.length > 0 && (
               <CardFooter className="border-0">
@@ -487,6 +548,21 @@ const Page = () => {
               </Col>
 
               <Col lg={12}>
+                <FloatingLabel label="Categorías (Mantén Ctrl/Cmd para seleccionar múltiples)">
+                  <FormSelect name="categorias" multiple style={{ height: `${Math.min(categorias.length, 6) * 2.5}rem` }}>
+                    {categorias.map((categoria) => (
+                      <option key={categoria.id} value={categoria.id}>
+                        {categoria.nombre}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </FloatingLabel>
+                <small className="text-muted">
+                  Selecciona las categorías que pueden usar esta cancha
+                </small>
+              </Col>
+
+              <Col lg={12}>
                 <div className="d-flex gap-2 justify-content-end">
                   <Button variant="light" onClick={toggleOffcanvas}>
                     Cancelar
@@ -591,6 +667,21 @@ const Page = () => {
                       <option value="false">Inactiva</option>
                     </FormSelect>
                   </FloatingLabel>
+                </Col>
+
+                <Col lg={12}>
+                  <FloatingLabel label="Categorías (Mantén Ctrl/Cmd para seleccionar múltiples)">
+                    <FormSelect name="categorias" multiple defaultValue={editingCancha.categorias?.map(c => c.id.toString()) || []} style={{ height: `${Math.min(categorias.length, 6) * 2.5}rem` }}>
+                      {categorias.map((categoria) => (
+                        <option key={categoria.id} value={categoria.id}>
+                          {categoria.nombre}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </FloatingLabel>
+                  <small className="text-muted">
+                    Selecciona las categorías que pueden usar esta cancha
+                  </small>
                 </Col>
 
                 <Col lg={12}>

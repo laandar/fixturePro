@@ -6,22 +6,27 @@ export interface FixtureOptions {
   diasEntreJornadas?: number;
   canchas?: string[];
   arbitros?: string[];
-  // Restricciones: equipos que no pueden jugar en ciertas jornadas (por ID)
   unavailableByJornada?: Record<number, number[]>;
+  jornadaInicial?: number;
+  jornadaFinal?: number; // Nueva opción para generar hasta una jornada específica
+  intercambiosInteligentes?: boolean;
+  encuentrosExistentes?: NewEncuentro[]; // Nuevo: encuentros ya jugados para evitar repeticiones
 }
 
 export interface FixtureResult {
   encuentros: NewEncuentro[];
-  equiposDescansan?: Record<number, number>; // jornada -> equipo_id que descansa
+  equiposDescansan?: Record<number, number>;
 }
 
 export class FixtureGenerator {
   private equipos: EquipoWithRelations[];
   private options: FixtureOptions;
-  private equiposDescansan: Record<number, number> = {}; // jornada -> equipo_id que descansa
+  private torneoId: number;
+  private emparejamientosExistentes: Set<string>; // Nuevo: para rastrear emparejamientos ya jugados
 
-  constructor(equipos: EquipoWithRelations[], options: FixtureOptions = {}) {
+  constructor(equipos: EquipoWithRelations[], options: FixtureOptions = {}, torneoId: number) {
     this.equipos = equipos;
+    this.torneoId = torneoId;
     this.options = {
       permiteRevancha: false,
       fechaInicio: new Date(),
@@ -30,21 +35,61 @@ export class FixtureGenerator {
       arbitros: ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
       ...options,
     };
+    
+    console.log(`FixtureGenerator constructor - Opciones recibidas:`, options);
+    console.log(`FixtureGenerator constructor - Restricciones:`, options.unavailableByJornada);
+    
+    // Inicializar set de emparejamientos existentes
+    this.emparejamientosExistentes = new Set();
+    if (this.options.encuentrosExistentes) {
+      this.options.encuentrosExistentes.forEach(encuentro => {
+        const emparejamiento = `${encuentro.equipo_local_id}-${encuentro.equipo_visitante_id}`;
+        const emparejamientoInverso = `${encuentro.equipo_visitante_id}-${encuentro.equipo_local_id}`;
+        this.emparejamientosExistentes.add(emparejamiento);
+        this.emparejamientosExistentes.add(emparejamientoInverso);
+      });
+    }
   }
 
   /**
-   * Genera el fixture completo usando algoritmo Round Robin
+   * Verifica si un emparejamiento ya existe
    */
-  generateFixture(): FixtureResult {
+  private emparejamientoYaExiste(equipo1: EquipoWithRelations, equipo2: EquipoWithRelations): boolean {
+    const emparejamiento = `${equipo1.id}-${equipo2.id}`;
+    const emparejamientoInverso = `${equipo2.id}-${equipo1.id}`;
+    return this.emparejamientosExistentes.has(emparejamiento) || this.emparejamientosExistentes.has(emparejamientoInverso);
+  }
+
+  /**
+   * Registra un nuevo emparejamiento como existente
+   */
+  private registrarEmparejamiento(equipo1: EquipoWithRelations, equipo2: EquipoWithRelations): void {
+    const emparejamiento = `${equipo1.id}-${equipo2.id}`;
+    const emparejamientoInverso = `${equipo2.id}-${equipo1.id}`;
+    this.emparejamientosExistentes.add(emparejamiento);
+    this.emparejamientosExistentes.add(emparejamientoInverso);
+  }
+
+  /**
+   * Genera el fixture completo usando algoritmo Round Robin básico
+   */
+  async generateFixture(): Promise<FixtureResult> {
     if (this.equipos.length < 2) {
       throw new Error('Se necesitan al menos 2 equipos para generar un fixture');
     }
 
     const encuentros: NewEncuentro[] = [];
     const equiposCopy = [...this.equipos];
+    const equiposDescansan: Record<number, number> = {};
+    
+    // Guardar el número original de equipos (sin BYE)
+    const numEquiposOriginal = equiposCopy.length;
+    const hayDescanso = numEquiposOriginal % 2 !== 0;
+    
+    console.log(`Número original de equipos: ${numEquiposOriginal}, hay descanso: ${hayDescanso}`);
     
     // Si el número de equipos es impar, agregar un equipo "BYE"
-    if (equiposCopy.length % 2 !== 0) {
+    if (hayDescanso) {
       equiposCopy.push({
         id: -1, // ID temporal para equipo BYE
         nombre: 'BYE',
@@ -62,209 +107,329 @@ export class FixtureGenerator {
     const numEquipos = equiposCopy.length;
     const totalJornadasIda = numEquipos - 1;
     const partidosPorJornada = Math.floor(numEquipos / 2);
+    const jornadaInicial = this.options.jornadaInicial || 1;
+    const jornadaFinal = this.options.jornadaFinal || totalJornadasIda;
 
     // Generar ida
-    for (let jornada = 1; jornada <= totalJornadasIda; jornada++) {
-      const { scheduled, deferred } = this.generateJornada(equiposCopy, jornada);
-      encuentros.push(...scheduled);
-      if (deferred.length) {
-        deferred.forEach((p) => this.pendingPairs.push(p));
-      }
-    }
-
-    // Generar vuelta (si aplica), invirtiendo local/visitante y continuando numeración
-    if (this.options.permiteRevancha) {
-      for (let j = 1; j <= totalJornadasIda; j++) {
-        const jornadaNumero = totalJornadasIda + j;
-        const { scheduled, deferred } = this.generateJornada(equiposCopy, jornadaNumero, true);
-        encuentros.push(...scheduled);
-        if (deferred.length) {
-          deferred.forEach((p) => this.pendingPairs.push(p));
+    for (let jornada = jornadaInicial; jornada <= jornadaFinal; jornada++) {
+      const encuentrosJornada = this.generateJornada(equiposCopy, jornada, false);
+      encuentros.push(...encuentrosJornada);
+      
+      // Registrar equipo que descansa (si hay número impar de equipos originales)
+      if (hayDescanso) {
+        const equipoDescansa = this.getEquipoQueDescansa(equiposCopy, jornada);
+        console.log(`Jornada ${jornada}: Equipo que descansa:`, equipoDescansa?.nombre || 'ninguno');
+        if (equipoDescansa && equipoDescansa.id !== -1) {
+          equiposDescansan[jornada] = equipoDescansa.id;
+          console.log(`Registrando descanso: jornada ${jornada} = equipo ${equipoDescansa.id} (${equipoDescansa.nombre})`);
         }
       }
     }
 
-    // Si hay partidos diferidos por restricciones, reprogramarlos en jornadas extra al final
-    if (this.pendingPairs.length > 0) {
-      const startJornada = encuentros.reduce((max, e) => Math.max(max, e.jornada ?? 0), 0) + 1;
-      const reprogramados = this.scheduleDeferredPairs(this.pendingPairs, startJornada, partidosPorJornada);
-      encuentros.push(...reprogramados);
-      // Limpiar diferidos
-      this.pendingPairs = [];
+    // Generar vuelta (si aplica)
+    if (this.options.permiteRevancha) {
+      for (let j = 1; j <= totalJornadasIda; j++) {
+        const jornadaNumero = totalJornadasIda + j;
+        if (jornadaNumero >= jornadaInicial && jornadaNumero <= jornadaFinal) {
+          const encuentrosJornada = this.generateJornada(equiposCopy, jornadaNumero, true);
+          encuentros.push(...encuentrosJornada);
+          
+          // Registrar equipo que descansa en vuelta
+          if (hayDescanso) {
+            const equipoDescansa = this.getEquipoQueDescansa(equiposCopy, jornadaNumero);
+            console.log(`Jornada ${jornadaNumero} (vuelta): Equipo que descansa:`, equipoDescansa?.nombre || 'ninguno');
+            if (equipoDescansa && equipoDescansa.id !== -1) {
+              equiposDescansan[jornadaNumero] = equipoDescansa.id;
+              console.log(`Registrando descanso vuelta: jornada ${jornadaNumero} = equipo ${equipoDescansa.id} (${equipoDescansa.nombre})`);
+            }
+          }
+        }
+      }
+    }
+
+    // Debug: mostrar emparejamientos generados
+    console.log('Fixture generado:', {
+      totalEncuentros: encuentros.length,
+      equiposDescansan,
+      jornadas: [...new Set(encuentros.map(e => e.jornada))].sort((a, b) => (a || 0) - (b || 0)),
+      emparejamientosExistentes: this.emparejamientosExistentes.size,
+      emparejamientosExistentesList: Array.from(this.emparejamientosExistentes)
+    });
+
+    // Validar el fixture generado
+    const validation = this.validateFixture(encuentros);
+    if (!validation.isValid) {
+      console.warn('Advertencias en el fixture:', validation.errors);
     }
 
     return {
       encuentros,
-      equiposDescansan: Object.keys(this.equiposDescansan).length > 0 ? this.equiposDescansan : undefined
+      equiposDescansan
     };
   }
 
   /**
-   * Genera una jornada específica
+   * Genera una jornada específica usando Round Robin mejorado
    */
-  private pendingPairs: { equipo_local_id: number; equipo_visitante_id: number }[] = [];
-
   private generateJornada(
     equipos: EquipoWithRelations[], 
     jornada: number, 
     esVuelta: boolean = false
-  ): { scheduled: NewEncuentro[]; deferred: { equipo_local_id: number; equipo_visitante_id: number }[] } {
+  ): NewEncuentro[] {
     const encuentros: NewEncuentro[] = [];
-    const deferred: { equipo_local_id: number; equipo_visitante_id: number }[] = [];
     const numEquipos = equipos.length;
-    const partidosPorJornada = Math.floor(numEquipos / 2);
 
-    // Algoritmo Round Robin con rotación modular para mantener ciclos correctos
-    const rotationBase = (jornada - 1) % (numEquipos - 1);
-    const equiposRotados = this.rotateTeams(equipos, rotationBase);
+    // Obtener equipos restringidos para esta jornada
+    const equiposRestringidos = this.options.unavailableByJornada?.[jornada] || [];
+    
+    console.log(`Jornada ${jornada}: Generando jornada con ${numEquipos} equipos`);
+    console.log(`Jornada ${jornada}: Equipos restringidos: [${equiposRestringidos.join(', ')}]`);
+    
+    // PASO 1: Generar emparejamientos normalmente (sin considerar restricciones)
+    const emparejamientos = this.generatePairings(equipos, jornada);
+    
+    console.log(`Jornada ${jornada}: Generando emparejamientos con ${emparejamientos.length} pares`);
+    
+    // PASO 2: Si hay restricciones, intercambiar el equipo que descansa con el restringido
+    if (equiposRestringidos.length > 0) {
+      this.intercambiarDescansoConRestriccion(emparejamientos, equiposRestringidos, jornada);
+    }
+    
+    for (let i = 0; i < emparejamientos.length; i++) {
+      const [equipo1, equipo2] = emparejamientos[i];
 
-    for (let i = 0; i < partidosPorJornada; i++) {
-      const equipo1 = equiposRotados[i];
-      const equipo2 = equiposRotados[numEquipos - 1 - i];
-
-      // Si uno de los equipos es BYE, el otro equipo descansa
+      // Si uno de los equipos es BYE, saltar
       if (equipo1.id === -1 || equipo2.id === -1) {
-        const equipoQueDescansa = equipo1.id === -1 ? equipo2 : equipo1;
-        // Solo guardar equipos reales que descansan (no el BYE)
-        if (equipoQueDescansa.id !== -1) {
-          this.equiposDescansan[jornada] = equipoQueDescansa.id;
-        }
+        console.log(`Saltando emparejamiento con BYE: ${equipo1.nombre} vs ${equipo2.nombre}`);
+        continue;
+      }
+      
+      // Si uno de los equipos está restringido, saltar (no generar encuentro)
+      if (equiposRestringidos.includes(equipo1.id) || equiposRestringidos.includes(equipo2.id)) {
+        console.log(`Saltando emparejamiento con equipo restringido: ${equipo1.nombre} vs ${equipo2.nombre}`);
         continue;
       }
 
-      // Determinar local y visitante
+      // Determinar local y visitante según si es vuelta
       let equipoLocal: EquipoWithRelations;
       let equipoVisitante: EquipoWithRelations;
-
+      
       if (esVuelta) {
         // En la vuelta, invertir local/visitante
         equipoLocal = equipo2;
         equipoVisitante = equipo1;
       } else {
-        // En la ida, mantener orden original
         equipoLocal = equipo1;
         equipoVisitante = equipo2;
       }
 
-      // Verificar restricción de jornada
-      const unavailable = this.options.unavailableByJornada?.[jornada] ?? [];
-      const restricted = unavailable.includes(equipoLocal.id) || unavailable.includes(equipoVisitante.id);
+      // Calcular fecha del encuentro
+      const fechaEncuentro = new Date(this.options.fechaInicio!);
+      fechaEncuentro.setDate(fechaEncuentro.getDate() + (jornada - 1) * this.options.diasEntreJornadas!);
 
-      if (restricted) {
-        // diferir emparejamiento para reprogramar al final
-        deferred.push({
-          equipo_local_id: equipoLocal.id,
-          equipo_visitante_id: equipoVisitante.id,
-        });
-      } else {
-        // Calcular fecha del encuentro
-        const fechaEncuentro = new Date(this.options.fechaInicio!);
-        fechaEncuentro.setDate(fechaEncuentro.getDate() + (jornada - 1) * this.options.diasEntreJornadas!);
+      // Seleccionar cancha y árbitro de forma rotativa
+      const canchaIndex = (jornada + i) % this.options.canchas!.length;
+      const arbitroIndex = (jornada + i) % this.options.arbitros!.length;
 
-        // Seleccionar cancha y árbitro de forma rotativa
-        const canchaIndex = (jornada + i) % this.options.canchas!.length;
-        const arbitroIndex = (jornada + i) % this.options.arbitros!.length;
+      const encuentro: NewEncuentro = {
+        torneo_id: this.torneoId,
+        equipo_local_id: equipoLocal.id,
+        equipo_visitante_id: equipoVisitante.id,
+        fecha_programada: fechaEncuentro,
+        cancha: this.options.canchas![canchaIndex],
+        arbitro: this.options.arbitros![arbitroIndex],
+        estado: 'programado',
+        jornada: jornada,
+        fase: 'regular',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-        const encuentro: NewEncuentro = {
-          torneo_id: 0, // Se debe establecer al crear el torneo
-          equipo_local_id: equipoLocal.id,
-          equipo_visitante_id: equipoVisitante.id,
-          fecha_programada: fechaEncuentro,
-          cancha: this.options.canchas![canchaIndex],
-          arbitro: this.options.arbitros![arbitroIndex],
-          estado: 'programado',
-          jornada: jornada,
-          fase: 'regular',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-
-        encuentros.push(encuentro);
-      }
+      encuentros.push(encuentro);
+      this.registrarEmparejamiento(equipoLocal, equipoVisitante); // Registrar el emparejamiento
     }
 
-    return { scheduled: encuentros, deferred };
-  }
-
-  private scheduleDeferredPairs(
-    pairs: { equipo_local_id: number; equipo_visitante_id: number }[],
-    startJornada: number,
-    partidosPorJornada: number
-  ): NewEncuentro[] {
-    const result: NewEncuentro[] = [];
-    let jornada = startJornada;
-    let index = 0;
-    while (index < pairs.length) {
-      const usadosEnJornada = new Set<number>();
-      let partidosAsignados = 0;
-      // Intentar llenar una jornada con tantos partidos como sea posible sin repetir equipos
-      for (let i = index; i < pairs.length && partidosAsignados < partidosPorJornada; i++) {
-        const p = pairs[i];
-        if (usadosEnJornada.has(p.equipo_local_id) || usadosEnJornada.has(p.equipo_visitante_id)) {
-          continue;
-        }
-        // Asignar este partido a la jornada actual
-        usadosEnJornada.add(p.equipo_local_id);
-        usadosEnJornada.add(p.equipo_visitante_id);
-
-        const fechaEncuentro = new Date(this.options.fechaInicio!);
-        fechaEncuentro.setDate(fechaEncuentro.getDate() + (jornada - 1) * this.options.diasEntreJornadas!);
-
-        const canchaIndex = (jornada + partidosAsignados) % this.options.canchas!.length;
-        const arbitroIndex = (jornada + partidosAsignados) % this.options.arbitros!.length;
-
-        result.push({
-          torneo_id: 0,
-          equipo_local_id: p.equipo_local_id,
-          equipo_visitante_id: p.equipo_visitante_id,
-          fecha_programada: fechaEncuentro,
-          cancha: this.options.canchas![canchaIndex],
-          arbitro: this.options.arbitros![arbitroIndex],
-          estado: 'programado',
-          jornada: jornada,
-          fase: 'regular',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-
-        // Marcar pair como utilizado moviéndolo al final de la ventana
-        const tmp = pairs[index];
-        pairs[index] = pairs[i];
-        pairs[i] = tmp;
-        index++;
-        partidosAsignados++;
-      }
-
-      // Si no se pudo asignar ningún partido en esta jornada (por conflicto), forzar avance para evitar bucle
-      if (partidosAsignados === 0) {
-        jornada++;
-        continue;
-      }
-
-      jornada++;
-    }
-
-    return result;
+    console.log(`Jornada ${jornada}: Generados ${encuentros.length} encuentros de ${emparejamientos.length} emparejamientos posibles`);
+    return encuentros;
   }
 
   /**
-   * Rota los equipos para generar diferentes emparejamientos
+   * Intercambia el equipo que descansa con el equipo restringido
    */
-  private rotateTeams(equipos: EquipoWithRelations[], rotation: number): EquipoWithRelations[] {
-    const rotated = [...equipos];
-    const numEquipos = equipos.length;
+  private intercambiarDescansoConRestriccion(
+    emparejamientos: [EquipoWithRelations, EquipoWithRelations][], 
+    equiposRestringidos: number[], 
+    jornada: number
+  ): void {
+    console.log(`Intercambiando descanso con restricción para jornada ${jornada}`);
+    
+    // Encontrar el emparejamiento que contiene BYE (el equipo que descansa)
+    let emparejamientoConBye: [EquipoWithRelations, EquipoWithRelations] | null = null;
+    let indiceEmparejamientoConBye = -1;
+    
+    for (let i = 0; i < emparejamientos.length; i++) {
+      const [equipo1, equipo2] = emparejamientos[i];
+      if (equipo1.id === -1 || equipo2.id === -1) {
+        emparejamientoConBye = emparejamientos[i];
+        indiceEmparejamientoConBye = i;
+        break;
+      }
+    }
+    
+    if (!emparejamientoConBye) {
+      console.log(`No se encontró emparejamiento con BYE en jornada ${jornada}`);
+      return;
+    }
+    
+    // Obtener el equipo que debería descansar (el que no es BYE)
+    const equipoQueDescansa = emparejamientoConBye[0].id === -1 ? emparejamientoConBye[1] : emparejamientoConBye[0];
+    const equipoRestringido = this.equipos.find(e => equiposRestringidos.includes(e.id));
+    
+    if (!equipoRestringido) {
+      console.log(`No se encontró equipo restringido en jornada ${jornada}`);
+      return;
+    }
+    
+    console.log(`Intercambiando: ${equipoQueDescansa.nombre} (que descansaba) ↔ ${equipoRestringido.nombre} (restringido)`);
+    
+    // Crear nuevo emparejamiento con el equipo restringido y BYE
+    emparejamientos[indiceEmparejamientoConBye] = [equipoRestringido, {
+      id: -1, // BYE
+      nombre: 'BYE',
+      categoria_id: null,
+      entrenador_id: null,
+      imagen_equipo: null,
+      estado: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      categoria: null,
+      entrenador: null,
+    }];
+    
+    // Buscar un emparejamiento donde podamos insertar el equipo que antes descansaba
+    // Reemplazar uno de los equipos en un emparejamiento existente
+    for (let i = 0; i < emparejamientos.length; i++) {
+      if (i === indiceEmparejamientoConBye) continue; // Saltar el emparejamiento con BYE
+      
+      const [equipo1, equipo2] = emparejamientos[i];
+      
+      // Si uno de los equipos en este emparejamiento es el equipo restringido, reemplazarlo
+      if (equipo1.id === equipoRestringido.id) {
+        emparejamientos[i] = [equipoQueDescansa, equipo2];
+        console.log(`Reemplazado ${equipo1.nombre} con ${equipoQueDescansa.nombre} en emparejamiento ${i}`);
+        break;
+      } else if (equipo2.id === equipoRestringido.id) {
+        emparejamientos[i] = [equipo1, equipoQueDescansa];
+        console.log(`Reemplazado ${equipo2.nombre} con ${equipoQueDescansa.nombre} en emparejamiento ${i}`);
+        break;
+      }
+    }
+    
+    console.log(`Emparejamientos después del intercambio:`, emparejamientos.map(([e1, e2]) => `${e1.nombre} vs ${e2.nombre}`));
+  }
 
+  /**
+   * Genera emparejamientos para una jornada específica usando algoritmo Round Robin mejorado
+   */
+  private generatePairings(equipos: EquipoWithRelations[], jornada: number): [EquipoWithRelations, EquipoWithRelations][] {
+    const numEquipos = equipos.length;
+    const emparejamientos: [EquipoWithRelations, EquipoWithRelations][] = [];
+    
+    // Obtener equipos restringidos para esta jornada
+    const equiposRestringidos = this.options.unavailableByJornada?.[jornada] || [];
+    
+    if (numEquipos % 2 === 0) {
+      // Número par de equipos
+      const mitad = numEquipos / 2;
+      const equiposRotados = this.rotateTeams(equipos, jornada);
+      
+      for (let i = 0; i < mitad; i++) {
+        emparejamientos.push([equiposRotados[i], equiposRotados[numEquipos - 1 - i]]);
+      }
+    } else {
+      // Número impar de equipos - usar algoritmo específico
+      const equiposConBye = [...equipos];
+      if (equiposConBye.length % 2 !== 0) {
+        equiposConBye.push({
+          id: -1, // BYE
+          nombre: 'BYE',
+          categoria_id: null,
+          entrenador_id: null,
+          imagen_equipo: null,
+          estado: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          categoria: null,
+          entrenador: null,
+        });
+      }
+      
+      const numEquiposConBye = equiposConBye.length;
+      const mitad = numEquiposConBye / 2;
+      const equiposRotados = this.rotateTeams(equiposConBye, jornada);
+      
+      for (let i = 0; i < mitad; i++) {
+        emparejamientos.push([equiposRotados[i], equiposRotados[numEquiposConBye - 1 - i]]);
+      }
+    }
+    
+    console.log(`generatePairings - Jornada ${jornada}: Generados ${emparejamientos.length} emparejamientos`);
+    console.log(`generatePairings - Jornada ${jornada}: Equipos restringidos: [${equiposRestringidos.join(', ')}]`);
+    
+    return emparejamientos;
+  }
+
+
+
+  /**
+   * Aplica restricciones sin afectar el algoritmo Round Robin original
+   * NOTA: NO excluimos equipos restringidos aquí, solo los marcamos para descanso
+   */
+  private aplicarRestricciones(equipos: EquipoWithRelations[], jornada: number): EquipoWithRelations[] {
+    // Obtener equipos no disponibles para esta jornada específica
+    const equiposNoDisponibles = this.options.unavailableByJornada?.[jornada] || [];
+    
+    // Si no hay restricciones, devolver todos los equipos
+    if (equiposNoDisponibles.length === 0) {
+      return equipos;
+    }
+    
+    console.log(`Aplicando restricciones para jornada ${jornada}:`, equiposNoDisponibles);
+    console.log(`NO excluyendo equipos restringidos del Round Robin - se manejarán en getEquipoQueDescansa`);
+    
+    // IMPORTANTE: NO excluimos equipos restringidos aquí
+    // Los equipos restringidos deben estar disponibles para el algoritmo Round Robin
+    // pero se les asignará el descanso en getEquipoQueDescansa
+    return equipos.filter(e => e.id !== -1); // Solo excluir BYE
+  }
+
+  /**
+   * Rota los equipos usando algoritmo Round Robin mejorado
+   */
+  private rotateTeams(equipos: EquipoWithRelations[], jornada: number): EquipoWithRelations[] {
+    const numEquipos = equipos.length;
+    const rotated = [...equipos];
+    
+    // Algoritmo Round Robin mejorado
+    if (jornada === 1) {
+      return rotated; // Primera jornada: orden original
+    }
+    
+    // Para jornadas posteriores, usar rotación específica
+    const rotation = (jornada - 1) % (numEquipos - 1);
+    
     // Mantener el primer equipo fijo y rotar el resto
+    const primerEquipo = rotated[0];
+    const restoEquipos = rotated.slice(1);
+    
+    // Rotar el resto de equipos de manera específica
     for (let i = 0; i < rotation; i++) {
       // Mover el segundo equipo al final
-      const segundo = rotated[1];
-      for (let j = 1; j < numEquipos - 1; j++) {
-        rotated[j] = rotated[j + 1];
-      }
-      rotated[numEquipos - 1] = segundo;
+      const segundo = restoEquipos.shift()!;
+      restoEquipos.push(segundo);
     }
-
-    return rotated;
+    
+    return [primerEquipo, ...restoEquipos];
   }
 
   /**
@@ -282,7 +447,7 @@ export class FixtureGenerator {
     });
 
     equiposIds.forEach(equipoId => {
-      if (!equiposParticipantes.has(equipoId)) {
+      if (equipoId !== -1 && !equiposParticipantes.has(equipoId)) {
         errors.push(`El equipo con ID ${equipoId} no participa en ningún encuentro`);
       }
     });
@@ -307,10 +472,91 @@ export class FixtureGenerator {
       emparejamientos.add(emparejamiento);
     });
 
+    // Verificar que no haya repeticiones con encuentros existentes
+    if (this.emparejamientosExistentes.size > 0) {
+      encuentros.forEach(encuentro => {
+        const emparejamiento = `${encuentro.equipo_local_id}-${encuentro.equipo_visitante_id}`;
+        const emparejamientoInverso = `${encuentro.equipo_visitante_id}-${encuentro.equipo_local_id}`;
+        
+        if (this.emparejamientosExistentes.has(emparejamiento) || this.emparejamientosExistentes.has(emparejamientoInverso)) {
+          errors.push(`Emparejamiento duplicado con encuentro existente: ${encuentro.equipo_local_id} vs ${encuentro.equipo_visitante_id}`);
+        }
+      });
+    }
+
+    // Verificar distribución equilibrada de partidos
+    const partidosPorEquipo = new Map<number, number>();
+    equiposIds.forEach(id => {
+      if (id !== -1) partidosPorEquipo.set(id, 0);
+    });
+
+    encuentros.forEach(encuentro => {
+      partidosPorEquipo.set(encuentro.equipo_local_id, (partidosPorEquipo.get(encuentro.equipo_local_id) || 0) + 1);
+      partidosPorEquipo.set(encuentro.equipo_visitante_id, (partidosPorEquipo.get(encuentro.equipo_visitante_id) || 0) + 1);
+    });
+
+    const valores = Array.from(partidosPorEquipo.values());
+    const min = Math.min(...valores);
+    const max = Math.max(...valores);
+    
+    if (max - min > 1) {
+      errors.push(`Distribución desigual de partidos: algunos equipos juegan ${max} partidos mientras otros juegan ${min}`);
+    }
+
     return {
       isValid: errors.length === 0,
       errors,
     };
+  }
+
+  /**
+   * Obtiene el equipo que descansa en una jornada específica
+   */
+  private getEquipoQueDescansa(equipos: EquipoWithRelations[], jornada: number): EquipoWithRelations | null {
+    console.log(`=== getEquipoQueDescansa llamado para jornada ${jornada} ===`);
+    const numEquipos = equipos.length;
+    const equiposReales = equipos.filter(e => e.id !== -1); // Excluir BYE
+    const numEquiposReales = equiposReales.length;
+    
+    console.log(`getEquipoQueDescansa - Total equipos: ${numEquipos}, Equipos reales: ${numEquiposReales}`);
+    
+    if (numEquiposReales % 2 === 0) {
+      console.log(`No hay descanso - número par de equipos reales (${numEquiposReales})`);
+      return null; // No hay descanso si hay número par de equipos reales
+    }
+    
+    // Obtener equipos restringidos para esta jornada
+    const equiposRestringidos = this.options.unavailableByJornada?.[jornada] || [];
+    console.log(`getEquipoQueDescansa - Opciones completas:`, this.options.unavailableByJornada)
+    console.log(`getEquipoQueDescansa - Restricciones para jornada ${jornada}:`, equiposRestringidos)
+    
+    // En el algoritmo Round Robin, el equipo que descansa es el que está en la posición central
+    const posicionDescanso = Math.floor(numEquipos / 2);
+    const rotationBase = (jornada - 1) % (numEquipos - 1);
+    const equiposRotados = this.rotateTeams(equipos, rotationBase);
+    
+    console.log(`Jornada ${jornada}: Posición descanso: ${posicionDescanso}, Rotación base: ${rotationBase}`);
+    console.log(`Jornada ${jornada}: Equipos rotados:`, equiposRotados.map(e => `${e.nombre}(${e.id})`));
+    
+    const equipoQueDeberiaDescansar = equiposRotados[posicionDescanso];
+    
+    console.log(`Jornada ${jornada}: Equipo que debería descansar según Round Robin: ${equipoQueDeberiaDescansar.nombre}`);
+    console.log(`Jornada ${jornada}: Equipos restringidos: [${equiposRestringidos.join(', ')}]`);
+    
+    // PRIORIDAD 1: Si hay equipos restringidos, UNO DE ELLOS DEBE DESCANSAR
+    if (equiposRestringidos.length > 0) {
+      const equiposRestringidosDisponibles = equipos.filter(e => equiposRestringidos.includes(e.id));
+      if (equiposRestringidosDisponibles.length > 0) {
+        // Usar el primer equipo restringido disponible
+        const equipoRestringido = equiposRestringidosDisponibles[0];
+        console.log(`Jornada ${jornada}: ${equipoRestringido.nombre} descansa (FORZADO por restricción), ${equipoQueDeberiaDescansar.nombre} juega`);
+        return equipoRestringido;
+      }
+    }
+    
+    // PRIORIDAD 2: Si no hay restricciones, usar el equipo normal del algoritmo Round Robin
+    console.log(`Jornada ${jornada}: ${equipoQueDeberiaDescansar.nombre} descansa (normal - sin restricciones)`);
+    return equipoQueDeberiaDescansar;
   }
 
   /**
@@ -339,22 +585,11 @@ export class FixtureGenerator {
 /**
  * Función de utilidad para generar fixture con opciones por defecto
  */
-export function generateFixture(
+export async function generateFixture(
   equipos: EquipoWithRelations[], 
   torneoId: number,
   options: FixtureOptions = {}
-): FixtureResult {
-  const generator = new FixtureGenerator(equipos, options);
-  const result = generator.generateFixture();
-  
-  // Asignar el ID del torneo a todos los encuentros
-  const encuentrosConTorneo = result.encuentros.map(encuentro => ({
-    ...encuentro,
-    torneo_id: torneoId,
-  }));
-
-  return {
-    encuentros: encuentrosConTorneo,
-    equiposDescansan: result.equiposDescansan
-  };
+): Promise<FixtureResult> {
+  const generator = new FixtureGenerator(equipos, options, torneoId);
+  return await generator.generateFixture();
 }

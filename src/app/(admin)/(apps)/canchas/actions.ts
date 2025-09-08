@@ -13,11 +13,27 @@ export async function getCanchas() {
   }
 }
 
+export async function getCanchasWithCategorias() {
+  try {
+    return await canchaQueries.getAllWithCategorias()
+  } catch (error) {
+    throw new Error('Error al obtener canchas con categorías')
+  }
+}
+
 export async function getCanchaById(id: number) {
   try {
     return await canchaQueries.getById(id)
   } catch (error) {
     throw new Error('Error al obtener cancha')
+  }
+}
+
+export async function getCanchaByIdWithCategorias(id: number) {
+  try {
+    return await canchaQueries.getByIdWithCategorias(id)
+  } catch (error) {
+    throw new Error('Error al obtener cancha con categorías')
   }
 }
 
@@ -29,6 +45,7 @@ export async function createCancha(formData: FormData) {
     const capacidad = formData.get('capacidad') as string
     const descripcion = formData.get('descripcion') as string
     const estado = formData.get('estado') === 'true'
+    const categorias = formData.getAll('categorias') as string[]
 
     if (!nombre || !tipo) {
       throw new Error('Nombre y tipo son campos obligatorios')
@@ -43,7 +60,12 @@ export async function createCancha(formData: FormData) {
       estado,
     }
 
-    await canchaQueries.create(canchaData)
+    // Convertir IDs de categorías a números
+    const categoriaIds = categorias
+      .filter(cat => cat && cat !== '')
+      .map(cat => parseInt(cat))
+
+    await canchaQueries.createWithCategorias(canchaData, categoriaIds)
     revalidatePath('/canchas')
   } catch (error) {
     console.error('Error al crear cancha:', error)
@@ -59,6 +81,7 @@ export async function updateCancha(id: number, formData: FormData) {
     const capacidad = formData.get('capacidad') as string
     const descripcion = formData.get('descripcion') as string
     const estado = formData.get('estado') === 'true'
+    const categorias = formData.getAll('categorias') as string[]
 
     if (!nombre || !tipo) {
       throw new Error('Nombre y tipo son campos obligatorios')
@@ -73,7 +96,12 @@ export async function updateCancha(id: number, formData: FormData) {
       estado,
     }
 
-    await canchaQueries.update(id, canchaData)
+    // Convertir IDs de categorías a números
+    const categoriaIds = categorias
+      .filter(cat => cat && cat !== '')
+      .map(cat => parseInt(cat))
+
+    await canchaQueries.updateWithCategorias(id, canchaData, categoriaIds)
     revalidatePath('/canchas')
   } catch (error) {
     throw error
@@ -86,5 +114,23 @@ export async function deleteCancha(id: number) {
     revalidatePath('/canchas')
   } catch (error) {
     throw new Error('Error al eliminar cancha')
+  }
+}
+
+export async function assignCategoriasToCancha(canchaId: number, categoriaIds: number[]) {
+  try {
+    await canchaQueries.assignCategorias(canchaId, categoriaIds)
+    revalidatePath('/canchas')
+  } catch (error) {
+    throw new Error('Error al asignar categorías a la cancha')
+  }
+}
+
+export async function unassignCategoriasFromCancha(canchaId: number, categoriaIds: number[]) {
+  try {
+    await canchaQueries.unassignCategorias(canchaId, categoriaIds)
+    revalidatePath('/canchas')
+  } catch (error) {
+    throw new Error('Error al desasignar categorías de la cancha')
   }
 }
