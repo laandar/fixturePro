@@ -171,87 +171,102 @@ export class FixtureGenerator {
   /**
    * Genera una jornada específica usando Round Robin mejorado
    */
-  private generateJornada(
-    equipos: EquipoWithRelations[], 
-    jornada: number, 
-    esVuelta: boolean = false
-  ): NewEncuentro[] {
-    const encuentros: NewEncuentro[] = [];
-    const numEquipos = equipos.length;
+  /**
+ * Genera una jornada específica usando Round Robin mejorado
+ */
+private generateJornada(
+  equipos: EquipoWithRelations[], 
+  jornada: number, 
+  esVuelta: boolean = false
+): NewEncuentro[] {
+  const encuentros: NewEncuentro[] = [];
+  const numEquipos = equipos.length;
 
-    // Obtener equipos restringidos para esta jornada
-    const equiposRestringidos = this.options.unavailableByJornada?.[jornada] || [];
-    
-    console.log(`Jornada ${jornada}: Generando jornada con ${numEquipos} equipos`);
-    console.log(`Jornada ${jornada}: Equipos restringidos: [${equiposRestringidos.join(', ')}]`);
-    
-    // PASO 1: Generar emparejamientos normalmente (sin considerar restricciones)
-    const emparejamientos = this.generatePairings(equipos, jornada);
-    
-    console.log(`Jornada ${jornada}: Generando emparejamientos con ${emparejamientos.length} pares`);
-    
-    // PASO 2: Si hay restricciones, intercambiar el equipo que descansa con el restringido
-    if (equiposRestringidos.length > 0) {
-      this.intercambiarDescansoConRestriccion(emparejamientos, equiposRestringidos, jornada);
-    }
-    
-    for (let i = 0; i < emparejamientos.length; i++) {
-      const [equipo1, equipo2] = emparejamientos[i];
-
-      // Si uno de los equipos es BYE, saltar
-      if (equipo1.id === -1 || equipo2.id === -1) {
-        console.log(`Saltando emparejamiento con BYE: ${equipo1.nombre} vs ${equipo2.nombre}`);
-        continue;
-      }
-      
-      // Si uno de los equipos está restringido, saltar (no generar encuentro)
-      if (equiposRestringidos.includes(equipo1.id) || equiposRestringidos.includes(equipo2.id)) {
-        console.log(`Saltando emparejamiento con equipo restringido: ${equipo1.nombre} vs ${equipo2.nombre}`);
-        continue;
-      }
-
-      // Determinar local y visitante según si es vuelta
-      let equipoLocal: EquipoWithRelations;
-      let equipoVisitante: EquipoWithRelations;
-      
-      if (esVuelta) {
-        // En la vuelta, invertir local/visitante
-        equipoLocal = equipo2;
-        equipoVisitante = equipo1;
-      } else {
-        equipoLocal = equipo1;
-        equipoVisitante = equipo2;
-      }
-
-      // Calcular fecha del encuentro
-      const fechaEncuentro = new Date(this.options.fechaInicio!);
-      fechaEncuentro.setDate(fechaEncuentro.getDate() + (jornada - 1) * this.options.diasEntreJornadas!);
-
-      // Seleccionar cancha y árbitro de forma rotativa
-      const canchaIndex = (jornada + i) % this.options.canchas!.length;
-      const arbitroIndex = (jornada + i) % this.options.arbitros!.length;
-
-      const encuentro: NewEncuentro = {
-        torneo_id: this.torneoId,
-        equipo_local_id: equipoLocal.id,
-        equipo_visitante_id: equipoVisitante.id,
-        fecha_programada: fechaEncuentro,
-        cancha: this.options.canchas![canchaIndex],
-        arbitro: this.options.arbitros![arbitroIndex],
-        estado: 'programado',
-        jornada: jornada,
-        fase: 'regular',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      encuentros.push(encuentro);
-      this.registrarEmparejamiento(equipoLocal, equipoVisitante); // Registrar el emparejamiento
-    }
-
-    console.log(`Jornada ${jornada}: Generados ${encuentros.length} encuentros de ${emparejamientos.length} emparejamientos posibles`);
-    return encuentros;
+  // Obtener equipos restringidos para esta jornada
+  const equiposRestringidos = this.options.unavailableByJornada?.[jornada] || [];
+  
+  console.log(`Jornada ${jornada}: Generando jornada con ${numEquipos} equipos`);
+  console.log(`Jornada ${jornada}: Equipos restringidos: [${equiposRestringidos.join(', ')}]`);
+  
+  // PASO 1: Generar emparejamientos normalmente (sin considerar restricciones)
+  const emparejamientos = this.generatePairings(equipos, jornada);
+  
+  console.log(`Jornada ${jornada}: Generando emparejamientos con ${emparejamientos.length} pares`);
+  
+  // PASO 2: Si hay restricciones, intercambiar el equipo que descansa con el restringido
+  if (equiposRestringidos.length > 0) {
+    this.intercambiarDescansoConRestriccion(emparejamientos, equiposRestringidos, jornada);
   }
+  
+  for (let i = 0; i < emparejamientos.length; i++) {
+    const [equipo1, equipo2] = emparejamientos[i];
+
+    // Si uno de los equipos es BYE, saltar (este es el único que debe descansar)
+    if (equipo1.id === -1 || equipo2.id === -1) {
+      console.log(`Equipo descansa: ${equipo1.id === -1 ? equipo2.nombre : equipo1.nombre}`);
+      continue;
+    }
+    
+    // ❌ REMOVER ESTA PARTE - NO SALTAR EQUIPOS RESTRINGIDOS AQUÍ
+    // El intercambio ya manejó las restricciones correctamente
+    /*
+    if (equiposRestringidos.includes(equipo1.id) || equiposRestringidos.includes(equipo2.id)) {
+      console.log(`Saltando emparejamiento con equipo restringido: ${equipo1.nombre} vs ${equipo2.nombre}`);
+      continue;
+    }
+    */
+
+    // Determinar local y visitante según si es vuelta
+    let equipoLocal: EquipoWithRelations;
+    let equipoVisitante: EquipoWithRelations;
+    
+    if (esVuelta) {
+      // En la vuelta, invertir local/visitante
+      equipoLocal = equipo2;
+      equipoVisitante = equipo1;
+    } else {
+      equipoLocal = equipo1;
+      equipoVisitante = equipo2;
+    }
+
+    // Calcular fecha del encuentro
+    const fechaEncuentro = new Date(this.options.fechaInicio!);
+    fechaEncuentro.setDate(fechaEncuentro.getDate() + (jornada - 1) * this.options.diasEntreJornadas!);
+
+    // Seleccionar cancha y árbitro de forma rotativa
+    const canchaIndex = (jornada + i) % this.options.canchas!.length;
+    const arbitroIndex = (jornada + i) % this.options.arbitros!.length;
+
+    const encuentro: NewEncuentro = {
+      torneo_id: this.torneoId,
+      equipo_local_id: equipoLocal.id,
+      equipo_visitante_id: equipoVisitante.id,
+      fecha_programada: fechaEncuentro,
+      cancha: this.options.canchas![canchaIndex],
+      arbitro: this.options.arbitros![arbitroIndex],
+      estado: 'programado',
+      jornada: jornada,
+      fase: 'regular',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    encuentros.push(encuentro);
+    this.registrarEmparejamiento(equipoLocal, equipoVisitante);
+  }
+
+  console.log(`Jornada ${jornada}: Generados ${encuentros.length} encuentros de ${emparejamientos.length} emparejamientos posibles`);
+  
+  // Validar que solo haya 4 encuentros para 9 equipos (8 juegan, 1 descansa)
+  const equiposReales = equipos.filter(e => e.id !== -1).length;
+  const encuentrosEsperados = Math.floor(equiposReales / 2);
+  
+  if (encuentros.length !== encuentrosEsperados) {
+    console.warn(`⚠️  Advertencia: Se esperaban ${encuentrosEsperados} encuentros, pero se generaron ${encuentros.length}`);
+  }
+  
+  return encuentros;
+}
 
   /**
    * Intercambia el equipo que descansa con el equipo restringido
