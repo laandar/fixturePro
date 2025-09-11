@@ -271,77 +271,117 @@ private generateJornada(
   /**
    * Intercambia el equipo que descansa con el equipo restringido
    */
-  private intercambiarDescansoConRestriccion(
-    emparejamientos: [EquipoWithRelations, EquipoWithRelations][], 
-    equiposRestringidos: number[], 
-    jornada: number
-  ): void {
-    console.log(`Intercambiando descanso con restricción para jornada ${jornada}`);
-    
-    // Encontrar el emparejamiento que contiene BYE (el equipo que descansa)
-    let emparejamientoConBye: [EquipoWithRelations, EquipoWithRelations] | null = null;
-    let indiceEmparejamientoConBye = -1;
-    
-    for (let i = 0; i < emparejamientos.length; i++) {
-      const [equipo1, equipo2] = emparejamientos[i];
-      if (equipo1.id === -1 || equipo2.id === -1) {
-        emparejamientoConBye = emparejamientos[i];
-        indiceEmparejamientoConBye = i;
-        break;
-      }
+ 
+private intercambiarDescansoConRestriccion(
+  emparejamientos: [EquipoWithRelations, EquipoWithRelations][], 
+  equiposRestringidos: number[], 
+  jornada: number
+): void {
+  console.log(`=== INICIANDO INTERCAMBIO PARA JORNADA ${jornada} ===`);
+  console.log(`Emparejamientos ANTES del intercambio:`, 
+    emparejamientos.map(([e1, e2], idx) => `${idx}: ${e1.nombre}(${e1.id}) vs ${e2.nombre}(${e2.id})`));
+  
+  // 1. Encontrar el emparejamiento que contiene BYE (el equipo que naturalmente descansa)
+  let indiceEmparejamientoConBye = -1;
+  let equipoQueNaturalmenteDescansa: EquipoWithRelations | null = null;
+  
+  for (let i = 0; i < emparejamientos.length; i++) {
+    const [equipo1, equipo2] = emparejamientos[i];
+    if (equipo1.id === -1) {
+      indiceEmparejamientoConBye = i;
+      equipoQueNaturalmenteDescansa = equipo2;
+      break;
+    } else if (equipo2.id === -1) {
+      indiceEmparejamientoConBye = i;
+      equipoQueNaturalmenteDescansa = equipo1;
+      break;
     }
-    
-    if (!emparejamientoConBye) {
-      console.log(`No se encontró emparejamiento con BYE en jornada ${jornada}`);
-      return;
-    }
-    
-    // Obtener el equipo que debería descansar (el que no es BYE)
-    const equipoQueDescansa = emparejamientoConBye[0].id === -1 ? emparejamientoConBye[1] : emparejamientoConBye[0];
-    const equipoRestringido = this.equipos.find(e => equiposRestringidos.includes(e.id));
-    
-    if (!equipoRestringido) {
-      console.log(`No se encontró equipo restringido en jornada ${jornada}`);
-      return;
-    }
-    
-    console.log(`Intercambiando: ${equipoQueDescansa.nombre} (que descansaba) ↔ ${equipoRestringido.nombre} (restringido)`);
-    
-    // Crear nuevo emparejamiento con el equipo restringido y BYE
-    emparejamientos[indiceEmparejamientoConBye] = [equipoRestringido, {
-      id: -1, // BYE
-      nombre: 'BYE',
-      categoria_id: null,
-      entrenador_id: null,
-      imagen_equipo: null,
-      estado: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      categoria: null,
-      entrenador: null,
-    }];
-    
-    // Buscar un emparejamiento donde podamos insertar el equipo que antes descansaba
-    // Reemplazar uno de los equipos en un emparejamiento existente
-    for (let i = 0; i < emparejamientos.length; i++) {
-      if (i === indiceEmparejamientoConBye) continue; // Saltar el emparejamiento con BYE
-      
-      const [equipo1, equipo2] = emparejamientos[i];
-      
-      // Si uno de los equipos en este emparejamiento es el equipo restringido, reemplazarlo
-      if (equipo1.id === equipoRestringido.id) {
-        emparejamientos[i] = [equipoQueDescansa, equipo2];
-        console.log(`Reemplazado ${equipo1.nombre} con ${equipoQueDescansa.nombre} en emparejamiento ${i}`);
-        break;
-      } else if (equipo2.id === equipoRestringido.id) {
-        emparejamientos[i] = [equipo1, equipoQueDescansa];
-        console.log(`Reemplazado ${equipo2.nombre} con ${equipoQueDescansa.nombre} en emparejamiento ${i}`);
-        break;
-      }
-    }
-    
-    console.log(`Emparejamientos después del intercambio:`, emparejamientos.map(([e1, e2]) => `${e1.nombre} vs ${e2.nombre}`));
   }
+  
+  if (indiceEmparejamientoConBye === -1 || !equipoQueNaturalmenteDescansa) {
+    console.log(`❌ No se encontró emparejamiento con BYE en jornada ${jornada}`);
+    return;
+  }
+  
+  console.log(`🔍 Equipo que naturalmente descansa: ${equipoQueNaturalmenteDescansa.nombre}(${equipoQueNaturalmenteDescansa.id})`);
+  console.log(`🔍 Equipos restringidos: [${equiposRestringidos.join(', ')}]`);
+  
+  // 2. Obtener el primer equipo restringido
+  const equipoRestringido = this.equipos.find(e => equiposRestringidos.includes(e.id));
+  
+  if (!equipoRestringido) {
+    console.log(`❌ No se encontró equipo restringido válido`);
+    return;
+  }
+  
+  // 3. Si el equipo restringido YA es el que naturalmente descansa, no hacer nada
+  if (equipoQueNaturalmenteDescansa.id === equipoRestringido.id) {
+    console.log(`✅ El equipo restringido ${equipoRestringido.nombre} ya descansa naturalmente. No se requiere intercambio.`);
+    return;
+  }
+  
+  console.log(`🔄 INTERCAMBIANDO: ${equipoQueNaturalmenteDescansa.nombre}(${equipoQueNaturalmenteDescansa.id}) ↔ ${equipoRestringido.nombre}(${equipoRestringido.id})`);
+  
+  // 4. Buscar en qué emparejamiento está el equipo restringido
+  let indiceEmparejamientoConRestringido = -1;
+  let posicionRestringido: 0 | 1 = 0;
+  
+  for (let i = 0; i < emparejamientos.length; i++) {
+    if (i === indiceEmparejamientoConBye) continue; // Saltar el emparejamiento con BYE
+    
+    const [equipo1, equipo2] = emparejamientos[i];
+    
+    if (equipo1.id === equipoRestringido.id) {
+      indiceEmparejamientoConRestringido = i;
+      posicionRestringido = 0;
+      break;
+    } else if (equipo2.id === equipoRestringido.id) {
+      indiceEmparejamientoConRestringido = i;
+      posicionRestringido = 1;
+      break;
+    }
+  }
+  
+  if (indiceEmparejamientoConRestringido === -1) {
+    console.log(`❌ No se encontró al equipo restringido ${equipoRestringido.nombre} en ningún emparejamiento`);
+    return;
+  }
+  
+  console.log(`🎯 Equipo restringido encontrado en emparejamiento ${indiceEmparejamientoConRestringido}, posición ${posicionRestringido}`);
+  
+  // 5. Realizar el intercambio
+  const emparejamientoOriginalConRestringido = [...emparejamientos[indiceEmparejamientoConRestringido]];
+  
+  // Paso 5a: Poner al equipo restringido con BYE (para que descanse)
+  emparejamientos[indiceEmparejamientoConBye] = [equipoRestringido, {
+    id: -1,
+    nombre: 'BYE',
+    categoria_id: null,
+    entrenador_id: null,
+    imagen_equipo: null,
+    estado: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    categoria: null,
+    entrenador: null,
+  }];
+  
+  // Paso 5b: Poner al equipo que naturalmente descansaba en lugar del restringido
+  if (posicionRestringido === 0) {
+    emparejamientos[indiceEmparejamientoConRestringido] = [equipoQueNaturalmenteDescansa, emparejamientoOriginalConRestringido[1]];
+  } else {
+    emparejamientos[indiceEmparejamientoConRestringido] = [emparejamientoOriginalConRestringido[0], equipoQueNaturalmenteDescansa];
+  }
+  
+  console.log(`✅ INTERCAMBIO COMPLETADO:`);
+  console.log(`   - ${equipoRestringido.nombre} ahora descansa (con BYE)`);
+  console.log(`   - ${equipoQueNaturalmenteDescansa.nombre} ahora juega`);
+  
+  console.log(`Emparejamientos DESPUÉS del intercambio:`, 
+    emparejamientos.map(([e1, e2], idx) => `${idx}: ${e1.nombre}(${e1.id}) vs ${e2.nombre}(${e2.id})`));
+  
+  console.log(`=== FIN INTERCAMBIO JORNADA ${jornada} ===`);
+}
 
   /**
    * Genera emparejamientos para una jornada específica usando algoritmo Round Robin mejorado
