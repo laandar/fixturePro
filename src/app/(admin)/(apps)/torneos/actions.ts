@@ -22,6 +22,31 @@ export async function getTorneoById(id: number) {
   }
 }
 
+export async function getEquiposDescansan(torneoId: number) {
+  try {
+    const descansos = await equiposDescansanQueries.getByTorneoId(torneoId)
+    const equiposDescansanFromDB: Record<number, number> = {}
+    
+    descansos.forEach((descanso: any) => {
+      equiposDescansanFromDB[descanso.jornada] = descanso.equipo_id
+    })
+    
+    return equiposDescansanFromDB
+  } catch (error) {
+    throw new Error('Error al obtener equipos que descansan')
+  }
+}
+
+export async function limpiarDescansos(torneoId: number) {
+  try {
+    await equiposDescansanQueries.deleteByTorneoId(torneoId)
+    revalidatePath(`/torneos/${torneoId}`)
+    return { mensaje: 'Descansos limpiados exitosamente' }
+  } catch (error) {
+    throw new Error('Error al limpiar descansos')
+  }
+}
+
 export async function createTorneo(formData: FormData) {
   try {
     const nombre = formData.get('nombre') as string
@@ -158,7 +183,6 @@ export async function generateFixtureForTorneo(
     diasEntreJornadas?: number
     canchas?: string[]
     arbitros?: string[]
-    unavailableByJornada?: Record<number, number[]>
     intercambiosInteligentes?: boolean
   } = {}
 ) {
@@ -179,7 +203,6 @@ export async function generateFixtureForTorneo(
       diasEntreJornadas: options.diasEntreJornadas || 7,
       canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
       arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
-      unavailableByJornada: options.unavailableByJornada,
       intercambiosInteligentes: options.intercambiosInteligentes ?? true,
     })
 
@@ -248,7 +271,6 @@ export async function regenerateFixtureFromJornada(
   torneoId: number,
   desdeJornada: number,
   options: {
-    unavailableByJornada?: Record<number, number[]>
     diasEntreJornadas?: number
     canchas?: string[]
     arbitros?: string[]
@@ -301,7 +323,6 @@ export async function regenerateFixtureFromJornada(
       diasEntreJornadas: options.diasEntreJornadas || 7,
       canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
       arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
-      unavailableByJornada: options.unavailableByJornada,
       jornadaInicial: desdeJornada, // Nueva opción para empezar desde una jornada específica
       intercambiosInteligentes: options.intercambiosInteligentes ?? true,
       encuentrosExistentes: encuentrosJugados, // Pasar encuentros ya jugados para evitar repeticiones
@@ -330,7 +351,6 @@ export async function generateSingleJornada(
   torneoId: number,
   jornada: number,
   options: {
-    unavailableByJornada?: Record<number, number[]>
     diasEntreJornadas?: number
     canchas?: string[]
     arbitros?: string[]
@@ -365,36 +385,6 @@ export async function generateSingleJornada(
     const fechaJornada = new Date(fechaInicio)
     fechaJornada.setDate(fechaInicio.getDate() + (jornada - 1) * (options.diasEntreJornadas || 7))
 
-    // Crear un objeto de restricciones que incluya las restricciones de jornadas anteriores
-    const restriccionesCompletas = { ...options.unavailableByJornada }
-    
-    // Agregar restricciones de jornadas anteriores para evitar que equipos descansen múltiples veces
-    for (let j = 1; j < jornada; j++) {
-      if (options.unavailableByJornada?.[j]) {
-        // Si hay restricciones en jornadas anteriores, agregarlas a la jornada actual
-        if (!restriccionesCompletas[jornada]) {
-          restriccionesCompletas[jornada] = []
-        }
-        restriccionesCompletas[jornada].push(...options.unavailableByJornada[j])
-        console.log(`Jornada ${jornada}: Agregando restricciones de jornada ${j}: [${options.unavailableByJornada[j].join(', ')}]`)
-      }
-    }
-    
-    // Agregar restricciones basadas en descansos guardados en la base de datos
-    const descansosAnteriores = descansosGuardados.filter(d => d.jornada < jornada)
-    if (descansosAnteriores.length > 0) {
-      if (!restriccionesCompletas[jornada]) {
-        restriccionesCompletas[jornada] = []
-      }
-      
-      const equiposQueDescansaron = descansosAnteriores.map(d => d.equipo_id)
-      restriccionesCompletas[jornada].push(...equiposQueDescansaron)
-      console.log(`Jornada ${jornada}: Agregando restricciones por descansos anteriores: [${equiposQueDescansaron.join(', ')}]`)
-    }
-
-    console.log(`Jornada ${jornada}: Restricciones finales:`, restriccionesCompletas[jornada] || [])
-    console.log(`Jornada ${jornada}: Objeto completo de restricciones:`, restriccionesCompletas)
-
     console.log(`Generando fixture para jornada ${jornada} con ${equipos.length} equipos`)
     console.log(`Número de equipos: ${equipos.length} (${equipos.length % 2 === 0 ? 'par' : 'impar'})`)
     
@@ -405,7 +395,6 @@ export async function generateSingleJornada(
       diasEntreJornadas: options.diasEntreJornadas || 7,
       canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
       arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
-      unavailableByJornada: restriccionesCompletas,
       jornadaInicial: jornada,
       jornadaFinal: jornada, // Solo generar esta jornada
       encuentrosExistentes: todosEncuentros, // Pasar todos los encuentros existentes
@@ -470,7 +459,6 @@ export async function regenerateSingleJornada(
   torneoId: number,
   jornada: number,
   options: {
-    unavailableByJornada?: Record<number, number[]>
     diasEntreJornadas?: number
     canchas?: string[]
     arbitros?: string[]
@@ -513,36 +501,6 @@ export async function regenerateSingleJornada(
     const fechaJornada = new Date(fechaInicio)
     fechaJornada.setDate(fechaInicio.getDate() + (jornada - 1) * (options.diasEntreJornadas || 7))
 
-    // Crear un objeto de restricciones que incluya las restricciones de jornadas anteriores
-    const restriccionesCompletas = { ...options.unavailableByJornada }
-    
-    // Agregar restricciones de jornadas anteriores para evitar que equipos descansen múltiples veces
-    for (let j = 1; j < jornada; j++) {
-      if (options.unavailableByJornada?.[j]) {
-        // Si hay restricciones en jornadas anteriores, agregarlas a la jornada actual
-        if (!restriccionesCompletas[jornada]) {
-          restriccionesCompletas[jornada] = []
-        }
-        restriccionesCompletas[jornada].push(...options.unavailableByJornada[j])
-        console.log(`Jornada ${jornada}: Agregando restricciones de jornada ${j}: [${options.unavailableByJornada[j].join(', ')}]`)
-      }
-    }
-    
-    // Agregar restricciones basadas en descansos guardados en la base de datos
-    const descansosAnteriores = descansosGuardados.filter(d => d.jornada < jornada)
-    if (descansosAnteriores.length > 0) {
-      if (!restriccionesCompletas[jornada]) {
-        restriccionesCompletas[jornada] = []
-      }
-      
-      const equiposQueDescansaron = descansosAnteriores.map(d => d.equipo_id)
-      restriccionesCompletas[jornada].push(...equiposQueDescansaron)
-      console.log(`Jornada ${jornada}: Agregando restricciones por descansos anteriores: [${equiposQueDescansaron.join(', ')}]`)
-    }
-
-    console.log(`Jornada ${jornada}: Restricciones finales:`, restriccionesCompletas[jornada] || [])
-    console.log(`Jornada ${jornada}: Objeto completo de restricciones:`, restriccionesCompletas)
-
     console.log(`Regenerando fixture para jornada ${jornada} con ${equipos.length} equipos`)
     console.log(`Número de equipos: ${equipos.length} (${equipos.length % 2 === 0 ? 'par' : 'impar'})`)
     
@@ -564,7 +522,6 @@ export async function regenerateSingleJornada(
       diasEntreJornadas: options.diasEntreJornadas || 7,
       canchas: options.canchas || ['Cancha Principal', 'Cancha Secundaria'],
       arbitros: options.arbitros || ['Árbitro 1', 'Árbitro 2', 'Árbitro 3'],
-      unavailableByJornada: restriccionesCompletas,
       jornadaInicial: jornada,
       jornadaFinal: jornada, // Solo generar esta jornada
       encuentrosExistentes: todosEncuentros.filter(e => e.jornada !== jornada), // Excluir encuentros de esta jornada

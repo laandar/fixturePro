@@ -4,9 +4,13 @@ import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, generateSingleJornada, regenerateSingleJornada, deleteJornada } from '../actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, generateSingleJornada, regenerateSingleJornada, deleteJornada, getEquiposDescansan } from '../actions'
+import { generarPropuestaJornada, confirmarJornada, regenerarJornadaDinamica, confirmarRegeneracionJornada, analizarTorneo } from '../dynamic-actions'
 import { getCategorias, getEquipos } from '../../equipos/actions'
 import type { TorneoWithRelations, EquipoWithRelations, Categoria, EncuentroWithRelations } from '@/db/types'
+import type { DynamicFixtureResult, JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
+import DynamicFixtureModal from '@/components/DynamicFixtureModal'
+import TorneoAnalytics from '@/components/TorneoAnalytics'
 // @ts-ignore
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
@@ -29,18 +33,20 @@ const TorneoDetailPage = () => {
   const [showEncuentroModal, setShowEncuentroModal] = useState(false)
   const [selectedEquipos, setSelectedEquipos] = useState<number[]>([])
   const [editingEncuentro, setEditingEncuentro] = useState<EncuentroWithRelations | null>(null)
-  const [showRestrictions, setShowRestrictions] = useState(false)
-  const [unavailableByJornada, setUnavailableByJornada] = useState<Record<number, number[]>>({})
   const [equiposDescansan, setEquiposDescansan] = useState<Record<number, number>>({})
-  const [showRestrictionsModal, setShowRestrictionsModal] = useState(false)
-  const [selectedJornada, setSelectedJornada] = useState<number>(1)
-  const [restriccionesJornada, setRestriccionesJornada] = useState<number[]>([])
   const [showJornadaModal, setShowJornadaModal] = useState(false)
   const [jornadaAGenerar, setJornadaAGenerar] = useState<number>(1)
   const [showRegenerarJornadaModal, setShowRegenerarJornadaModal] = useState(false)
   const [jornadaARegenerar, setJornadaARegenerar] = useState<number>(1)
   const [showDeleteJornadaModal, setShowDeleteJornadaModal] = useState(false)
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
+  
+  // Estados para el sistema dinámico
+  const [showDynamicFixtureModal, setShowDynamicFixtureModal] = useState(false)
+  const [showDynamicRegenerateModal, setShowDynamicRegenerateModal] = useState(false)
+  const [jornadaDinamica, setJornadaDinamica] = useState<number>(1)
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [analisisTorneo, setAnalisisTorneo] = useState<any>(null)
   
   // Estado para tabs
   const [activeTab, setActiveTab] = useState('general')
@@ -50,11 +56,12 @@ const TorneoDetailPage = () => {
       setLoading(true)
       setError(null)
       
-      const [torneoData, equiposData, categoriasData, encuentrosData] = await Promise.all([
+      const [torneoData, equiposData, categoriasData, encuentrosData, descansosData] = await Promise.all([
         getTorneoById(torneoId),
         getEquipos(),
         getCategorias(),
-        getEncuentrosByTorneo(torneoId)
+        getEncuentrosByTorneo(torneoId),
+        getEquiposDescansan(torneoId)
       ])
       
       setTorneo((torneoData ?? null) as TorneoWithRelations | null)
@@ -62,45 +69,18 @@ const TorneoDetailPage = () => {
       setCategorias(categoriasData)
       setEncuentros(encuentrosData as any)
       
-      // Calcular equipos que descansan basándose en los encuentros cargados
-      if (torneoData && encuentrosData) {
-        const equiposDescansanCalculados: Record<number, number> = {}
-        const equiposParticipantes = (torneoData as TorneoWithRelations).equiposTorneo?.map(et => et.equipo_id) || []
-        
-        if (equiposParticipantes.length % 2 !== 0) {
-          // Agrupar encuentros por jornada
-          const jornadas = new Map<number, any[]>()
-          encuentrosData.forEach((encuentro: any) => {
-            if (encuentro.jornada) {
-              if (!jornadas.has(encuentro.jornada)) {
-                jornadas.set(encuentro.jornada, [])
-              }
-              jornadas.get(encuentro.jornada)!.push(encuentro)
-            }
-          })
-          
-          // Para cada jornada, encontrar el equipo que descansa
-          jornadas.forEach((encuentrosJornada, jornada) => {
-            const equiposQueJuegan = new Set<number>()
-            
-            encuentrosJornada.forEach((encuentro: any) => {
-              equiposQueJuegan.add(encuentro.equipo_local_id)
-              equiposQueJuegan.add(encuentro.equipo_visitante_id)
-            })
-            
-            // El equipo que descansa es el que no aparece en ningún encuentro
-            const equipoQueDescansa = equiposParticipantes.find(equipoId => 
-              !equiposQueJuegan.has(equipoId)
-            )
-            
-            if (equipoQueDescansa) {
-              equiposDescansanCalculados[jornada] = equipoQueDescansa
-            }
-          })
-          
-          setEquiposDescansan(equiposDescansanCalculados)
-        }
+      // Cargar equipos que descansan desde la base de datos
+      setEquiposDescansan(descansosData)
+      
+      // Cargar análisis del torneo
+      try {
+        const analisis = await analizarTorneo(torneoId)
+        setAnalisisTorneo(analisis)
+      } catch (error) {
+        console.error('Error al cargar análisis del torneo:', error)
       }
+      
+      console.log('Equipos que descansan cargados desde BD:', descansosData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar datos')
     } finally {
@@ -180,32 +160,6 @@ const TorneoDetailPage = () => {
     }
   }
 
-  const handleRegenerarFixtureConRestricciones = async () => {
-    if (!torneo?.equiposTorneo || torneo.equiposTorneo.length < 2) {
-      setError('Se necesitan al menos 2 equipos para regenerar el fixture')
-      return
-    }
-
-    const jornadaActual = getJornadaActual()
-
-    try {
-      const result = await regenerateFixtureFromJornada(torneoId, jornadaActual, {
-        unavailableByJornada: unavailableByJornada,
-        diasEntreJornadas: 7
-      })
-      
-      // Capturar información de equipos que descansan
-      if (result.equiposDescansan) {
-        setEquiposDescansan(result.equiposDescansan)
-      }
-      
-      setSuccess(`Fixture regenerado exitosamente desde la jornada ${jornadaActual}. ${result.encuentrosCreados} encuentros creados, ${result.encuentrosEliminados} eliminados.`)
-      setShowRestrictionsModal(false)
-      await loadData()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al regenerar fixture')
-    }
-  }
 
   const handleGenerarJornada = async () => {
     if (!torneo?.equiposTorneo || torneo.equiposTorneo.length < 2) {
@@ -213,38 +167,8 @@ const TorneoDetailPage = () => {
       return
     }
 
-    console.log(`Generando jornada ${jornadaAGenerar} con restricciones:`, unavailableByJornada)
-    console.log(`Restricciones para jornada ${jornadaAGenerar}:`, unavailableByJornada[jornadaAGenerar] || [])
-    console.log(`Estado completo de restricciones:`, unavailableByJornada)
-    
-    // TEMPORAL: Configurar restricción para UDEF en jornada 2 si no está configurada
-    if (jornadaAGenerar === 2 && (!unavailableByJornada[2] || unavailableByJornada[2].length === 0)) {
-      console.log('Configurando restricción temporal para UDEF en jornada 2')
-      const restriccionesTemporales = { ...unavailableByJornada, 2: [9] } // 9 es el ID de UDEF
-      console.log('Restricciones temporales:', restriccionesTemporales)
-      
-      try {
-        const result = await generateSingleJornada(torneoId, jornadaAGenerar, {
-          unavailableByJornada: restriccionesTemporales,
-          diasEntreJornadas: 7
-        })
-        
-        setSuccess(`Jornada ${result.jornada} generada exitosamente. ${result.encuentrosCreados} encuentros creados.`)
-        if (result.equipoQueDescansa) {
-          setEquiposDescansan(prev => ({ ...prev, [result.jornada]: result.equipoQueDescansa! }))
-        }
-        setShowJornadaModal(false)
-        await loadData()
-        return
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'Error al generar jornada')
-        return
-      }
-    }
-
     try {
       const result = await generateSingleJornada(torneoId, jornadaAGenerar, {
-        unavailableByJornada: unavailableByJornada,
         diasEntreJornadas: 7
       })
       
@@ -267,7 +191,6 @@ const TorneoDetailPage = () => {
 
     try {
       const result = await regenerateSingleJornada(torneoId, jornadaARegenerar, {
-        unavailableByJornada: unavailableByJornada,
         diasEntreJornadas: 7
       })
       
@@ -294,66 +217,43 @@ const TorneoDetailPage = () => {
     }
   }
 
-  const handleAbrirRestricciones = (jornada: number) => {
-    const jornadaActual = getJornadaActual()
-    const jornadas = getEncuentrosPorJornada()
-    const jornadasOrdenadas = Object.keys(jornadas).map(Number).sort((a, b) => a - b)
-    
-    // Permitir configurar la jornada actual o la siguiente jornada que no existe
-    const proximaJornadaDisponible = jornadasOrdenadas.length > 0 ? Math.max(...jornadasOrdenadas) + 1 : 1
-    
-    if (jornada !== jornadaActual && jornada !== proximaJornadaDisponible) {
-      setError('Solo puedes configurar restricciones para la jornada actual o la próxima jornada disponible')
-      return
-    }
-    
-    setSelectedJornada(jornada)
-    setRestriccionesJornada(unavailableByJornada[jornada] || [])
-    setShowRestrictionsModal(true)
+  // ===== FUNCIONES DEL SISTEMA DINÁMICO =====
+
+  const handleGenerarJornadaDinamica = async (jornada: number) => {
+    setJornadaDinamica(jornada)
+    setIsRegenerating(false)
+    setShowDynamicFixtureModal(true)
   }
 
-  const handleGuardarRestricciones = () => {
-    const nuevasRestricciones = { ...unavailableByJornada }
-    
-    // Guardar restricciones para la jornada seleccionada
-    if (restriccionesJornada.length > 0) {
-      nuevasRestricciones[selectedJornada] = restriccionesJornada
-    } else {
-      delete nuevasRestricciones[selectedJornada]
-    }
-    
-    setUnavailableByJornada(nuevasRestricciones)
-    setShowRestrictionsModal(false)
-    setSuccess(`Restricciones guardadas exitosamente para la jornada ${selectedJornada}`)
+  const handleRegenerarJornadaDinamica = async (jornada: number) => {
+    setJornadaDinamica(jornada)
+    setIsRegenerating(true)
+    setShowDynamicRegenerateModal(true)
   }
 
-  // Función para simular que la jornada 1 ya pasó (solo para ejemplificar)
-  const handleSimularJornada1Completada = async () => {
+  const handleConfirmarJornadaDinamica = async (jornada: JornadaPropuesta) => {
     try {
-      const encuentrosJornada1 = encuentros.filter(e => e.jornada === 1)
-      
-      if (encuentrosJornada1.length === 0) {
-        setError('No hay encuentros en la jornada 1 para simular')
-        return
-      }
-
-      // Actualizar todos los encuentros de la jornada 1 como finalizados
-      for (const encuentro of encuentrosJornada1) {
-        const formData = new FormData()
-        formData.append('estado', 'finalizado')
-        formData.append('goles_local', '2')
-        formData.append('goles_visitante', '1')
-        formData.append('fecha_jugada', new Date().toISOString())
-        
-        await updateEncuentro(encuentro.id, formData)
-      }
-      
-      setSuccess('Jornada 1 marcada como completada. Ahora la jornada 2 será la actual.')
+      const result = await confirmarJornada(torneoId, jornada)
+      setSuccess(result.mensaje)
+      setShowDynamicFixtureModal(false)
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al simular jornada completada')
+      setError(error instanceof Error ? error.message : 'Error al confirmar jornada')
     }
   }
+
+  const handleConfirmarRegeneracionDinamica = async (jornada: JornadaPropuesta) => {
+    try {
+      const result = await confirmarRegeneracionJornada(torneoId, jornada)
+      setSuccess(result.mensaje)
+      setShowDynamicRegenerateModal(false)
+      await loadData()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al regenerar jornada')
+    }
+  }
+
+
 
   const getEncuentrosPorJornada = () => {
     const jornadas: Record<number, EncuentroWithRelations[]> = {}
@@ -419,23 +319,6 @@ const TorneoDetailPage = () => {
     return !encuentrosJornada.every(e => e.estado === 'finalizado' || e.estado === 'en_curso')
   }
 
-  const getResumenRestricciones = (restricciones: Record<number, number[]>) => {
-    const jornadasConRestricciones = Object.keys(restricciones).filter(jornada => 
-      restricciones[parseInt(jornada)].length > 0
-    )
-    
-    if (jornadasConRestricciones.length === 0) return null
-    
-    const totalRestricciones = jornadasConRestricciones.reduce((total, jornada) => 
-      total + restricciones[parseInt(jornada)].length, 0
-    )
-    
-    return {
-      jornadas: jornadasConRestricciones.length,
-      totalRestricciones,
-      jornadasList: jornadasConRestricciones.map(j => parseInt(j)).sort((a, b) => a - b)
-    }
-  }
 
   const getEstadoBadge = (estado: string | null) => {
     const config: Record<string, { bg: string; text: string; label: string }> = {
@@ -582,45 +465,35 @@ const TorneoDetailPage = () => {
   }
 
   const getEquipoQueDescansa = (jornada: number) => {
-    // Primero intentar usar el estado equiposDescansan (si está disponible)
+    // Usar los datos de equipos que descansan cargados desde la base de datos
     const equipoId = equiposDescansan[jornada]
-    if (equipoId) {
-      const equipoTorneo = torneo?.equiposTorneo?.find(et => et.equipo_id === equipoId)
-      return equipoTorneo?.equipo || null
+    
+    if (equipoId && torneo?.equiposTorneo) {
+      const equipoTorneo = torneo.equiposTorneo.find(et => et.equipo_id === equipoId)
+      if (equipoTorneo?.equipo) {
+        return equipoTorneo.equipo
+      }
     }
     
-    // Si no está en el estado, calcular dinámicamente basándose en los encuentros
-    if (!torneo?.equiposTorneo || encuentros.length === 0) return null
-    
-    const equiposParticipantes = torneo.equiposTorneo.map(et => et.equipo_id)
-    const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
-    
-    // Debug: mostrar información de la jornada
-    console.log(`Jornada ${jornada}:`, {
-      equiposParticipantes,
-      encuentrosJornada: encuentrosJornada.length,
-      equiposQueJuegan: encuentrosJornada.map(e => [e.equipo_local_id, e.equipo_visitante_id])
-    })
-    
-    // Si hay número impar de equipos, uno debe descansar
-    if (equiposParticipantes.length % 2 !== 0) {
-      const equiposQueJuegan = new Set<number>()
+    // Calcular el equipo que descansa si no hay datos en BD
+    if (!equipoId && torneo?.equiposTorneo && encuentros.length > 0) {
+      // Obtener encuentros de esta jornada
+      const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
       
+      // Obtener equipos que juegan en esta jornada
+      const equiposQueJuegan = new Set<number>()
       encuentrosJornada.forEach(encuentro => {
-        equiposQueJuegan.add(encuentro.equipo_local_id)
-        equiposQueJuegan.add(encuentro.equipo_visitante_id)
+        if (encuentro.equipo_local_id) equiposQueJuegan.add(encuentro.equipo_local_id)
+        if (encuentro.equipo_visitante_id) equiposQueJuegan.add(encuentro.equipo_visitante_id)
       })
       
-      // El equipo que descansa es el que no aparece en ningún encuentro de esta jornada
-      const equipoQueDescansa = equiposParticipantes.find(equipoId => 
-        !equiposQueJuegan.has(equipoId)
+      // Encontrar el equipo que no juega (descansa)
+      const equipoQueDescansa = torneo.equiposTorneo.find(et => 
+        et.equipo && !equiposQueJuegan.has(et.equipo_id)
       )
       
-      console.log(`Equipo que descansa en jornada ${jornada}:`, equipoQueDescansa)
-      
-      if (equipoQueDescansa) {
-        const equipoTorneo = torneo.equiposTorneo.find(et => et.equipo_id === equipoQueDescansa)
-        return equipoTorneo?.equipo || null
+      if (equipoQueDescansa?.equipo) {
+        return equipoQueDescansa.equipo
       }
     }
     
@@ -753,7 +626,10 @@ const TorneoDetailPage = () => {
                     <NavLink eventKey="tabla">Tabla de Posiciones</NavLink>
                   </NavItem>
                   <NavItem>
-                    <NavLink eventKey="restricciones">Restricciones por Jornada</NavLink>
+                    <NavLink eventKey="dinamico">Sistema Dinámico</NavLink>
+                  </NavItem>
+                  <NavItem>
+                    <NavLink eventKey="analytics">Análisis</NavLink>
                   </NavItem>
                 </Nav>
               </CardHeader>
@@ -917,6 +793,13 @@ const TorneoDetailPage = () => {
                         <LuTriangle className="me-1" />
                         Regenerar Jornada
                       </Button>
+                      <Button 
+                        variant="outline-primary" 
+                        size="sm"
+                        onClick={() => handleGenerarJornadaDinamica(getJornadaActual())}>
+                        <LuSettings className="me-1" />
+                        Sistema Dinámico
+                      </Button>
                     </div>
                   </div>
 
@@ -939,16 +822,16 @@ const TorneoDetailPage = () => {
                               <div className="d-flex align-items-center gap-3">
                                 <h6 className="mb-0">Jornada {jornadaNum}</h6>
                                 {getEquipoQueDescansa(parseInt(jornadaNum)) && (
-                                  <div className="d-flex align-items-center gap-2 bg-warning p-2 rounded">
+                                  <div className="d-flex align-items-center gap-2 bg-info bg-opacity-10 border border-info p-2 rounded">
                                     <img 
-                                      src={getEquipoQueDescansa(parseInt(jornadaNum))?.imagen_equipo || 'https://via.placeholder.com/24x24/ffc107/000000?text=💤'} 
+                                      src={getEquipoQueDescansa(parseInt(jornadaNum))?.imagen_equipo || 'https://via.placeholder.com/24x24/17a2b8/ffffff?text=💤'} 
                                       alt="" 
                                       className="rounded-circle"
                                       width={24}
                                       height={24}
                                     />
-                                    <span className="text-dark fw-semibold">
-                                      🛌 {getEquipoQueDescansa(parseInt(jornadaNum))?.nombre} descansa
+                                    <span className="text-info fw-semibold">
+                                      💤 {getEquipoQueDescansa(parseInt(jornadaNum))?.nombre} descansa
                                     </span>
                                   </div>
                                 )}
@@ -1056,6 +939,27 @@ const TorneoDetailPage = () => {
                                 </Col>
                               ))}
                             </Row>
+                            
+                            {/* Mostrar equipo que descansa de manera prominente */}
+                            {getEquipoQueDescansa(parseInt(jornadaNum)) && (
+                              <div className="mt-3 p-3 bg-light border rounded">
+                                <div className="d-flex align-items-center justify-content-center gap-3">
+                                  <div className="text-center">
+                                    <img 
+                                      src={getEquipoQueDescansa(parseInt(jornadaNum))?.imagen_equipo || 'https://via.placeholder.com/48x48/17a2b8/ffffff?text=💤'} 
+                                      alt="" 
+                                      className="rounded-circle mb-2"
+                                      width={48}
+                                      height={48}
+                                    />
+                                    <h6 className="text-info mb-0">
+                                      💤 {getEquipoQueDescansa(parseInt(jornadaNum))?.nombre}
+                                    </h6>
+                                    <small className="text-muted">Descansa esta jornada</small>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </CardBody>
                         </Card>
                       ))}
@@ -1130,315 +1034,105 @@ const TorneoDetailPage = () => {
                   )}
                 </Tab.Pane>
 
-                {/* Tab: Restricciones por Jornada */}
-                <Tab.Pane eventKey="restricciones">
+                {/* Tab: Sistema Dinámico */}
+                <Tab.Pane eventKey="dinamico">
                   <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5>Restricciones por Jornada</h5>
+                    <h5>Sistema Dinámico de Fixture</h5>
                     <div className="d-flex gap-2">
-                      {/* Botón temporal para simular jornada 1 completada */}
                       <Button 
-                        variant="info" 
+                        variant="primary" 
                         size="sm"
-                        onClick={handleSimularJornada1Completada}
-                        disabled={encuentros.filter(e => e.jornada === 1).length === 0}>
-                        <LuCheck className="me-1" />
-                        Simular Jornada 1 Completada
-                      </Button>
-                      <Button 
-                        variant="warning" 
-                        size="sm"
-                        onClick={() => {
-                          setUnavailableByJornada({})
-                          setSuccess('Todas las restricciones han sido limpiadas')
-                        }}
-                        disabled={Object.keys(unavailableByJornada).length === 0}>
-                        <LuTrash className="me-1" />
-                        Limpiar Todas
+                        onClick={() => handleGenerarJornadaDinamica(getJornadaActual())}>
+                        <LuSettings className="me-1" />
+                        Generar Jornada Dinámica
                       </Button>
                     </div>
                   </div>
 
-                  {encuentros.length === 0 ? (
-                    <div className="text-center py-5">
-                      <LuGamepad2 className="fs-1 text-muted mb-3" />
-                      <h5>No hay encuentros programados</h5>
-                      <p className="text-muted">
-                        Genera el fixture primero para poder configurar restricciones por jornada
-                      </p>
-                    </div>
-                  ) : (
-                    <div>
-                      <Alert variant="info" className="mb-4">
-                        <h6><LuSettings className="me-2" />Configuración de Restricciones</h6>
-                        <p className="mb-0">
-                          <strong>Puedes parametrizar la jornada actual y la próxima jornada disponible.</strong> 
-                          Esto te permite configurar restricciones por adelantado, incluso para jornadas que aún no han sido generadas.
-                          Las jornadas anteriores quedan cerradas para facilitar la programación.
-                        </p>
-                      </Alert>
+                  <Alert variant="info" className="mb-4">
+                    <h6><LuInfo className="me-2" />Sistema Dinámico de Fixture</h6>
+                    <p className="mb-2">
+                      El sistema dinámico te permite generar jornadas con restricciones configurables:
+                    </p>
+                    <ul className="mb-0">
+                      <li><strong>Descansos forzados:</strong> Puedes indicar qué equipo debe descansar en cada jornada</li>
+                      <li><strong>Validación de restricciones:</strong> No repite partidos ya jugados y valida descansos consecutivos</li>
+                      <li><strong>Confirmación previa:</strong> Revisa la propuesta antes de guardarla</li>
+                      <li><strong>Alternativas:</strong> El sistema te muestra opciones alternativas si la propuesta no es óptima</li>
+                      <li><strong>Equilibrio:</strong> Mantiene el balance de descansos entre equipos</li>
+                    </ul>
+                  </Alert>
 
-                      {/* Información de la jornada actual */}
-                      {(() => {
-                        const jornadaActual = getJornadaActual()
-                        const jornadas = getEncuentrosPorJornada()
-                        const jornadasOrdenadas = Object.keys(jornadas).map(Number).sort((a, b) => a - b)
-                        const proximaJornadaDisponible = jornadasOrdenadas.length > 0 ? Math.max(...jornadasOrdenadas) + 1 : 1
-                        
-                        return (
-                          <Alert variant="primary" className="mb-4">
-                            <h6><LuCalendar className="me-2" />Estado de Jornadas</h6>
-                            <div className="mb-2">
-                              <strong>Jornada Actual: {jornadaActual}</strong> - Esta es la próxima jornada que se puede parametrizar.
-                              <br />
-                              <strong>Próxima Jornada Disponible: {proximaJornadaDisponible}</strong> - También puedes configurar restricciones para esta jornada futura.
-                            </div>
-                            <div className="small">
-                              <strong>Progreso:</strong> 
-                              {jornadasOrdenadas.map(jornada => {
-                                const estado = getEstadoJornada(jornada)
-                                const icon = estado === 'jugada' ? '✅' : estado === 'actual' ? '🎯' : '⏳'
-                                return (
-                                  <span key={jornada} className="me-2">
-                                    {icon} J{jornada}
-                                  </span>
-                                )
-                              })}
-                            </div>
-                            <p className="mb-0 mt-2">
-                              Las restricciones configuradas se aplicarán cuando se genere o recalcule el fixture para cada jornada.
-                              <br />
-                              <strong>Nota:</strong> Las jornadas que no están cerradas (jugadas) se pueden regenerar individualmente 
-                              usando el botón "Regenerar" en cada jornada.
-                            </p>
-                          </Alert>
-                        )
-                      })()}
-
-                      {(() => {
-                        const jornadaActual = getJornadaActual()
-                        const jornadas = getEncuentrosPorJornada()
-                        const jornadasOrdenadas = Object.keys(jornadas).map(Number).sort((a, b) => a - b)
-                        const proximaJornadaDisponible = jornadasOrdenadas.length > 0 ? Math.max(...jornadasOrdenadas) + 1 : 1
-                        
-                        // Crear array con todas las jornadas existentes más la próxima disponible
-                        const todasLasJornadas = [...jornadasOrdenadas]
-                        if (!todasLasJornadas.includes(proximaJornadaDisponible)) {
-                          todasLasJornadas.push(proximaJornadaDisponible)
-                        }
-                        
-                        return todasLasJornadas.sort((a, b) => a - b).map(jornadaNum => {
-                          const jornada = parseInt(jornadaNum.toString())
-                          const encuentrosJornada = jornadas[jornada] || []
-                          const estadoJornada = getEstadoJornada(jornada)
-                          const restriccionesJornada = unavailableByJornada[jornada] || []
-                          const equiposRestringidos = restriccionesJornada.map(id => 
-                            equiposParticipantes.find(ep => ep.equipo_id === id)?.equipo?.nombre
-                          ).filter(Boolean)
-                          
-                          // Determinar si esta jornada se puede configurar
-                          const sePuedeConfigurar = jornada === jornadaActual || jornada === proximaJornadaDisponible
-                          const esJornadaFutura = !jornadasOrdenadas.includes(jornada)
-
-                          return (
-                            <Card key={jornadaNum} className={`mb-3 ${estadoJornada === 'jugada' ? 'border-success' : estadoJornada === 'actual' ? 'border-primary' : esJornadaFutura ? 'border-info' : 'border-secondary'}`}>
-                              <CardHeader className={estadoJornada === 'jugada' ? 'bg-success text-white' : estadoJornada === 'actual' ? 'bg-primary text-white' : esJornadaFutura ? 'bg-info text-white' : 'bg-secondary text-white'}>
-                                <div className="d-flex justify-content-between align-items-center">
-                                  <div>
-                                    <h6 className="mb-0">Jornada {jornadaNum}</h6>
-                                    {estadoJornada === 'jugada' && (
-                                      <Badge bg="light" text="dark" className="ms-2">
-                                        <LuCheck className="me-1" />
-                                        Jornada Jugada
-                                      </Badge>
-                                    )}
-                                    {estadoJornada === 'actual' && (
-                                      <Badge bg="warning" text="dark" className="ms-2">
-                                        <LuSettings className="me-1" />
-                                        Jornada Actual
-                                      </Badge>
-                                    )}
-                                    {esJornadaFutura && (
-                                      <Badge bg="info" text="dark" className="ms-2">
-                                        <LuPlus className="me-1" />
-                                        Jornada Futura
-                                      </Badge>
-                                    )}
-                                    {estadoJornada === 'futura' && !esJornadaFutura && (
-                                      <Badge bg="light" text="dark" className="ms-2">
-                                        <LuClock className="me-1" />
-                                        Jornada Futura
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <div className="d-flex gap-2">
-                                    {restriccionesJornada.length > 0 && (
-                                      <Badge bg="warning" text="dark">
-                                        {restriccionesJornada.length} equipo(s) restringido(s)
-                                      </Badge>
-                                    )}
-                                    {sePuedeConfigurar ? (
-                                      <Button 
-                                        variant="outline-light" 
-                                        size="sm"
-                                        onClick={() => handleAbrirRestricciones(jornada)}>
-                                        <LuSettings className="me-1" />
-                                        Configurar
-                                      </Button>
-                                    ) : (
-                                      <Button 
-                                        variant="outline-light" 
-                                        size="sm"
-                                        disabled>
-                                        <LuX className="me-1" />
-                                        {estadoJornada === 'jugada' ? 'Cerrada' : 'No disponible'}
-                                      </Button>
-                                    )}
-                                    {sePuedeRegenerarJornada(jornada) && (
-                                      <Button 
-                                        variant="outline-warning" 
-                                        size="sm"
-                                        onClick={() => {
-                                          setJornadaARegenerar(jornada)
-                                          setShowRegenerarJornadaModal(true)
-                                        }}>
-                                        <LuTriangle className="me-1" />
-                                        Regenerar
-                                      </Button>
-                                    )}
-                                  </div>
+                  <Row>
+                    <Col md={6}>
+                      <Card>
+                        <CardBody>
+                          <h6><LuUsers className="me-2" />Estado de Equipos</h6>
+                          <div className="d-grid gap-2">
+                            {equiposParticipantes.map(equipoTorneo => (
+                              <div key={equipoTorneo.id} className="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                                <div className="d-flex align-items-center gap-2">
+                                  <img 
+                                    src={equipoTorneo.equipo?.imagen_equipo || 'https://via.placeholder.com/24x24/fd7e14/ffffff?text=🏆'} 
+                                    alt="" 
+                                    className="rounded-circle"
+                                    width={24}
+                                    height={24}
+                                  />
+                                  <span>{equipoTorneo.equipo?.nombre}</span>
                                 </div>
-                              </CardHeader>
-                              <CardBody>
-                                {estadoJornada === 'jugada' ? (
-                                  <div>
-                                    <p className="text-muted mb-2">
-                                      <LuCheck className="me-1" />
-                                      Esta jornada ya fue jugada y no se puede modificar.
-                                    </p>
-                                    {restriccionesJornada.length > 0 && (
-                                      <div>
-                                        <h6 className="text-warning mb-2">
-                                          <LuX className="me-1" />
-                                          Equipos que no jugaron esta jornada:
-                                        </h6>
-                                        <div className="d-flex flex-wrap gap-2">
-                                          {equiposRestringidos.map((nombre, index) => (
-                                            <Badge key={index} bg="warning" text="dark">
-                                              {nombre}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : estadoJornada === 'actual' ? (
-                                  <div>
-                                    <p className="text-primary mb-2">
-                                      <LuSettings className="me-1" />
-                                      Esta es la jornada actual. Puedes configurar restricciones para los equipos que no pueden jugar.
-                                    </p>
-                                    {restriccionesJornada.length > 0 ? (
-                                      <div>
-                                        <h6 className="text-warning mb-2">
-                                          <LuX className="me-1" />
-                                          Equipos que no jugarán esta jornada:
-                                        </h6>
-                                        <div className="d-flex flex-wrap gap-2">
-                                          {equiposRestringidos.map((nombre, index) => (
-                                            <Badge key={index} bg="warning" text="dark">
-                                              {nombre}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <p className="text-muted mb-0">
-                                        No hay restricciones configuradas para esta jornada
-                                      </p>
-                                    )}
-                                  </div>
-                                ) : esJornadaFutura ? (
-                                  <div>
-                                    <p className="text-info mb-2">
-                                      <LuPlus className="me-1" />
-                                      Esta es una jornada futura que aún no ha sido generada. Puedes configurar restricciones por adelantado.
-                                    </p>
-                                    {restriccionesJornada.length > 0 ? (
-                                      <div>
-                                        <h6 className="text-warning mb-2">
-                                          <LuX className="me-1" />
-                                          Equipos que no jugarán esta jornada:
-                                        </h6>
-                                        <div className="d-flex flex-wrap gap-2">
-                                          {equiposRestringidos.map((nombre, index) => (
-                                            <Badge key={index} bg="warning" text="dark">
-                                              {nombre}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <p className="text-muted mb-0">
-                                        No hay restricciones configuradas para esta jornada
-                                      </p>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div>
-                                    <p className="text-muted mb-2">
-                                      <LuClock className="me-1" />
-                                      Esta jornada se configurará automáticamente basándose en las restricciones de la jornada actual.
-                                    </p>
-                                    {restriccionesJornada.length > 0 && (
-                                      <div>
-                                        <h6 className="text-info mb-2">
-                                          <LuSettings className="me-2" />
-                                          Restricciones heredadas:
-                                        </h6>
-                                        <div className="d-flex flex-wrap gap-2">
-                                          {equiposRestringidos.map((nombre, index) => (
-                                            <Badge key={index} bg="info" text="dark">
-                                              {nombre}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </CardBody>
-                            </Card>
-                          )
-                        })
-                      })()}
+                                <Badge bg="secondary">
+                                  {equiposDescansan[equipoTorneo.equipo_id] || 0} descansos
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </CardBody>
+                      </Card>
+                    </Col>
+                    <Col md={6}>
+                      <Card>
+                        <CardBody>
+                          <h6><LuCalendar className="me-2" />Jornadas Generadas</h6>
+                          <div className="d-flex flex-wrap gap-2">
+                            {Object.keys(jornadas).sort((a, b) => parseInt(a) - parseInt(b)).map(jornadaNum => (
+                              <Badge 
+                                key={jornadaNum} 
+                                bg="primary" 
+                                className="fs-6 px-3 py-2"
+                              >
+                                Jornada {jornadaNum}
+                              </Badge>
+                            ))}
+                          </div>
+                          {Object.keys(jornadas).length === 0 && (
+                            <p className="text-muted">No hay jornadas generadas aún</p>
+                          )}
+                        </CardBody>
+                      </Card>
+                    </Col>
+                  </Row>
+                </Tab.Pane>
 
-                      {Object.keys(unavailableByJornada).length > 0 && (
-                        <Card className="mt-4 border-warning">
-                          <CardHeader className="bg-warning text-dark">
-                            <h6 className="mb-0">
-                              <LuSettings className="me-2" />
-                              Aplicar Restricciones y Recalcular Fixture
-                            </h6>
-                          </CardHeader>
-                          <CardBody>
-                            <p className="text-muted mb-3">
-                              Al hacer clic en el botón, se recalcularán automáticamente todas las jornadas futuras 
-                              considerando las restricciones configuradas. Las jornadas ya jugadas no se modificarán.
-                            </p>
-                            <div className="d-flex gap-2">
-                              <Button 
-                                variant="warning" 
-                                onClick={handleRegenerarFixtureConRestricciones}>
-                                <LuSettings className="me-1" />
-                                Recalcular Fixture con Restricciones
-                              </Button>
-                            </div>
-                          </CardBody>
-                        </Card>
-                      )}
+                {/* Tab: Análisis */}
+                <Tab.Pane eventKey="analytics">
+                  <h5>Análisis del Torneo</h5>
+                  {analisisTorneo ? (
+                    <TorneoAnalytics 
+                      torneoId={torneoId}
+                      equipos={equiposParticipantes.map(et => et.equipo!).filter(e => e)}
+                      encuentros={encuentros}
+                      descansos={equiposDescansan}
+                    />
+                  ) : (
+                    <div className="text-center py-5">
+                      <div className="spinner-border" role="status">
+                        <span className="visually-hidden">Cargando análisis...</span>
+                      </div>
                     </div>
                   )}
                 </Tab.Pane>
+
               </Tab.Content>
             </CardBody>
             </Tab.Container>
@@ -1597,99 +1291,6 @@ const TorneoDetailPage = () => {
         </ModalFooter>
       </Modal>
 
-      {/* Modal para configurar restricciones por jornada */}
-      <Modal show={showRestrictionsModal} onHide={() => setShowRestrictionsModal(false)} size="lg">
-        <ModalHeader closeButton>
-          <Modal.Title>
-            <LuSettings className="me-2" />
-            Configurar Restricciones - Jornada {selectedJornada}
-          </Modal.Title>
-        </ModalHeader>
-        <ModalBody>
-          <Alert variant="primary" className="mb-3">
-            <h6><LuCalendar className="me-2" />Configuración de Jornada</h6>
-            <p className="mb-0">
-              Estás configurando las restricciones para la <strong>jornada {selectedJornada}</strong>. 
-              Las restricciones configuradas aquí se aplicarán cuando se genere o recalcule el fixture 
-              para esta jornada.
-            </p>
-          </Alert>
-
-          <Alert variant="info" className="mb-3">
-            <h6><LuSettings className="me-2" />Instrucciones</h6>
-            <p className="mb-0">
-              Selecciona los equipos que <strong>NO pueden jugar</strong> en la jornada {selectedJornada}. 
-              Estos equipos serán excluidos del cálculo cuando se genere esta jornada.
-            </p>
-          </Alert>
-
-          <div className="mb-3">
-            <h6>Equipos Participantes</h6>
-            <p className="text-muted small">
-              Marca los equipos que solicitan no jugar en esta jornada:
-            </p>
-          </div>
-
-          <Row>
-            {equiposParticipantes.map((equipoTorneo) => (
-              <Col key={equipoTorneo.id} md={6} className="mb-2">
-                <Form.Check
-                  type="checkbox"
-                  id={`restriccion-${equipoTorneo.equipo_id}`}
-                  label={
-                    <div className="d-flex align-items-center gap-2">
-                      <img 
-                        src={equipoTorneo.equipo?.imagen_equipo || 'https://via.placeholder.com/24x24/6f42c1/ffffff?text=⭐'} 
-                        alt="" 
-                        className="rounded-circle"
-                        width={24}
-                        height={24}
-                      />
-                      <span>{equipoTorneo.equipo?.nombre}</span>
-                    </div>
-                  }
-                  checked={restriccionesJornada.includes(equipoTorneo.equipo_id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setRestriccionesJornada([...restriccionesJornada, equipoTorneo.equipo_id])
-                    } else {
-                      setRestriccionesJornada(restriccionesJornada.filter(id => id !== equipoTorneo.equipo_id))
-                    }
-                  }}
-                />
-              </Col>
-            ))}
-          </Row>
-
-          {restriccionesJornada.length > 0 && (
-            <Alert variant="warning" className="mt-3">
-              <h6><LuX className="me-2" />Equipos Restringidos</h6>
-              <p className="mb-2">
-                Los siguientes equipos no jugarán en la jornada {selectedJornada}:
-              </p>
-              <div className="d-flex flex-wrap gap-2">
-                {restriccionesJornada.map(equipoId => {
-                  const equipo = equiposParticipantes.find(ep => ep.equipo_id === equipoId)?.equipo
-                  return (
-                    <Badge key={equipoId} bg="warning" text="dark">
-                      {equipo?.nombre}
-                    </Badge>
-                  )
-                })}
-              </div>
-            </Alert>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setShowRestrictionsModal(false)}>
-            Cancelar
-          </Button>
-          <Button variant="primary" onClick={handleGuardarRestricciones}>
-            <LuCheck className="me-1" />
-            Guardar Restricciones
-          </Button>
-        </ModalFooter>
-      </Modal>
 
       {/* Modal para generar jornada individual */}
       <Modal show={showJornadaModal} onHide={() => setShowJornadaModal(false)}>
@@ -1726,24 +1327,6 @@ const TorneoDetailPage = () => {
               </Form.Text>
             </Form.Group>
 
-            {unavailableByJornada[jornadaAGenerar] && unavailableByJornada[jornadaAGenerar].length > 0 && (
-              <Alert variant="warning" className="mb-3">
-                <h6><LuX className="me-2" />Restricciones Configuradas</h6>
-                <p className="mb-2">
-                  Para la jornada {jornadaAGenerar}, los siguientes equipos no jugarán:
-                </p>
-                <div className="d-flex flex-wrap gap-2">
-                  {unavailableByJornada[jornadaAGenerar].map(equipoId => {
-                    const equipo = equiposParticipantes.find(ep => ep.equipo_id === equipoId)?.equipo
-                    return (
-                      <Badge key={equipoId} bg="warning" text="dark">
-                        {equipo?.nombre}
-                      </Badge>
-                    )
-                  })}
-                </div>
-              </Alert>
-            )}
           </Form>
         </ModalBody>
         <ModalFooter>
@@ -1841,24 +1424,6 @@ const TorneoDetailPage = () => {
                     </p>
                   </Alert>
 
-                  {unavailableByJornada[jornadaARegenerar] && unavailableByJornada[jornadaARegenerar].length > 0 && (
-                    <Alert variant="warning" className="mb-3">
-                      <h6><LuX className="me-2" />Restricciones Configuradas</h6>
-                      <p className="mb-2">
-                        Para la jornada {jornadaARegenerar}, los siguientes equipos no jugarán:
-                      </p>
-                      <div className="d-flex flex-wrap gap-2">
-                        {unavailableByJornada[jornadaARegenerar].map(equipoId => {
-                          const equipo = equiposParticipantes.find(ep => ep.equipo_id === equipoId)?.equipo
-                          return (
-                            <Badge key={equipoId} bg="warning" text="dark">
-                              {equipo?.nombre}
-                            </Badge>
-                          )
-                        })}
-                      </div>
-                    </Alert>
-                  )}
                 </div>
               )
             })()}
@@ -1925,6 +1490,33 @@ const TorneoDetailPage = () => {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* Modal del Sistema Dinámico */}
+      <DynamicFixtureModal
+        show={showDynamicFixtureModal}
+        onHide={() => setShowDynamicFixtureModal(false)}
+        torneoId={torneoId}
+        jornada={jornadaDinamica}
+        equipos={equiposParticipantes.map(et => et.equipo!).filter(e => e)}
+        onConfirm={handleConfirmarJornadaDinamica}
+        isRegenerating={false}
+        encuentrosExistentes={encuentros}
+        descansosExistentes={equiposDescansan}
+      />
+
+      {/* Modal de Regeneración Dinámica */}
+      <DynamicFixtureModal
+        show={showDynamicRegenerateModal}
+        onHide={() => setShowDynamicRegenerateModal(false)}
+        torneoId={torneoId}
+        jornada={jornadaDinamica}
+        equipos={equiposParticipantes.map(et => et.equipo!).filter(e => e)}
+        onConfirm={handleConfirmarRegeneracionDinamica}
+        onRegenerate={handleConfirmarRegeneracionDinamica}
+        isRegenerating={true}
+        encuentrosExistentes={encuentros}
+        descansosExistentes={equiposDescansan}
+      />
 
     </Container>
   )
