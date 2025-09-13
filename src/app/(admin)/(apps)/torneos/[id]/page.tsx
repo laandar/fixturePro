@@ -884,6 +884,42 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Fixture */}
                 <Tab.Pane eventKey="fixture">
+                  {/* Botones de acciones - siempre visibles */}
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h5>Fixture del Torneo</h5>
+                    <div className="d-flex gap-2">
+                      <Button 
+                        variant="outline-success" 
+                        size="sm"
+                        onClick={handleDownloadFixtureExcel}
+                        disabled={encuentros.length === 0}>
+                        <LuDownload className="me-1" />
+                        Descargar Excel
+                      </Button>
+                      <Button 
+                        variant="outline-primary" 
+                        size="sm"
+                        onClick={() => setShowFixtureModal(true)}>
+                        <LuSettings className="me-1" />
+                        {encuentros.length === 0 ? 'Generar Fixture' : 'Regenerar Fixture Completo'}
+                      </Button>
+                      <Button 
+                        variant="outline-success" 
+                        size="sm"
+                        onClick={() => setShowJornadaModal(true)}>
+                        <LuPlus className="me-1" />
+                        Generar Jornada Individual
+                      </Button>
+                      <Button 
+                        variant="outline-warning" 
+                        size="sm"
+                        onClick={() => setShowRegenerarJornadaModal(true)}>
+                        <LuTriangle className="me-1" />
+                        Regenerar Jornada
+                      </Button>
+                    </div>
+                  </div>
+
                   {encuentros.length === 0 ? (
                     <div className="text-center py-5">
                       <LuGamepad2 className="fs-1 text-muted mb-3" />
@@ -893,52 +929,9 @@ const TorneoDetailPage = () => {
                           ? 'Genera el fixture para ver los encuentros programados'
                           : 'Agrega al menos 2 equipos para generar el fixture'}
                       </p>
-                      {equiposParticipantes.length >= 2 && (
-                        <Button 
-                          variant="primary"
-                          onClick={() => setShowFixtureModal(true)}>
-                          <LuSettings className="me-1" />
-                          Generar Fixture
-                        </Button>
-                      )}
                     </div>
-                                    ) : (
+                  ) : (
                     <div>
-                      <div className="d-flex justify-content-between align-items-center mb-3">
-                        <h5>Fixture del Torneo</h5>
-                        <div className="d-flex gap-2">
-                          <Button 
-                            variant="outline-success" 
-                            size="sm"
-                            onClick={handleDownloadFixtureExcel}
-                            disabled={encuentros.length === 0}>
-                            <LuDownload className="me-1" />
-                            Descargar Excel
-                          </Button>
-                          <Button 
-                            variant="outline-primary" 
-                            size="sm"
-                            onClick={() => setShowFixtureModal(true)}>
-                            <LuSettings className="me-1" />
-                            Regenerar Fixture Completo
-                          </Button>
-                          <Button 
-                            variant="outline-success" 
-                            size="sm"
-                            onClick={() => setShowJornadaModal(true)}>
-                            <LuPlus className="me-1" />
-                            Generar Jornada Individual
-                          </Button>
-                          <Button 
-                            variant="outline-warning" 
-                            size="sm"
-                            onClick={() => setShowRegenerarJornadaModal(true)}>
-                            <LuTriangle className="me-1" />
-                            Regenerar Jornada
-                          </Button>
-
-                        </div>
-                      </div>
                       {Object.keys(jornadas).sort((a, b) => parseInt(a) - parseInt(b)).map(jornadaNum => (
                         <Card key={jornadaNum} className="mb-4">
                           <CardHeader>
