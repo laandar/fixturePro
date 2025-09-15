@@ -11,8 +11,8 @@ export interface DynamicFixtureOptions {
   jornadaInicial?: number
   jornadaFinal?: number
   encuentrosExistentes?: EncuentroWithRelations[]
-  equiposDescansanExistentes?: Record<number, number>
-  forzarDescanso?: number // ID del equipo que debe descansar en esta jornada
+  equiposDescansanExistentes?: Record<number, number[]>
+  forzarDescanso?: number[] // IDs de los equipos que deben descansar en esta jornada
   permitirDescansosConsecutivos?: boolean
 }
 
@@ -26,7 +26,7 @@ export interface DynamicFixtureResult {
 export interface JornadaPropuesta {
   numero: number
   encuentros: EncuentroPropuesto[]
-  equipoQueDescansa?: number
+  equiposQueDescansan?: number[]
   fecha: Date
   canchas: string[]
   arbitros: string[]
@@ -77,7 +77,7 @@ export class DynamicFixtureGenerator {
   constructor(
     equipos: EquipoWithRelations[],
     encuentrosExistentes: EncuentroWithRelations[] = [],
-    descansosExistentes: Record<number, number> = {},
+    descansosExistentes: Record<number, number[]> = {},
     options: DynamicFixtureOptions = {}
   ) {
     this.options = {
@@ -96,7 +96,7 @@ export class DynamicFixtureGenerator {
   private inicializarEstado(
     equipos: EquipoWithRelations[],
     encuentrosExistentes: EncuentroWithRelations[],
-    descansosExistentes: Record<number, number>
+    descansosExistentes: Record<number, number[]>
   ): EstadoTorneo {
     const emparejamientosExistentes = new Set<string>()
     
@@ -114,10 +114,12 @@ export class DynamicFixtureGenerator {
       descansosPorEquipo[equipo.id] = 0
     })
     
-    Object.values(descansosExistentes).forEach(equipoId => {
-      if (descansosPorEquipo[equipoId] !== undefined) {
-        descansosPorEquipo[equipoId]++
-      }
+    Object.values(descansosExistentes).forEach(equiposIds => {
+      equiposIds.forEach(equipoId => {
+        if (descansosPorEquipo[equipoId] !== undefined) {
+          descansosPorEquipo[equipoId]++
+        }
+      })
     })
 
     // Obtener jornadas ya generadas
@@ -148,14 +150,14 @@ export class DynamicFixtureGenerator {
       }
     }
 
-    const equipoQueDescansa = this.seleccionarEquipoDescanso(jornada)
-    const equiposDisponibles = this.estado.equipos.filter(e => e.id !== equipoQueDescansa)
+    const equiposQueDescansan = this.seleccionarEquiposDescanso(jornada)
+    const equiposDisponibles = this.estado.equipos.filter(e => !equiposQueDescansan.includes(e.id))
     
     const encuentros = this.generarEncuentros(equiposDisponibles, jornada)
-    const jornadaPropuesta = this.crearJornadaPropuesta(jornada, encuentros, equipoQueDescansa)
+    const jornadaPropuesta = this.crearJornadaPropuesta(jornada, encuentros, equiposQueDescansan)
     
     const estadisticas = this.calcularEstadisticas(jornadaPropuesta)
-    const alternativas = this.generarAlternativas(jornada, equipoQueDescansa)
+    const alternativas = this.generarAlternativas(jornada, equiposQueDescansan)
 
     return {
       jornada: jornadaPropuesta,
@@ -183,10 +185,14 @@ export class DynamicFixtureGenerator {
 
     // Validar descansos consecutivos
     if (!this.options.permitirDescansosConsecutivos && jornada > 1) {
-      const descansoAnterior = this.obtenerDescansoJornadaAnterior(jornada)
-      if (descansoAnterior && this.options.forzarDescanso === descansoAnterior) {
-        descansosConsecutivos.push(descansoAnterior)
-        advertencias.push(`El equipo ${descansoAnterior} descansaría dos jornadas consecutivas`)
+      const descansosAnteriores = this.obtenerDescansosJornadaAnterior(jornada)
+      if (this.options.forzarDescanso && this.options.forzarDescanso.length > 0) {
+        this.options.forzarDescanso.forEach(equipoId => {
+          if (descansosAnteriores.includes(equipoId)) {
+            descansosConsecutivos.push(equipoId)
+            advertencias.push(`El equipo ${equipoId} descansaría dos jornadas consecutivas`)
+          }
+        })
       }
     }
 
@@ -212,15 +218,18 @@ export class DynamicFixtureGenerator {
     }
   }
 
-  private seleccionarEquipoDescanso(jornada: number): number | undefined {
-    // Si hay número par de equipos, no hay descanso
-    if (this.estado.equipos.length % 2 === 0) {
-      return undefined
+  private seleccionarEquiposDescanso(jornada: number): number[] {
+    // Si se fuerzan descansos específicos, usarlos
+    if (this.options.forzarDescanso && this.options.forzarDescanso.length > 0) {
+      return this.options.forzarDescanso
     }
 
-    // Si se fuerza un descanso específico, usarlo
-    if (this.options.forzarDescanso) {
-      return this.options.forzarDescanso
+    // Calcular cuántos equipos deben descansar
+    const totalEquipos = this.estado.equipos.length
+    const equiposQueDebenDescansar = totalEquipos % 2 === 0 ? 0 : 1
+
+    if (equiposQueDebenDescansar === 0) {
+      return []
     }
 
     // Seleccionar el equipo con menos descansos
@@ -235,7 +244,7 @@ export class DynamicFixtureGenerator {
       }
     }
 
-    return equipoConMenosDescansos.id
+    return [equipoConMenosDescansos.id]
   }
 
   private generarEncuentros(equipos: EquipoWithRelations[], jornada: number): EncuentroPropuesto[] {
@@ -357,12 +366,12 @@ export class DynamicFixtureGenerator {
   private crearJornadaPropuesta(
     numero: number,
     encuentros: EncuentroPropuesto[],
-    equipoQueDescansa?: number
+    equiposQueDescansan: number[]
   ): JornadaPropuesta {
     return {
       numero,
       encuentros,
-      equipoQueDescansa,
+      equiposQueDescansan,
       fecha: this.calcularFechaJornada(numero),
       canchas: this.options.canchas || ['Cancha Principal'],
       arbitros: this.options.arbitros || ['Árbitro Principal']
@@ -373,6 +382,7 @@ export class DynamicFixtureGenerator {
     return {
       numero: jornada,
       encuentros: [],
+      equiposQueDescansan: [],
       fecha: this.calcularFechaJornada(jornada),
       canchas: this.options.canchas || ['Cancha Principal'],
       arbitros: this.options.arbitros || ['Árbitro Principal']
@@ -477,15 +487,15 @@ export class DynamicFixtureGenerator {
     return duplicados
   }
 
-  private generarAlternativas(jornada: number, equipoDescansoOriginal?: number): JornadaPropuesta[] {
+  private generarAlternativas(jornada: number, equiposDescansoOriginal: number[]): JornadaPropuesta[] {
     const alternativas: JornadaPropuesta[] = []
 
     // Si hay número impar de equipos, probar con otros equipos descansando
     if (this.estado.equipos.length % 2 === 1) {
-      const otrosEquipos = this.estado.equipos.filter(e => e.id !== equipoDescansoOriginal)
+      const otrosEquipos = this.estado.equipos.filter(e => !equiposDescansoOriginal.includes(e.id))
       
       for (const equipo of otrosEquipos.slice(0, 2)) { // Máximo 2 alternativas
-        const opcionesAlternativas = { ...this.options, forzarDescanso: equipo.id }
+        const opcionesAlternativas = { ...this.options, forzarDescanso: [equipo.id] }
         const generadorAlternativo = new DynamicFixtureGenerator(
           this.estado.equipos,
           this.estado.encuentrosJugados,
@@ -503,10 +513,10 @@ export class DynamicFixtureGenerator {
     return alternativas
   }
 
-  private obtenerDescansoJornadaAnterior(jornada: number): number | undefined {
+  private obtenerDescansosJornadaAnterior(jornada: number): number[] {
     // Buscar en los descansos existentes
     const descansosExistentes = this.options.equiposDescansanExistentes || {}
-    return descansosExistentes[jornada - 1]
+    return descansosExistentes[jornada - 1] || []
   }
 
   /**
@@ -567,7 +577,7 @@ export class DynamicFixtureGenerator {
 export function crearGeneradorDinamico(
   equipos: EquipoWithRelations[],
   encuentrosExistentes: EncuentroWithRelations[] = [],
-  descansosExistentes: Record<number, number> = {},
+  descansosExistentes: Record<number, number[]> = {},
   options: DynamicFixtureOptions = {}
 ): DynamicFixtureGenerator {
   return new DynamicFixtureGenerator(equipos, encuentrosExistentes, descansosExistentes, options)

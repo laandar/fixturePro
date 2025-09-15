@@ -25,10 +25,13 @@ export async function getTorneoById(id: number) {
 export async function getEquiposDescansan(torneoId: number) {
   try {
     const descansos = await equiposDescansanQueries.getByTorneoId(torneoId)
-    const equiposDescansanFromDB: Record<number, number> = {}
+    const equiposDescansanFromDB: Record<number, number[]> = {}
     
     descansos.forEach((descanso: any) => {
-      equiposDescansanFromDB[descanso.jornada] = descanso.equipo_id
+      if (!equiposDescansanFromDB[descanso.jornada]) {
+        equiposDescansanFromDB[descanso.jornada] = []
+      }
+      equiposDescansanFromDB[descanso.jornada].push(descanso.equipo_id)
     })
     
     return equiposDescansanFromDB

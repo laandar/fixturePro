@@ -42,7 +42,7 @@ export default function DynamicFixtureModal({
   const [propuesta, setPropuesta] = useState<DynamicFixtureResult | null>(null)
   const [equiposDisponibles, setEquiposDisponibles] = useState<EquipoDescanso[]>([])
   const [opciones, setOpciones] = useState({
-    forzarDescanso: undefined as number | undefined,
+    forzarDescanso: [] as number[],
     permitirDescansosConsecutivos: false,
     diasEntreJornadas: 7,
     canchas: ['Cancha Principal', 'Cancha Secundaria'],
@@ -70,12 +70,25 @@ export default function DynamicFixtureModal({
       // Calcular descansos reales de cada equipo
       const equiposConDescansos = equipos.map(equipo => {
         // Contar cuántas veces ha descansado este equipo
-        const descansos = Object.values(descansosExistentes).filter(equipoId => equipoId === equipo.id).length
+        let totalDescansos = 0
+        Object.values(descansosExistentes).forEach(equiposDescansando => {
+          if (Array.isArray(equiposDescansando)) {
+            // Nuevo formato: Record<number, number[]>
+            if (equiposDescansando.includes(equipo.id)) {
+              totalDescansos++
+            }
+          } else {
+            // Formato antiguo: Record<number, number> (para compatibilidad)
+            if (equiposDescansando === equipo.id) {
+              totalDescansos++
+            }
+          }
+        })
         
         return {
           id: equipo.id,
           nombre: equipo.nombre,
-          descansos: descansos
+          descansos: totalDescansos
         }
       })
       
@@ -184,23 +197,47 @@ export default function DynamicFixtureModal({
           <CardBody>
             <h6><LuSettings className="me-2" />Configuración de la Jornada</h6>
             <Row>
-              <Col md={6}>
+              <Col md={12}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Equipo que debe descansar (opcional)</Form.Label>
-                  <FormSelect
-                    value={opciones.forzarDescanso || ''}
-                    onChange={(e) => setOpciones(prev => ({ 
-                      ...prev, 
-                      forzarDescanso: e.target.value ? parseInt(e.target.value) : undefined 
-                    }))}
-                  >
-                    <option value="">Automático (equipo con menos descansos)</option>
+                  <Form.Label>Equipos que deben descansar (opcional)</Form.Label>
+                  <div className="border rounded p-3" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    <Form.Check
+                      type="checkbox"
+                      label="Automático (equipos con menos descansos)"
+                      checked={opciones.forzarDescanso.length === 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setOpciones(prev => ({ ...prev, forzarDescanso: [] }))
+                        }
+                      }}
+                      className="mb-2"
+                    />
                     {equiposDisponibles.map(equipo => (
-                      <option key={equipo.id} value={equipo.id}>
-                        {equipo.nombre} ({equipo.descansos} descansos)
-                      </option>
+                      <Form.Check
+                        key={equipo.id}
+                        type="checkbox"
+                        label={`${equipo.nombre} (${equipo.descansos} descansos)`}
+                        checked={opciones.forzarDescanso.includes(equipo.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setOpciones(prev => ({ 
+                              ...prev, 
+                              forzarDescanso: [...prev.forzarDescanso, equipo.id] 
+                            }))
+                          } else {
+                            setOpciones(prev => ({ 
+                              ...prev, 
+                              forzarDescanso: prev.forzarDescanso.filter(id => id !== equipo.id) 
+                            }))
+                          }
+                        }}
+                        className="mb-1"
+                      />
                     ))}
-                  </FormSelect>
+                  </div>
+                  <Form.Text className="text-muted">
+                    Selecciona los equipos que deben descansar en esta jornada. Si no seleccionas ninguno, se elegirán automáticamente.
+                  </Form.Text>
                 </Form.Group>
               </Col>
               <Col md={6}>
@@ -315,21 +352,25 @@ export default function DynamicFixtureModal({
               </CardBody>
             </Card>
 
-            {/* Equipo que descansa */}
-            {propuesta.jornada.equipoQueDescansa && (
+            {/* Equipos que descansan */}
+            {propuesta.jornada.equiposQueDescansan && propuesta.jornada.equiposQueDescansan.length > 0 && (
               <Alert variant="info" className="mb-4">
-                <h6><LuUsers className="me-2" />Equipo que descansa</h6>
-                <div className="d-flex align-items-center gap-2">
-                  <img 
-                    src={equipos.find(e => e.id === propuesta.jornada.equipoQueDescansa)?.imagen_equipo || 'https://via.placeholder.com/32x32/17a2b8/ffffff?text=💤'} 
-                    alt="" 
-                    className="rounded-circle"
-                    width={32}
-                    height={32}
-                  />
-                  <span className="fw-semibold">
-                    💤 {getEquipoNombre(propuesta.jornada.equipoQueDescansa)} descansa esta jornada
-                  </span>
+                <h6><LuUsers className="me-2" />Equipos que descansan</h6>
+                <div className="d-flex flex-wrap gap-2">
+                  {propuesta.jornada.equiposQueDescansan.map(equipoId => (
+                    <div key={equipoId} className="d-flex align-items-center gap-2 bg-white bg-opacity-50 p-2 rounded">
+                      <img 
+                        src={equipos.find(e => e.id === equipoId)?.imagen_equipo || 'https://via.placeholder.com/24x24/17a2b8/ffffff?text=💤'} 
+                        alt="" 
+                        className="rounded-circle"
+                        width={24}
+                        height={24}
+                      />
+                      <span className="fw-semibold">
+                        💤 {getEquipoNombre(equipoId)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </Alert>
             )}

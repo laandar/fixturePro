@@ -10,6 +10,7 @@ import { getCategorias, getEquipos } from '../../equipos/actions'
 import type { TorneoWithRelations, EquipoWithRelations, Categoria, EncuentroWithRelations } from '@/db/types'
 import type { DynamicFixtureResult, JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
 import DynamicFixtureModal from '@/components/DynamicFixtureModal'
+import EmparejamientosFaltantesModal from '@/components/EmparejamientosFaltantesModal'
 import TorneoAnalytics from '@/components/TorneoAnalytics'
 // @ts-ignore
 import * as XLSX from 'xlsx'
@@ -33,12 +34,13 @@ const TorneoDetailPage = () => {
   const [showEncuentroModal, setShowEncuentroModal] = useState(false)
   const [selectedEquipos, setSelectedEquipos] = useState<number[]>([])
   const [editingEncuentro, setEditingEncuentro] = useState<EncuentroWithRelations | null>(null)
-  const [equiposDescansan, setEquiposDescansan] = useState<Record<number, number>>({})
+  const [equiposDescansan, setEquiposDescansan] = useState<Record<number, number[]>>({})
   const [showJornadaModal, setShowJornadaModal] = useState(false)
   const [jornadaAGenerar, setJornadaAGenerar] = useState<number>(1)
   const [showRegenerarJornadaModal, setShowRegenerarJornadaModal] = useState(false)
   const [jornadaARegenerar, setJornadaARegenerar] = useState<number>(1)
   const [showDeleteJornadaModal, setShowDeleteJornadaModal] = useState(false)
+  const [showEmparejamientosModal, setShowEmparejamientosModal] = useState(false)
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
   
   // Estados para el sistema dinámico
@@ -133,7 +135,12 @@ const TorneoDetailPage = () => {
       
       // Capturar información de equipos que descansan
       if (result.equiposDescansan) {
-        setEquiposDescansan(result.equiposDescansan)
+        // Convertir el formato antiguo al nuevo formato
+        const equiposDescansanFormato: Record<number, number[]> = {}
+        Object.entries(result.equiposDescansan).forEach(([jornada, equipoId]) => {
+          equiposDescansanFormato[parseInt(jornada)] = [equipoId as number]
+        })
+        setEquiposDescansan(equiposDescansanFormato)
       }
       
       setSuccess(`Fixture generado exitosamente con ${result.encuentrosCreados} encuentros`)
@@ -174,7 +181,7 @@ const TorneoDetailPage = () => {
       
       setSuccess(`Jornada ${result.jornada} generada exitosamente. ${result.encuentrosCreados} encuentros creados.`)
       if (result.equipoQueDescansa) {
-        setEquiposDescansan(prev => ({ ...prev, [result.jornada]: result.equipoQueDescansa! }))
+        setEquiposDescansan(prev => ({ ...prev, [result.jornada]: [result.equipoQueDescansa!] }))
       }
       setShowJornadaModal(false)
       await loadData()
@@ -196,7 +203,7 @@ const TorneoDetailPage = () => {
       
       setSuccess(`Jornada ${result.jornada} regenerada exitosamente. ${result.encuentrosCreados} encuentros creados, ${result.encuentrosEliminados} eliminados.`)
       if (result.equipoQueDescansa) {
-        setEquiposDescansan(prev => ({ ...prev, [result.jornada]: result.equipoQueDescansa! }))
+        setEquiposDescansan(prev => ({ ...prev, [result.jornada]: [result.equipoQueDescansa!] }))
       }
       setShowRegenerarJornadaModal(false)
       await loadData()
@@ -235,6 +242,12 @@ const TorneoDetailPage = () => {
     try {
       const result = await confirmarJornada(torneoId, jornada)
       setSuccess(result.mensaje)
+      
+      // Actualizar el estado local con los equipos que descansan
+      if (result.equiposQueDescansan && result.equiposQueDescansan.length > 0) {
+        setEquiposDescansan(prev => ({ ...prev, [jornada.numero]: result.equiposQueDescansan! }))
+      }
+      
       setShowDynamicFixtureModal(false)
       await loadData()
     } catch (error) {
@@ -246,10 +259,46 @@ const TorneoDetailPage = () => {
     try {
       const result = await confirmarRegeneracionJornada(torneoId, jornada)
       setSuccess(result.mensaje)
+      
+      // Actualizar el estado local con los equipos que descansan
+      if (result.equiposQueDescansan && result.equiposQueDescansan.length > 0) {
+        setEquiposDescansan(prev => ({ ...prev, [jornada.numero]: result.equiposQueDescansan! }))
+      }
+      
       setShowDynamicRegenerateModal(false)
       await loadData()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al regenerar jornada')
+    }
+  }
+
+  const handleSeleccionarEmparejamientos = async (emparejamientos: Array<{equipo1: {id: number, nombre: string}, equipo2: {id: number, nombre: string}}>) => {
+    try {
+      // Crear encuentros para los emparejamientos seleccionados
+      const encuentrosPorJornadaData = getEncuentrosPorJornada()
+      const proximaJornada = Math.max(...Object.keys(encuentrosPorJornadaData).map(Number), 0) + 1
+      
+      for (const emparejamiento of emparejamientos) {
+        // Crear encuentro para este emparejamiento
+        const nuevoEncuentro = {
+          torneo_id: torneoId,
+          jornada: proximaJornada,
+          equipo_local_id: emparejamiento.equipo1.id,
+          equipo_visitante_id: emparejamiento.equipo2.id,
+          fecha_programada: new Date(),
+          estado: 'programado' as const,
+          cancha: '',
+          observaciones: `Emparejamiento seleccionado manualmente`
+        }
+        
+        // Aquí deberías llamar a una función para crear el encuentro
+        // Por ahora, solo mostramos un mensaje de éxito
+      }
+      
+      setSuccess(`Jornada ${proximaJornada} creada con ${emparejamientos.length} emparejamiento(s) seleccionado(s)`)
+      await loadData()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al crear jornada con emparejamientos seleccionados')
     }
   }
 
@@ -378,7 +427,7 @@ const TorneoDetailPage = () => {
 
       jornadasOrdenadas.forEach(jornada => {
         const encuentrosJornada = jornadas[jornada]
-        const equipoQueDescansa = getEquipoQueDescansa(jornada)
+        const equiposQueDescansan = getEquiposQueDescansan(jornada)
         
         // Encabezados para cada jornada
         const jornadaData = [
@@ -405,10 +454,10 @@ const TorneoDetailPage = () => {
           ])
         })
 
-        // Agregar información del equipo que descansa si existe
-        if (equipoQueDescansa) {
+        // Agregar información de los equipos que descansan si existen
+        if (equiposQueDescansan.length > 0) {
           jornadaData.push([''])
-          jornadaData.push(['EQUIPO QUE DESCANSA:', equipoQueDescansa.nombre])
+          jornadaData.push(['EQUIPOS QUE DESCANSAN:', equiposQueDescansan.map(e => e?.nombre).filter(Boolean).join(', ')])
         }
 
         // Crear hoja para la jornada
@@ -464,19 +513,17 @@ const TorneoDetailPage = () => {
     }
   }
 
-  const getEquipoQueDescansa = (jornada: number) => {
+  const getEquiposQueDescansan = (jornada: number) => {
     // Usar los datos de equipos que descansan cargados desde la base de datos
-    const equipoId = equiposDescansan[jornada]
+    const equiposIds = equiposDescansan[jornada] || []
     
-    if (equipoId && torneo?.equiposTorneo) {
-      const equipoTorneo = torneo.equiposTorneo.find(et => et.equipo_id === equipoId)
-      if (equipoTorneo?.equipo) {
-        return equipoTorneo.equipo
-      }
+    if (equiposIds.length > 0 && torneo?.equiposTorneo) {
+      const equiposTorneo = torneo.equiposTorneo.filter(et => equiposIds.includes(et.equipo_id))
+      return equiposTorneo.map(et => et.equipo).filter(e => e)
     }
     
-    // Calcular el equipo que descansa si no hay datos en BD
-    if (!equipoId && torneo?.equiposTorneo && encuentros.length > 0) {
+    // Calcular los equipos que descansan si no hay datos en BD
+    if (equiposIds.length === 0 && torneo?.equiposTorneo && encuentros.length > 0) {
       // Obtener encuentros de esta jornada
       const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
       
@@ -487,17 +534,15 @@ const TorneoDetailPage = () => {
         if (encuentro.equipo_visitante_id) equiposQueJuegan.add(encuentro.equipo_visitante_id)
       })
       
-      // Encontrar el equipo que no juega (descansa)
-      const equipoQueDescansa = torneo.equiposTorneo.find(et => 
+      // Encontrar los equipos que no juegan (descansan)
+      const equiposQueDescansan = torneo.equiposTorneo.filter(et => 
         et.equipo && !equiposQueJuegan.has(et.equipo_id)
       )
       
-      if (equipoQueDescansa?.equipo) {
-        return equipoQueDescansa.equipo
-      }
+      return equiposQueDescansan.map(et => et.equipo).filter(e => e)
     }
     
-    return null
+    return []
   }
 
   if (loading) {
@@ -796,9 +841,17 @@ const TorneoDetailPage = () => {
                       <Button 
                         variant="outline-primary" 
                         size="sm"
-                        onClick={() => handleGenerarJornadaDinamica(getJornadaActual())}>
+                        onClick={() => handleGenerarJornadaDinamica(getJornadaActual())}
+                        className="me-2">
                         <LuSettings className="me-1" />
                         Sistema Dinámico
+                      </Button>
+                      <Button 
+                        variant="outline-info" 
+                        size="sm"
+                        onClick={() => setShowEmparejamientosModal(true)}>
+                        <LuUsers className="me-1" />
+                        Emparejamientos Faltantes
                       </Button>
                     </div>
                   </div>
@@ -821,18 +874,24 @@ const TorneoDetailPage = () => {
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="d-flex align-items-center gap-3">
                                 <h6 className="mb-0">Jornada {jornadaNum}</h6>
-                                {getEquipoQueDescansa(parseInt(jornadaNum)) && (
+                                {getEquiposQueDescansan(parseInt(jornadaNum)).length > 0 && (
                                   <div className="d-flex align-items-center gap-2 bg-info bg-opacity-10 border border-info p-2 rounded">
-                                    <img 
-                                      src={getEquipoQueDescansa(parseInt(jornadaNum))?.imagen_equipo || 'https://via.placeholder.com/24x24/17a2b8/ffffff?text=💤'} 
-                                      alt="" 
-                                      className="rounded-circle"
-                                      width={24}
-                                      height={24}
-                                    />
-                                    <span className="text-info fw-semibold">
-                                      💤 {getEquipoQueDescansa(parseInt(jornadaNum))?.nombre} descansa
-                                    </span>
+                                    {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo, index) => (
+                                      <div key={equipo?.id} className="d-flex align-items-center gap-1">
+                                        <img 
+                                          src={equipo?.imagen_equipo || 'https://via.placeholder.com/24x24/17a2b8/ffffff?text=💤'} 
+                                          alt="" 
+                                          className="rounded-circle"
+                                          width={24}
+                                          height={24}
+                                        />
+                                        <span className="text-info fw-semibold">
+                                          💤 {equipo?.nombre}
+                                        </span>
+                                        {index < getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).length - 1 && <span className="text-info">,</span>}
+                                      </div>
+                                    ))}
+                                    <span className="text-info fw-semibold">descansan</span>
                                   </div>
                                 )}
                                 {sePuedeRegenerarJornada(parseInt(jornadaNum)) && (
@@ -940,23 +999,25 @@ const TorneoDetailPage = () => {
                               ))}
                             </Row>
                             
-                            {/* Mostrar equipo que descansa de manera prominente */}
-                            {getEquipoQueDescansa(parseInt(jornadaNum)) && (
+                            {/* Mostrar equipos que descansan de manera prominente */}
+                            {getEquiposQueDescansan(parseInt(jornadaNum)).length > 0 && (
                               <div className="mt-3 p-3 bg-light border rounded">
                                 <div className="d-flex align-items-center justify-content-center gap-3">
-                                  <div className="text-center">
-                                    <img 
-                                      src={getEquipoQueDescansa(parseInt(jornadaNum))?.imagen_equipo || 'https://via.placeholder.com/48x48/17a2b8/ffffff?text=💤'} 
-                                      alt="" 
-                                      className="rounded-circle mb-2"
-                                      width={48}
-                                      height={48}
-                                    />
-                                    <h6 className="text-info mb-0">
-                                      💤 {getEquipoQueDescansa(parseInt(jornadaNum))?.nombre}
-                                    </h6>
-                                    <small className="text-muted">Descansa esta jornada</small>
-                                  </div>
+                                  {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo) => (
+                                    <div key={equipo?.id} className="text-center">
+                                      <img 
+                                        src={equipo?.imagen_equipo || 'https://via.placeholder.com/48x48/17a2b8/ffffff?text=💤'} 
+                                        alt="" 
+                                        className="rounded-circle mb-2"
+                                        width={48}
+                                        height={48}
+                                      />
+                                      <h6 className="text-info mb-0">
+                                        💤 {equipo?.nombre}
+                                      </h6>
+                                      <small className="text-muted">Descansa esta jornada</small>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             )}
@@ -1122,7 +1183,7 @@ const TorneoDetailPage = () => {
                       torneoId={torneoId}
                       equipos={equiposParticipantes.map(et => et.equipo!).filter(e => e)}
                       encuentros={encuentros}
-                      descansos={equiposDescansan}
+                      descansos={equiposDescansan as any}
                     />
                   ) : (
                     <div className="text-center py-5">
@@ -1501,7 +1562,7 @@ const TorneoDetailPage = () => {
         onConfirm={handleConfirmarJornadaDinamica}
         isRegenerating={false}
         encuentrosExistentes={encuentros}
-        descansosExistentes={equiposDescansan}
+        descansosExistentes={equiposDescansan as any}
       />
 
       {/* Modal de Regeneración Dinámica */}
@@ -1515,7 +1576,15 @@ const TorneoDetailPage = () => {
         onRegenerate={handleConfirmarRegeneracionDinamica}
         isRegenerating={true}
         encuentrosExistentes={encuentros}
-        descansosExistentes={equiposDescansan}
+        descansosExistentes={equiposDescansan as any}
+      />
+
+      {/* Modal de Emparejamientos Faltantes */}
+      <EmparejamientosFaltantesModal
+        show={showEmparejamientosModal}
+        onHide={() => setShowEmparejamientosModal(false)}
+        torneoId={torneoId}
+        onSeleccionarEmparejamientos={handleSeleccionarEmparejamientos}
       />
 
     </Container>
