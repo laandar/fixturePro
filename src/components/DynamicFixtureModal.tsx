@@ -48,6 +48,7 @@ export default function DynamicFixtureModal({
     canchas: ['Cancha Principal', 'Cancha Secundaria'],
     arbitros: ['Árbitro 1', 'Árbitro 2', 'Árbitro 3']
   })
+  const [fechaJornada, setFechaJornada] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [mostrarAlternativas, setMostrarAlternativas] = useState(false)
 
@@ -55,15 +56,19 @@ export default function DynamicFixtureModal({
   useEffect(() => {
     if (show && equipos.length > 0) {
       cargarEquiposDisponibles()
+      // Establecer fecha por defecto
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      setFechaJornada(tomorrow.toISOString().split('T')[0])
     }
   }, [show, equipos])
 
-  // Generar propuesta inicial solo cuando se abre el modal
+  // Generar propuesta inicial cuando se abre el modal y se establece la fecha
   useEffect(() => {
-    if (show && equipos.length > 0) {
+    if (show && equipos.length > 0 && fechaJornada) {
       generarPropuestaInicial()
     }
-  }, [show, equipos])
+  }, [show, equipos, fechaJornada])
 
   const cargarEquiposDisponibles = async () => {
     try {
@@ -110,13 +115,21 @@ export default function DynamicFixtureModal({
       setLoading(true)
       setError(null)
       
+      // Usar la fecha seleccionada por el usuario o la fecha por defecto
+      const fechaSeleccionada = fechaJornada ? new Date(fechaJornada + 'T00:00:00') : new Date()
+      
+      console.log('🔍 Fecha seleccionada en modal:', fechaJornada)
+      console.log('🔍 Fecha convertida a Date:', fechaSeleccionada)
+      console.log('🔍 Fecha ISO string:', fechaSeleccionada.toISOString())
+      
       // Llamar a la función real del servidor
       const resultado = await generarPropuestaJornada(torneoId, jornada, {
         forzarDescanso: opciones.forzarDescanso,
         permitirDescansosConsecutivos: opciones.permitirDescansosConsecutivos,
         diasEntreJornadas: opciones.diasEntreJornadas,
         canchas: opciones.canchas,
-        arbitros: opciones.arbitros
+        arbitros: opciones.arbitros,
+        fechaJornada: fechaSeleccionada
       })
       
       setPropuesta(resultado)
@@ -130,7 +143,30 @@ export default function DynamicFixtureModal({
 
 
   const handleRegenerar = async () => {
-    await generarPropuestaInicial()
+    try {
+      setLoading(true)
+      setError(null)
+      
+      // Usar la fecha seleccionada por el usuario o la fecha por defecto
+      const fechaSeleccionada = fechaJornada ? new Date(fechaJornada + 'T00:00:00') : new Date()
+      
+      // Llamar a la función real del servidor
+      const resultado = await generarPropuestaJornada(torneoId, jornada, {
+        forzarDescanso: opciones.forzarDescanso,
+        permitirDescansosConsecutivos: opciones.permitirDescansosConsecutivos,
+        diasEntreJornadas: opciones.diasEntreJornadas,
+        canchas: opciones.canchas,
+        arbitros: opciones.arbitros,
+        fechaJornada: fechaSeleccionada
+      })
+      
+      setPropuesta(resultado)
+    } catch (error) {
+      console.error('Error al regenerar propuesta:', error)
+      setError(error instanceof Error ? error.message : 'Error al regenerar propuesta')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleConfirmar = async () => {
@@ -138,7 +174,14 @@ export default function DynamicFixtureModal({
     
     try {
       setLoading(true)
-      await onConfirm(propuesta.jornada)
+      
+      // Crear una copia de la jornada con la fecha seleccionada
+      const jornadaConFecha = {
+        ...propuesta.jornada,
+        fecha: fechaJornada ? new Date(fechaJornada + 'T00:00:00') : propuesta.jornada.fecha
+      }
+      
+      await onConfirm(jornadaConFecha)
       onHide()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al confirmar jornada')
@@ -152,7 +195,14 @@ export default function DynamicFixtureModal({
     
     try {
       setLoading(true)
-      await onRegenerate(propuesta.jornada)
+      
+      // Crear una copia de la jornada con la fecha seleccionada
+      const jornadaConFecha = {
+        ...propuesta.jornada,
+        fecha: fechaJornada ? new Date(fechaJornada + 'T00:00:00') : propuesta.jornada.fecha
+      }
+      
+      await onRegenerate(jornadaConFecha)
       onHide()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al regenerar jornada')
@@ -191,6 +241,29 @@ export default function DynamicFixtureModal({
             {error}
           </Alert>
         )}
+
+        {/* Selector de fecha */}
+        <Card className="mb-4 border-primary">
+          <CardBody>
+            <h6><LuCalendar className="me-2 text-primary" />Fecha de la Jornada</h6>
+            <Row>
+              <Col md={6}>
+                <Form.Group>
+                  <Form.Label>Selecciona la fecha para los encuentros</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={fechaJornada}
+                    onChange={(e) => setFechaJornada(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                  <Form.Text className="text-muted">
+                    Los encuentros se programarán para esta fecha
+                  </Form.Text>
+                </Form.Group>
+              </Col>
+            </Row>
+          </CardBody>
+        </Card>
 
         {/* Configuración de opciones */}
         <Card className="mb-4">

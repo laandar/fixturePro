@@ -5,6 +5,21 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        net: false,
+        tls: false,
+        crypto: false,
+        stream: false,
+        fs: false,
+        path: false,
+        os: false,
+      };
+    }
+    return config;
+  },
   images: {
     remotePatterns: [
       {

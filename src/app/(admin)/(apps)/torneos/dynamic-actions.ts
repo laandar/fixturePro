@@ -57,6 +57,7 @@ export async function generarPropuestaJornada(
     diasEntreJornadas?: number
     canchas?: string[]
     arbitros?: string[]
+    fechaJornada?: Date
   } = {}
 ): Promise<DynamicFixtureResult> {
   try {
@@ -123,14 +124,19 @@ export async function generarPropuestaJornada(
     // Generar encuentros usando algoritmo optimizado que evita emparejamientos repetidos
     const encuentros = generarEncuentrosOptimizados(equiposDisponibles, emparejamientosJugados, jornada, opciones)
 
+    console.log('🔍 Fecha recibida en servidor:', opciones.fechaJornada)
+    console.log('🔍 Opciones completas:', opciones)
+    
     const jornadaPropuesta = {
       numero: jornada,
       encuentros,
       equiposQueDescansan,
-      fecha: new Date(Date.now() + (jornada - 1) * (opciones.diasEntreJornadas || 7) * 24 * 60 * 60 * 1000),
+      fecha: opciones.fechaJornada || new Date(Date.now() + (jornada - 1) * (opciones.diasEntreJornadas || 7) * 24 * 60 * 60 * 1000),
       canchas: opciones.canchas || ['Cancha Principal'],
       arbitros: opciones.arbitros || ['Árbitro Principal']
     }
+    
+    console.log('🔍 Fecha final en jornadaPropuesta:', jornadaPropuesta.fecha)
 
     // Calcular estadísticas reales
     const nuevosEmparejamientos = encuentros.filter(e => e.esNuevoEmparejamiento).length
@@ -187,6 +193,8 @@ export async function confirmarJornada(
     // Crear encuentros
     let encuentrosCreados = 0
     for (const encuentro of jornada.encuentros) {
+      console.log('🔍 Fecha del encuentro a guardar:', encuentro.fecha)
+      
       const encuentroData = {
         torneo_id: torneoId,
         equipo_local_id: encuentro.equipoLocal,
@@ -202,6 +210,7 @@ export async function confirmarJornada(
         observaciones: null
       }
 
+      console.log('🔍 Datos del encuentro a crear:', encuentroData)
       await encuentroQueries.create(encuentroData)
       encuentrosCreados++
     }
@@ -502,7 +511,7 @@ function generarEncuentrosOptimizados(
         equipoVisitante: combo.equipo2,
         cancha: (opciones.canchas || ['Cancha Principal'])[0],
         arbitro: (opciones.arbitros || ['Árbitro Principal'])[0],
-        fecha: new Date(Date.now() + (jornada - 1) * (opciones.diasEntreJornadas || 7) * 24 * 60 * 60 * 1000),
+        fecha: opciones.fechaJornada || new Date(Date.now() + (jornada - 1) * (opciones.diasEntreJornadas || 7) * 24 * 60 * 60 * 1000),
         esNuevoEmparejamiento: combo.esNuevoEmparejamiento,
         prioridad: combo.prioridad
       })

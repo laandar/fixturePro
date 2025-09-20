@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Modal, Button, Card, Row, Col, Badge, ProgressBar, Form, Alert } from 'react-bootstrap'
-import { LuX, LuCheck, LuUsers, LuTarget } from 'react-icons/lu'
+import { LuX, LuCheck, LuUsers, LuTarget, LuCalendar } from 'react-icons/lu'
 import { obtenerEmparejamientosFaltantes } from '@/app/(admin)/(apps)/torneos/dynamic-actions'
 
 interface Emparejamiento {
@@ -24,7 +24,7 @@ interface EmparejamientosFaltantesModalProps {
   show: boolean
   onHide: () => void
   torneoId: number
-  onSeleccionarEmparejamientos: (emparejamientos: Emparejamiento[]) => void
+  onSeleccionarEmparejamientos: (emparejamientos: Emparejamiento[], fecha?: Date) => void
 }
 
 export default function EmparejamientosFaltantesModal({
@@ -38,10 +38,15 @@ export default function EmparejamientosFaltantesModal({
   const [error, setError] = useState<string | null>(null)
   const [emparejamientosSeleccionados, setEmparejamientosSeleccionados] = useState<Set<string>>(new Set())
   const [filtro, setFiltro] = useState<'todos' | 'faltantes' | 'jugados'>('faltantes')
+  const [fechaJornada, setFechaJornada] = useState<string>('')
 
   useEffect(() => {
     if (show && torneoId) {
       cargarEmparejamientos()
+      // Establecer fecha por defecto (mañana)
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      setFechaJornada(tomorrow.toISOString().split('T')[0])
     }
   }, [show, torneoId])
 
@@ -91,7 +96,8 @@ export default function EmparejamientosFaltantesModal({
       emparejamientosSeleccionados.has(`${e.equipo1.id}-${e.equipo2.id}`)
     )
     
-    onSeleccionarEmparejamientos(emparejamientos)
+    const fecha = fechaJornada ? new Date(fechaJornada) : undefined
+    onSeleccionarEmparejamientos(emparejamientos, fecha)
     onHide()
   }
 
@@ -205,6 +211,36 @@ export default function EmparejamientosFaltantesModal({
                 </div>
               )}
             </div>
+
+            {/* Selector de fecha para la jornada */}
+            {filtro === 'faltantes' && emparejamientosSeleccionados.size > 0 && (
+              <div className="mb-3">
+                <Card className="border-primary">
+                  <Card.Body className="p-3">
+                    <div className="d-flex align-items-center gap-3">
+                      <LuCalendar className="text-primary" size={20} />
+                      <div>
+                        <label htmlFor="fecha-jornada" className="form-label fw-semibold mb-1">
+                          Fecha de la Jornada
+                        </label>
+                        <Form.Control
+                          id="fecha-jornada"
+                          type="date"
+                          value={fechaJornada}
+                          onChange={(e) => setFechaJornada(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="form-control-sm"
+                          style={{ width: '200px' }}
+                        />
+                      </div>
+                      <div className="text-muted small">
+                        <small>Selecciona la fecha para los encuentros de esta jornada</small>
+                      </div>
+                    </div>
+                  </Card.Body>
+                </Card>
+              </div>
+            )}
 
             <Row>
               {emparejamientosAMostrar().map((emparejamiento) => {

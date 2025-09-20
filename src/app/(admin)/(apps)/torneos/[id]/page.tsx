@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, generateSingleJornada, regenerateSingleJornada, deleteJornada, getEquiposDescansan } from '../actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos } from '../actions'
 import { generarPropuestaJornada, confirmarJornada, regenerarJornadaDinamica, confirmarRegeneracionJornada, analizarTorneo } from '../dynamic-actions'
 import { getCategorias, getEquipos } from '../../equipos/actions'
 import type { TorneoWithRelations, EquipoWithRelations, Categoria, EncuentroWithRelations } from '@/db/types'
@@ -35,10 +35,6 @@ const TorneoDetailPage = () => {
   const [selectedEquipos, setSelectedEquipos] = useState<number[]>([])
   const [editingEncuentro, setEditingEncuentro] = useState<EncuentroWithRelations | null>(null)
   const [equiposDescansan, setEquiposDescansan] = useState<Record<number, number[]>>({})
-  const [showJornadaModal, setShowJornadaModal] = useState(false)
-  const [jornadaAGenerar, setJornadaAGenerar] = useState<number>(1)
-  const [showRegenerarJornadaModal, setShowRegenerarJornadaModal] = useState(false)
-  const [jornadaARegenerar, setJornadaARegenerar] = useState<number>(1)
   const [showDeleteJornadaModal, setShowDeleteJornadaModal] = useState(false)
   const [showEmparejamientosModal, setShowEmparejamientosModal] = useState(false)
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
@@ -168,49 +164,6 @@ const TorneoDetailPage = () => {
   }
 
 
-  const handleGenerarJornada = async () => {
-    if (!torneo?.equiposTorneo || torneo.equiposTorneo.length < 2) {
-      setError('Se necesitan al menos 2 equipos para generar la jornada')
-      return
-    }
-
-    try {
-      const result = await generateSingleJornada(torneoId, jornadaAGenerar, {
-        diasEntreJornadas: 7
-      })
-      
-      setSuccess(`Jornada ${result.jornada} generada exitosamente. ${result.encuentrosCreados} encuentros creados.`)
-      if (result.equipoQueDescansa) {
-        setEquiposDescansan(prev => ({ ...prev, [result.jornada]: [result.equipoQueDescansa!] }))
-      }
-      setShowJornadaModal(false)
-      await loadData()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al generar jornada')
-    }
-  }
-
-  const handleRegenerarJornada = async () => {
-    if (!torneo?.equiposTorneo || torneo.equiposTorneo.length < 2) {
-      setError('Se necesitan al menos 2 equipos para regenerar la jornada')
-      return
-    }
-
-    try {
-      const result = await regenerateSingleJornada(torneoId, jornadaARegenerar, {
-        diasEntreJornadas: 7
-      })
-      
-      setSuccess(`Jornada ${result.jornada} regenerada exitosamente. ${result.encuentrosCreados} encuentros creados, ${result.encuentrosEliminados} eliminados.`)
-      if (result.equipoQueDescansa) {
-        setEquiposDescansan(prev => ({ ...prev, [result.jornada]: [result.equipoQueDescansa!] }))
-      }
-      setShowRegenerarJornadaModal(false)
-      await loadData()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al regenerar jornada')
-    }
-  }
 
   const handleDeleteJornada = async () => {
     try {
@@ -272,30 +225,12 @@ const TorneoDetailPage = () => {
     }
   }
 
-  const handleSeleccionarEmparejamientos = async (emparejamientos: Array<{equipo1: {id: number, nombre: string}, equipo2: {id: number, nombre: string}}>) => {
+  const handleSeleccionarEmparejamientos = async (emparejamientos: Array<{equipo1: {id: number, nombre: string}, equipo2: {id: number, nombre: string}}>, fecha?: Date) => {
     try {
-      // Crear encuentros para los emparejamientos seleccionados
-      const encuentrosPorJornadaData = getEncuentrosPorJornada()
-      const proximaJornada = Math.max(...Object.keys(encuentrosPorJornadaData).map(Number), 0) + 1
+      // Usar la función del servidor para crear la jornada
+      const resultado = await crearJornadaConEmparejamientos(torneoId, emparejamientos, fecha)
       
-      for (const emparejamiento of emparejamientos) {
-        // Crear encuentro para este emparejamiento
-        const nuevoEncuentro = {
-          torneo_id: torneoId,
-          jornada: proximaJornada,
-          equipo_local_id: emparejamiento.equipo1.id,
-          equipo_visitante_id: emparejamiento.equipo2.id,
-          fecha_programada: new Date(),
-          estado: 'programado' as const,
-          cancha: '',
-          observaciones: `Emparejamiento seleccionado manualmente`
-        }
-        
-        // Aquí deberías llamar a una función para crear el encuentro
-        // Por ahora, solo mostramos un mensaje de éxito
-      }
-      
-      setSuccess(`Jornada ${proximaJornada} creada con ${emparejamientos.length} emparejamiento(s) seleccionado(s)`)
+      setSuccess(resultado.mensaje)
       await loadData()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al crear jornada con emparejamientos seleccionados')
@@ -317,73 +252,75 @@ const TorneoDetailPage = () => {
     return jornadas
   }
 
-  // Función para determinar si una jornada está jugada (todos los encuentros finalizados o en curso)
-  const isJornadaJugada = (jornada: number) => {
-    const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
-    if (encuentrosJornada.length === 0) return false
-    
-    return encuentrosJornada.every(e => 
-      e.estado === 'finalizado' || e.estado === 'en_curso'
-    )
-  }
 
-  // Función para obtener la jornada actual (próxima jornada no jugada)
+  // Función para obtener la jornada actual (próxima jornada)
   const getJornadaActual = () => {
     const jornadas = getEncuentrosPorJornada()
     const jornadasOrdenadas = Object.keys(jornadas)
       .map(Number)
       .sort((a, b) => a - b)
     
-    // Buscar la primera jornada que no esté jugada
-    for (const jornada of jornadasOrdenadas) {
-      if (!isJornadaJugada(jornada)) {
-        return jornada
-      }
-    }
-    
-    // Si todas las jornadas están jugadas, retornar la siguiente
+    // Retornar la siguiente jornada
     return jornadasOrdenadas.length > 0 ? Math.max(...jornadasOrdenadas) + 1 : 1
   }
 
-  // Función para obtener el estado de una jornada
-  const getEstadoJornada = (jornada: number) => {
-    if (isJornadaJugada(jornada)) {
-      return 'jugada'
-    }
-    
-    const jornadaActual = getJornadaActual()
-    if (jornada === jornadaActual) {
-      return 'actual'
-    }
-    
-    return 'futura'
-  }
 
-  // Función para verificar si una jornada se puede regenerar
-  const sePuedeRegenerarJornada = (jornada: number) => {
-    const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
-    if (encuentrosJornada.length === 0) return false // No existe la jornada
-    
-    // Se puede regenerar si no está cerrada (no todos los encuentros están finalizados o en curso)
-    return !encuentrosJornada.every(e => e.estado === 'finalizado' || e.estado === 'en_curso')
-  }
 
 
   const getEstadoBadge = (estado: string | null) => {
-    const config: Record<string, { bg: string; text: string; label: string }> = {
-      programado: { bg: 'secondary', text: 'secondary', label: 'Programado' },
-      en_curso: { bg: 'warning', text: 'warning', label: 'En Curso' },
-      finalizado: { bg: 'success', text: 'success', label: 'Finalizado' },
-      cancelado: { bg: 'danger', text: 'danger', label: 'Cancelado' },
-      aplazado: { bg: 'info', text: 'info', label: 'Aplazado' }
+    const config: Record<string, { 
+      text: string; 
+      label: string; 
+      icon: string;
+      border: string;
+    }> = {
+      programado: { 
+        text: 'secondary', 
+        label: 'Programado',
+        icon: '⏰',
+        border: 'border border-secondary'
+      },
+      en_curso: { 
+        text: 'warning', 
+        label: 'En Curso',
+        icon: '⚽',
+        border: 'border border-warning'
+      },
+      finalizado: { 
+        text: 'success', 
+        label: 'Finalizado',
+        icon: '✅',
+        border: 'border border-success'
+      },
+      cancelado: { 
+        text: 'danger', 
+        label: 'Cancelado',
+        icon: '❌',
+        border: 'border border-danger'
+      },
+      aplazado: { 
+        text: 'info', 
+        label: 'Aplazado',
+        icon: '⏳',
+        border: 'border border-info'
+      }
     }
     const estadoKey = estado ?? 'programado'
-    const configItem = config[estadoKey] || { bg: 'secondary', text: 'secondary', label: estadoKey }
+    const configItem = config[estadoKey] || { 
+      text: 'secondary', 
+      label: estadoKey,
+      icon: '❓',
+      border: 'border border-secondary'
+    }
     
     return (
-      <Badge bg={configItem.bg} className={`text-${configItem.text}`}>
-        {configItem.label}  
-      </Badge>
+      <span 
+        className={`badge text-${configItem.text} ${configItem.border} px-3 py-2 rounded-pill fw-semibold d-flex align-items-center gap-1 bg-transparent`}
+        style={{ fontSize: '0.75rem' }}
+      >
+        <span>{configItem.icon}</span>
+        <span>{configItem.label}</span>
+      </span>
     )
   }
 
@@ -806,9 +743,12 @@ const TorneoDetailPage = () => {
                 {/* Tab: Fixture */}
                 <Tab.Pane eventKey="fixture">
                   {/* Botones de acciones - siempre visibles */}
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5>Fixture del Torneo</h5>
-                    <div className="d-flex gap-2">
+                  <div className="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                      <h5 className="mb-1">Fixture del Torneo</h5>
+                      <p className="text-muted mb-0">Gestiona los encuentros y jornadas del torneo</p>
+                    </div>
+                    <div className="d-flex flex-wrap gap-2">
                       <Button 
                         variant="outline-success" 
                         size="sm"
@@ -823,20 +763,6 @@ const TorneoDetailPage = () => {
                         onClick={() => setShowFixtureModal(true)}>
                         <LuSettings className="me-1" />
                         {encuentros.length === 0 ? 'Generar Fixture' : 'Regenerar Fixture Completo'}
-                      </Button>
-                      <Button 
-                        variant="outline-success" 
-                        size="sm"
-                        onClick={() => setShowJornadaModal(true)}>
-                        <LuPlus className="me-1" />
-                        Generar Jornada Individual
-                      </Button>
-                      <Button 
-                        variant="outline-warning" 
-                        size="sm"
-                        onClick={() => setShowRegenerarJornadaModal(true)}>
-                        <LuTriangle className="me-1" />
-                        Regenerar Jornada
                       </Button>
                       <Button 
                         variant="outline-primary" 
@@ -858,72 +784,88 @@ const TorneoDetailPage = () => {
 
                   {encuentros.length === 0 ? (
                     <div className="text-center py-5">
-                      <LuGamepad2 className="fs-1 text-muted mb-3" />
-                      <h5>No hay encuentros programados</h5>
-                      <p className="text-muted">
-                        {equiposParticipantes.length >= 2 
-                          ? 'Genera el fixture para ver los encuentros programados'
-                          : 'Agrega al menos 2 equipos para generar el fixture'}
-                      </p>
+                      <div className="mb-4">
+                        <div className="d-inline-flex align-items-center justify-content-center bg-light rounded-circle mb-3" style={{width: '80px', height: '80px'}}>
+                          <LuGamepad2 className="fs-1 text-muted" />
+                        </div>
+                        <h4 className="mb-2">No hay encuentros programados</h4>
+                        <p className="text-muted mb-4">
+                          {equiposParticipantes.length >= 2 
+                            ? 'Genera el fixture para ver los encuentros programados'
+                            : 'Agrega al menos 2 equipos para generar el fixture'}
+                        </p>
+                        {equiposParticipantes.length >= 2 && (
+                          <Button 
+                            variant="primary" 
+                            size="lg"
+                            onClick={() => setShowFixtureModal(true)}>
+                            <LuSettings className="me-2" />
+                            Generar Fixture
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div>
                       {Object.keys(jornadas).sort((a, b) => parseInt(a) - parseInt(b)).map(jornadaNum => (
-                        <Card key={jornadaNum} className="mb-4">
-                          <CardHeader>
+                        <Card key={jornadaNum} className="mb-3 shadow-sm">
+                          <CardHeader className="bg-light border-bottom">
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="d-flex align-items-center gap-3">
-                                <h6 className="mb-0">Jornada {jornadaNum}</h6>
+                                {/* Número de jornada simplificado */}
+                                <div className="d-flex align-items-center gap-2">
+                                  <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" 
+                                       style={{width: '32px', height: '32px', fontSize: '14px'}}>
+                                    {jornadaNum}
+                                  </div>
+                                  <div>
+                                    <h6 className="mb-0 fw-semibold">Jornada {jornadaNum}</h6>
+                                    <small className="text-muted">
+                                      {jornadas[parseInt(jornadaNum)].length} encuentro{jornadas[parseInt(jornadaNum)].length !== 1 ? 's' : ''}
+                                    </small>
+                                  </div>
+                                </div>
+                                
+                                {/* Equipos que descansan - diseño compacto */}
                                 {getEquiposQueDescansan(parseInt(jornadaNum)).length > 0 && (
-                                  <div className="d-flex align-items-center gap-2 bg-info bg-opacity-10 border border-info p-2 rounded">
-                                    {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo, index) => (
-                                      <div key={equipo?.id} className="d-flex align-items-center gap-1">
-                                        <img 
-                                          src={equipo?.imagen_equipo || 'https://via.placeholder.com/24x24/17a2b8/ffffff?text=💤'} 
-                                          alt="" 
-                                          className="rounded-circle"
-                                          width={24}
-                                          height={24}
-                                        />
-                                        <span className="text-info fw-semibold">
-                                          💤 {equipo?.nombre}
-                                        </span>
-                                        {index < getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).length - 1 && <span className="text-info">,</span>}
-                                      </div>
-                                    ))}
-                                    <span className="text-info fw-semibold">descansan</span>
+                                  <div className="d-flex align-items-center gap-2 bg-info bg-opacity-10 border border-info border-opacity-25 px-3 py-2 rounded">
+                                    <span className="text-info">💤</span>
+                                    <span className="text-info fw-semibold small">Descansan:</span>
+                                    <div className="d-flex align-items-center gap-1">
+                                      {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo, index) => (
+                                        <div key={equipo?.id} className="d-flex align-items-center gap-1">
+                                          <img 
+                                            src={equipo?.imagen_equipo || `https://ui-avatars.com/api/?name=${encodeURIComponent(equipo?.nombre || 'E')}&background=6c757d&color=fff&size=20`} 
+                                            alt={equipo?.nombre} 
+                                            className="rounded-circle"
+                                            width={20}
+                                            height={20}
+                                            onError={(e) => {
+                                              e.currentTarget.style.display = 'none'
+                                              e.currentTarget.nextElementSibling?.classList.remove('d-none')
+                                            }}
+                                          />
+                                          <div className="d-none bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" 
+                                               style={{width: '20px', height: '20px', fontSize: '10px'}}>
+                                            {equipo?.nombre?.charAt(0) || 'E'}
+                                          </div>
+                                          <span className="text-info fw-semibold small">
+                                            {equipo?.nombre}
+                                          </span>
+                                          {index < getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).length - 1 && 
+                                            <span className="text-muted">•</span>}
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
-                                {sePuedeRegenerarJornada(parseInt(jornadaNum)) && (
-                                  <Badge bg="info" text="dark" className="ms-2">
-                                    <LuTriangle className="me-1" />
-                                    Regenerable
-                                  </Badge>
-                                )}
-                                {!sePuedeRegenerarJornada(parseInt(jornadaNum)) && isJornadaJugada(parseInt(jornadaNum)) && (
-                                  <Badge bg="success" text="dark" className="ms-2">
-                                    <LuCheck className="me-1" />
-                                    Cerrada
-                                  </Badge>
-                                )}
                               </div>
+                              
+                              {/* Estados y botones - diseño simplificado */}
                               <div className="d-flex align-items-center gap-2">
-                                <Badge bg="light" text="dark">
-                                  {jornadas[parseInt(jornadaNum)].length} encuentros
-                                </Badge>
-                                {sePuedeRegenerarJornada(parseInt(jornadaNum)) && (
-                                  <Button 
-                                    variant="outline-warning" 
-                                    size="sm"
-                                    onClick={() => {
-                                      setJornadaARegenerar(parseInt(jornadaNum))
-                                      setShowRegenerarJornadaModal(true)
-                                    }}
-                                    title="Regenerar esta jornada">
-                                    <LuTriangle className="fs-sm" />
-                                  </Button>
-                                )}
-                                {sePuedeRegenerarJornada(parseInt(jornadaNum)) && (
+                                
+                                {/* Botones de acción */}
+                                <div className="d-flex gap-1">
                                   <Button 
                                     variant="outline-danger" 
                                     size="sm"
@@ -932,55 +874,95 @@ const TorneoDetailPage = () => {
                                       setShowDeleteJornadaModal(true)
                                     }}
                                     title="Eliminar esta jornada">
-                                    <LuTrash className="fs-sm" />
+                                    <LuTrash size={14} />
                                   </Button>
-                                )}
+                                </div>
                               </div>
                             </div>
                           </CardHeader>
-                          <CardBody>
+                          <CardBody className="p-4">
                             <Row>
                               {jornadas[parseInt(jornadaNum)].map((encuentro) => (
                                 <Col key={encuentro.id} md={6} lg={4} className="mb-3">
-                                  <Card className="border">
-                                    <CardBody className="p-3">
-                                      <div className="d-flex justify-content-between align-items-center mb-2">
-                                        <div className="d-flex align-items-center gap-2">
-                                          <img 
-                                            src={encuentro.equipoLocal?.imagen_equipo || 'https://via.placeholder.com/24x24/007bff/ffffff?text=🏠'} 
-                                            alt="" 
-                                            className="rounded-circle"
-                                            width={24}
-                                            height={24}
-                                          />
-                                          <span className="fw-semibold">{encuentro.equipoLocal?.nombre}</span>
-                                        </div>
-                                        <div className="text-center">
-                                          {encuentro.goles_local !== null && encuentro.goles_visitante !== null ? (
-                                            <span className="fw-bold fs-5">
-                                              {encuentro.goles_local} - {encuentro.goles_visitante}
-                                            </span>
-                                          ) : (
-                                            <span className="text-muted">vs</span>
-                                          )}
-                                        </div>
-                                        <div className="d-flex align-items-center gap-2">
-                                          <span className="fw-semibold">{encuentro.equipoVisitante?.nombre}</span>
-                                          <img 
-                                            src={encuentro.equipoVisitante?.imagen_equipo || 'https://via.placeholder.com/24x24/28a745/ffffff?text=✈️'} 
-                                            alt="" 
-                                            className="rounded-circle"
-                                            width={24}
-                                            height={24}
-                                          />
+                                  <Card className="border-0 shadow-sm h-100">
+                                    <CardBody className="p-4">
+                                      <div className="d-flex justify-content-between align-items-center mb-3">
+                                        <div className="d-flex align-items-center gap-3 flex-grow-1">
+                                          <div className="d-flex align-items-center gap-2">
+                                            <div className="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style={{width: '40px', height: '40px'}}>
+                                              <img 
+                                                src={encuentro.equipoLocal?.imagen_equipo || `https://ui-avatars.com/api/?name=${encodeURIComponent(encuentro.equipoLocal?.nombre || 'L')}&background=007bff&color=fff&size=32`} 
+                                                alt={encuentro.equipoLocal?.nombre} 
+                                                className="rounded-circle"
+                                                width={32}
+                                                height={32}
+                                                onError={(e) => {
+                                                  e.currentTarget.style.display = 'none'
+                                                  e.currentTarget.nextElementSibling?.classList.remove('d-none')
+                                                }}
+                                              />
+                                              <div className="d-none text-primary fw-bold" style={{fontSize: '14px'}}>
+                                                {encuentro.equipoLocal?.nombre?.charAt(0) || 'L'}
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <div className="fw-semibold text-truncate" style={{maxWidth: '120px'}}>
+                                                {encuentro.equipoLocal?.nombre}
+                                              </div>
+                                              <small className="text-muted">Local</small>
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="text-center flex-grow-1">
+                                            {encuentro.goles_local !== null && encuentro.goles_visitante !== null ? (
+                                              <div className="bg-light rounded p-2">
+                                                <span className="fw-bold fs-4 text-primary">
+                                                  {encuentro.goles_local} - {encuentro.goles_visitante}
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              <div className="bg-light rounded p-2">
+                                                <span className="text-muted fw-semibold">VS</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          <div className="d-flex align-items-center gap-2">
+                                            <div>
+                                              <div className="fw-semibold text-truncate text-end" style={{maxWidth: '120px'}}>
+                                                {encuentro.equipoVisitante?.nombre}
+                                              </div>
+                                              <small className="text-muted text-end d-block">Visitante</small>
+                                            </div>
+                                            <div className="bg-success bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style={{width: '40px', height: '40px'}}>
+                                              <img 
+                                                src={encuentro.equipoVisitante?.imagen_equipo || `https://ui-avatars.com/api/?name=${encodeURIComponent(encuentro.equipoVisitante?.nombre || 'V')}&background=28a745&color=fff&size=32`} 
+                                                alt={encuentro.equipoVisitante?.nombre} 
+                                                className="rounded-circle"
+                                                width={32}
+                                                height={32}
+                                                onError={(e) => {
+                                                  e.currentTarget.style.display = 'none'
+                                                  e.currentTarget.nextElementSibling?.classList.remove('d-none')
+                                                }}
+                                              />
+                                              <div className="d-none text-success fw-bold" style={{fontSize: '14px'}}>
+                                                {encuentro.equipoVisitante?.nombre?.charAt(0) || 'V'}
+                                              </div>
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
+                                      
                                       <div className="d-flex justify-content-between align-items-center">
-                                        <small className="text-muted">
-                                          {encuentro.fecha_programada ? 
-                                            new Date(encuentro.fecha_programada).toLocaleDateString('es-ES') : 'Fecha por definir'}
-                                        </small>
-                                        <div className="d-flex gap-1">
+                                        <div className="d-flex align-items-center gap-2">
+                                          <LuClock className="text-muted" size={14} />
+                                          <small className="text-muted">
+                                            {encuentro.fecha_programada ? 
+                                              new Date(encuentro.fecha_programada).toLocaleDateString('es-ES') : 'Fecha por definir'}
+                                          </small>
+                                        </div>
+                                        <div className="d-flex gap-2">
                                           {getEstadoBadge(encuentro.estado)}
                                           <Button 
                                             variant="outline-primary" 
@@ -988,44 +970,37 @@ const TorneoDetailPage = () => {
                                             onClick={() => {
                                               setEditingEncuentro(encuentro)
                                               setShowEncuentroModal(true)
-                                            }}>
-                                            <LuSettings className="fs-sm" />
+                                            }}
+                                            title="Editar encuentro">
+                                            <LuSettings size={14} />
                                           </Button>
                                         </div>
                                       </div>
+                                      
+                                      {encuentro.cancha && (
+                                        <div className="mt-2">
+                                          <small className="text-muted">
+                                            <strong>Cancha:</strong> {encuentro.cancha}
+                                          </small>
+                                        </div>
+                                      )}
+                                      
+                                      {encuentro.observaciones && (
+                                        <div className="mt-2">
+                                          <small className="text-muted">
+                                            <strong>Obs:</strong> {encuentro.observaciones}
+                                          </small>
+                                        </div>
+                                      )}
                                     </CardBody>
                                   </Card>
                                 </Col>
                               ))}
                             </Row>
                             
-                            {/* Mostrar equipos que descansan de manera prominente */}
-                            {getEquiposQueDescansan(parseInt(jornadaNum)).length > 0 && (
-                              <div className="mt-3 p-3 bg-light border rounded">
-                                <div className="d-flex align-items-center justify-content-center gap-3">
-                                  {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo) => (
-                                    <div key={equipo?.id} className="text-center">
-                                      <img 
-                                        src={equipo?.imagen_equipo || 'https://via.placeholder.com/48x48/17a2b8/ffffff?text=💤'} 
-                                        alt="" 
-                                        className="rounded-circle mb-2"
-                                        width={48}
-                                        height={48}
-                                      />
-                                      <h6 className="text-info mb-0">
-                                        💤 {equipo?.nombre}
-                                      </h6>
-                                      <small className="text-muted">Descansa esta jornada</small>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
                           </CardBody>
                         </Card>
                       ))}
-
-
                     </div>
                   )}
                 </Tab.Pane>
@@ -1353,157 +1328,6 @@ const TorneoDetailPage = () => {
       </Modal>
 
 
-      {/* Modal para generar jornada individual */}
-      <Modal show={showJornadaModal} onHide={() => setShowJornadaModal(false)}>
-        <ModalHeader closeButton>
-          <Modal.Title>
-            <LuPlus className="me-2" />
-            Generar Jornada Individual
-          </Modal.Title>
-        </ModalHeader>
-        <ModalBody>
-          <Alert variant="info" className="mb-3">
-            <h6><LuCalendar className="me-2" />Generar Jornada por Jornada</h6>
-            <p className="mb-0">
-              Esta opción te permite generar una jornada específica y guardarla en la base de datos. 
-              Es útil para validar correctamente los descansos y restricciones jornada por jornada.
-            </p>
-          </Alert>
-
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Seleccionar Jornada</Form.Label>
-              <FormSelect 
-                value={jornadaAGenerar} 
-                onChange={(e) => setJornadaAGenerar(parseInt(e.target.value))}
-              >
-                {Array.from({ length: (torneo?.equiposTorneo?.length || 0) - 1 }, (_, i) => i + 1).map(jornada => (
-                  <option key={jornada} value={jornada}>
-                    Jornada {jornada}
-                  </option>
-                ))}
-              </FormSelect>
-              <Form.Text className="text-muted">
-                Selecciona la jornada que deseas generar. La jornada debe no existir previamente.
-              </Form.Text>
-            </Form.Group>
-
-          </Form>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setShowJornadaModal(false)}>
-            Cancelar
-          </Button>
-          <Button variant="success" onClick={handleGenerarJornada}>
-            <LuPlus className="me-1" />
-            Generar Jornada {jornadaAGenerar}
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* Modal para regenerar jornada individual */}
-      <Modal show={showRegenerarJornadaModal} onHide={() => setShowRegenerarJornadaModal(false)}>
-        <ModalHeader closeButton>
-          <Modal.Title>
-            <LuTriangle className="me-2" />
-            Regenerar Jornada Individual
-          </Modal.Title>
-        </ModalHeader>
-        <ModalBody>
-          <Alert variant="warning" className="mb-3">
-            <h6><LuTriangle className="me-2" />Regenerar Jornada Existente</h6>
-            <p className="mb-0">
-              Esta opción te permite regenerar una jornada ya generada, eliminando los encuentros existentes 
-              y creando nuevos emparejamientos. <strong>Las jornadas cerradas (jugadas) no se pueden regenerar.</strong>
-            </p>
-          </Alert>
-
-          <Alert variant="info" className="mb-3">
-            <h6><LuInfo className="me-2" />¿Cuándo se puede regenerar una jornada?</h6>
-            <ul className="mb-0">
-              <li><strong>Se puede regenerar:</strong> Jornadas con encuentros en estado "programado" o "aplazado"</li>
-              <li><strong>No se puede regenerar:</strong> Jornadas donde todos los encuentros están "finalizados" o "en curso"</li>
-              <li><strong>Beneficios:</strong> Permite ajustar emparejamientos y descansos sin afectar jornadas ya jugadas</li>
-            </ul>
-          </Alert>
-
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Seleccionar Jornada a Regenerar</Form.Label>
-              <FormSelect 
-                value={jornadaARegenerar} 
-                onChange={(e) => setJornadaARegenerar(parseInt(e.target.value))}
-              >
-                {Object.keys(jornadas).map(jornadaNum => {
-                  const jornada = parseInt(jornadaNum)
-                  const sePuedeRegenerar = sePuedeRegenerarJornada(jornada)
-                  const estadoJornada = getEstadoJornada(jornada)
-                  
-                  return (
-                    <option 
-                      key={jornada} 
-                      value={jornada}
-                      disabled={!sePuedeRegenerar}
-                    >
-                      Jornada {jornada} {!sePuedeRegenerar ? `(${estadoJornada === 'jugada' ? 'Cerrada' : 'No disponible'})` : ''}
-                    </option>
-                  )
-                })}
-              </FormSelect>
-              <Form.Text className="text-muted">
-                Selecciona la jornada que deseas regenerar. Solo se muestran jornadas que se pueden regenerar.
-              </Form.Text>
-            </Form.Group>
-
-            {(() => {
-              const jornadaSeleccionada = jornadas[jornadaARegenerar] || []
-              const estadoJornada = getEstadoJornada(jornadaARegenerar)
-              const sePuedeRegenerar = sePuedeRegenerarJornada(jornadaARegenerar)
-              
-              if (!sePuedeRegenerar) {
-                return (
-                  <Alert variant="danger" className="mb-3">
-                    <h6><LuX className="me-2" />Jornada No Regenerable</h6>
-                    <p className="mb-0">
-                      La jornada {jornadaARegenerar} no se puede regenerar porque {estadoJornada === 'jugada' ? 'ya fue jugada' : 'no está disponible'}.
-                    </p>
-                  </Alert>
-                )
-              }
-
-              return (
-                <div>
-                  <Alert variant="info" className="mb-3">
-                    <h6><LuInfo className="me-2" />Información de la Jornada</h6>
-                    <p className="mb-2">
-                      <strong>Jornada {jornadaARegenerar}</strong> - {jornadaSeleccionada.length} encuentros
-                    </p>
-                    <p className="mb-0">
-                      Estado: <Badge bg={estadoJornada === 'actual' ? 'primary' : 'secondary'}>
-                        {estadoJornada === 'actual' ? 'Actual' : 'Futura'}
-                      </Badge>
-                    </p>
-                  </Alert>
-
-                </div>
-              )
-            })()}
-          </Form>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setShowRegenerarJornadaModal(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            variant="warning" 
-            onClick={handleRegenerarJornada}
-            disabled={!sePuedeRegenerarJornada(jornadaARegenerar)}
-          >
-            <LuTriangle className="me-1" />
-            Regenerar Jornada {jornadaARegenerar}
-          </Button>
-        </ModalFooter>
-      </Modal>
 
       {/* Modal para eliminar jornada */}
       <Modal show={showDeleteJornadaModal} onHide={() => setShowDeleteJornadaModal(false)}>

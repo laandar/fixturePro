@@ -627,3 +627,77 @@ export async function deleteJornada(
     throw new Error(`Error al eliminar jornada ${jornada}: ${error instanceof Error ? error.message : 'Error desconocido'}`)
   }
 }
+
+export async function crearJornadaConEmparejamientos(
+  torneoId: number,
+  emparejamientos: Array<{equipo1: {id: number, nombre: string}, equipo2: {id: number, nombre: string}}>,
+  fecha?: Date
+) {
+  try {
+    // Obtener encuentros existentes para calcular la próxima jornada
+    const encuentrosExistentes = await encuentroQueries.getByTorneoId(torneoId)
+    const jornadasExistentes = [...new Set(encuentrosExistentes.map(e => e.jornada).filter(Boolean))]
+    const proximaJornada = jornadasExistentes.length > 0 ? Math.max(...jornadasExistentes) + 1 : 1
+    
+    let encuentrosCreados = 0
+    
+    // Usar la fecha proporcionada o la fecha actual como fallback
+    const fechaEncuentros = fecha || new Date()
+    
+    // Crear encuentros para cada emparejamiento
+    for (const emparejamiento of emparejamientos) {
+      const nuevoEncuentro = {
+        torneo_id: torneoId,
+        jornada: proximaJornada,
+        equipo_local_id: emparejamiento.equipo1.id,
+        equipo_visitante_id: emparejamiento.equipo2.id,
+        fecha_programada: fechaEncuentros,
+        estado: 'programado' as const,
+        cancha: '',
+        observaciones: `Emparejamiento seleccionado manualmente`
+      }
+      
+      await encuentroQueries.create(nuevoEncuentro)
+      encuentrosCreados++
+    }
+    
+    // Manejar equipos que descansan si hay número impar de equipos
+    const torneo = await torneoQueries.getByIdWithRelations(torneoId)
+    const equiposParticipantes = torneo?.equiposTorneo || []
+    const equiposEnJornada = new Set<number>()
+    
+    // Recopilar todos los equipos que juegan en esta jornada
+    emparejamientos.forEach(emp => {
+      equiposEnJornada.add(emp.equipo1.id)
+      equiposEnJornada.add(emp.equipo2.id)
+    })
+    
+    // Si hay número impar de equipos, identificar quién descansa
+    if (equiposParticipantes.length % 2 === 1) {
+      const equiposQueDescansan = equiposParticipantes
+        .filter(et => !equiposEnJornada.has(et.equipo_id))
+        .map(et => et.equipo_id)
+      
+      if (equiposQueDescansan.length > 0) {
+        // Guardar el descanso en la base de datos
+        for (const equipoId of equiposQueDescansan) {
+          await equiposDescansanQueries.create({
+            torneo_id: torneoId,
+            jornada: proximaJornada,
+            equipo_id: equipoId
+          })
+        }
+      }
+    }
+    
+    revalidatePath(`/torneos/${torneoId}`)
+    
+    return {
+      mensaje: `Jornada ${proximaJornada} creada con ${encuentrosCreados} encuentro(s) seleccionado(s)`,
+      encuentrosCreados,
+      jornada: proximaJornada
+    }
+  } catch (error) {
+    throw new Error(`Error al crear jornada con emparejamientos: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+  }
+}
