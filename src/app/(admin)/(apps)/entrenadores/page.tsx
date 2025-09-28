@@ -4,7 +4,6 @@ import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
 import DeleteConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
-import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
 import {
   ColumnFiltersState,
@@ -18,43 +17,42 @@ import {
   Table as TableType,
   useReactTable,
 } from '@tanstack/react-table'
-import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
-import { LuSearch, LuTrophy } from 'react-icons/lu'
+import { LuSearch, LuUser } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash } from 'react-icons/tb'
-import { getCategorias, createCategoria, updateCategoria, deleteCategoria, deleteMultipleCategorias } from './actions'
-import type { Categoria } from '@/db/types'
+import { getEntrenadores, createEntrenador, updateEntrenador, deleteEntrenador, deleteMultipleEntrenadores } from './actions'
+import type { Entrenador } from '@/db/types'
 
-const columnHelper = createColumnHelper<Categoria>()
+const columnHelper = createColumnHelper<Entrenador>()
 
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
   
-  const [data, setData] = useState<Categoria[]>([])
+  const [data, setData] = useState<Entrenador[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null)
-  const [editingCategoria, setEditingCategoria] = useState<Categoria | null>(null)
+  const [editingEntrenador, setEditingEntrenador] = useState<Entrenador | null>(null)
   const [editFormError, setEditFormError] = useState<string | null>(null)
   const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
-  
+
   const columns = [
     columnHelper.accessor('nombre', {
-      header: 'Nombre de la Categoría',
+      header: 'Nombre del Entrenador',
       cell: ({ row }) => (
         <div className="d-flex justify-content-start align-items-center gap-2">
           <div className="avatar avatar-sm">
             <div className="avatar-title bg-light rounded-circle">
-              <LuTrophy className="fs-lg text-warning" />
+              <LuUser className="fs-lg text-primary" />
             </div>
           </div>
           <div>
             <h5 className="text-nowrap mb-0 lh-base fs-base">
-              <Link href={`/categorias/${row.original.id}`} className="link-reset">
+              <Link href={`/entrenadores/${row.original.id}`} className="link-reset">
                 {row.original.nombre}
               </Link>
             </h5>
@@ -63,23 +61,13 @@ const Page = () => {
         </div>
       ),
     }),
-    columnHelper.accessor('permite_revancha', {
-      header: 'Permite Revancha',
-      filterFn: 'equalsString',
-      enableColumnFilter: true,
-      cell: ({ row }) => (
-        <span className={`badge ${row.original.permite_revancha ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'} badge-label`}>
-          {row.original.permite_revancha ? 'Sí' : 'No'}
-        </span>
-      ),
-    }),
     columnHelper.accessor('createdAt', { 
       header: 'Fecha Creación',
       cell: ({ row }) => row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString('es-ES') : 'N/A'
     }),
     {
       header: 'Acciones',
-      cell: ({ row }: { row: TableRow<Categoria> }) => (
+      cell: ({ row }: { row: TableRow<Entrenador> }) => (
         <div className="d-flex gap-1">
           <Button 
             variant="light" 
@@ -105,7 +93,7 @@ const Page = () => {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
-  const [categoriaToDelete, setCategoriaToDelete] = useState<Categoria | null>(null)
+  const [entrenadorToDelete, setEntrenadorToDelete] = useState<Entrenador | null>(null)
 
   const table = useReactTable({
     data,
@@ -136,14 +124,14 @@ const Page = () => {
     
     setShowDeleteModal(!showDeleteModal)
     if (!showDeleteModal) {
-      setCategoriaToDelete(null)
+      setEntrenadorToDelete(null)
     }
   }
 
-  const handleDeleteSingle = (categoria: Categoria) => {
+  const handleDeleteSingle = (entrenador: Entrenador) => {
     if (loading) return
     
-    setCategoriaToDelete(categoria)
+    setEntrenadorToDelete(entrenador)
     setShowDeleteModal(true)
   }
 
@@ -153,48 +141,48 @@ const Page = () => {
     try {
       setLoading(true)
       
-      if (categoriaToDelete) {
-        const categoriaNombre = categoriaToDelete.nombre
-        await deleteCategoria(categoriaToDelete.id)
-        setCategoriaToDelete(null)
-        setDeleteSuccess(`La categoría "${categoriaNombre}" ha sido eliminada exitosamente`)
+      if (entrenadorToDelete) {
+        const entrenadorNombre = entrenadorToDelete.nombre
+        await deleteEntrenador(entrenadorToDelete.id)
+        setEntrenadorToDelete(null)
+        setDeleteSuccess(`El entrenador "${entrenadorNombre}" ha sido eliminado exitosamente`)
       }
       
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al eliminar categoría')
+      setError(error instanceof Error ? error.message : 'Error al eliminar entrenador')
     } finally {
       setLoading(false)
       setShowDeleteModal(false)
     }
   }
 
-  const handleEditClick = (categoria: Categoria) => {
-    setEditingCategoria(categoria)
+  const handleEditClick = (entrenador: Entrenador) => {
+    setEditingEntrenador(entrenador)
     setEditFormError(null)
     setEditFormSuccess(null)
     toggleEditOffcanvas()
   }
 
-  const handleUpdateCategoria = async (formData: FormData) => {
-    if (!editingCategoria) return
+  const handleUpdateEntrenador = async (formData: FormData) => {
+    if (!editingEntrenador) return
     
     try {
       setLoading(true)
       setEditFormError(null)
       setEditFormSuccess(null)
       
-      await updateCategoria(editingCategoria.id, formData)
-      setEditFormSuccess('Categoría actualizada exitosamente')
+      await updateEntrenador(editingEntrenador.id, formData)
+      setEditFormSuccess('Entrenador actualizado exitosamente')
       
       // Recargar datos después de un breve delay
       setTimeout(async () => {
         await loadData()
         toggleEditOffcanvas()
-        setEditingCategoria(null)
+        setEditingEntrenador(null)
       }, 1000)
     } catch (error) {
-      setEditFormError(error instanceof Error ? error.message : 'Error al actualizar categoría')
+      setEditFormError(error instanceof Error ? error.message : 'Error al actualizar entrenador')
     } finally {
       setLoading(false)
     }
@@ -204,23 +192,23 @@ const Page = () => {
     try {
       setLoading(true)
       setError(null)
-      const categoriasData = await getCategorias()
-      setData(categoriasData)
+      const entrenadoresData = await getEntrenadores()
+      setData(entrenadoresData)
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al cargar categorías')
+      setError(error instanceof Error ? error.message : 'Error al cargar entrenadores')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCreateCategoria = async (formData: FormData) => {
+  const handleCreateEntrenador = async (formData: FormData) => {
     try {
       setLoading(true)
       setFormError(null)
       setFormSuccess(null)
       
-      await createCategoria(formData)
-      setFormSuccess('Categoría creada exitosamente')
+      await createEntrenador(formData)
+      setFormSuccess('Entrenador creado exitosamente')
       
       // Recargar datos después de un breve delay
       setTimeout(async () => {
@@ -228,7 +216,7 @@ const Page = () => {
         toggleOffcanvas()
       }, 1000)
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Error al crear categoría')
+      setFormError(error instanceof Error ? error.message : 'Error al crear entrenador')
     } finally {
       setLoading(false)
     }
@@ -241,7 +229,7 @@ const Page = () => {
   if (loading) {
     return (
       <Container fluid>
-        <PageBreadcrumb title="Categorías" subtitle="Apps" />
+        <PageBreadcrumb title="Entrenadores" subtitle="Apps" />
         <div className="text-center py-5">
           <div className="spinner-border" role="status">
             <span className="visually-hidden">Cargando...</span>
@@ -253,7 +241,7 @@ const Page = () => {
 
   return (
     <Container fluid>
-      <PageBreadcrumb title="Categorías" subtitle="Apps" />
+      <PageBreadcrumb title="Entrenadores" subtitle="Apps" />
 
       {error && (
         <Alert variant="danger" dismissible onClose={() => setError(null)}>
@@ -276,7 +264,7 @@ const Page = () => {
                   <input
                     type="search"
                     className="form-control"
-                    placeholder="Buscar categorías..."
+                    placeholder="Buscar entrenadores..."
                     value={globalFilter ?? ''}
                     onChange={(e) => setGlobalFilter(e.target.value)}
                   />
@@ -290,18 +278,6 @@ const Page = () => {
 
               <div className="d-flex align-items-center gap-2">
                 <span className="me-2 fw-semibold">Filtrar por:</span>
-
-                <div className="app-search">
-                  <select
-                    className="form-select form-control my-1 my-md-0"
-                    value={(table.getColumn('permite_revancha')?.getFilterValue() as string) ?? 'Todos'}
-                    onChange={(e) => table.getColumn('permite_revancha')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}>
-                    <option value="Todos">Permite Revancha</option>
-                    <option value="true">Sí</option>
-                    <option value="false">No</option>
-                  </select>
-                  <LuTrophy className="app-search-icon text-muted" />
-                </div>
 
                 <div>
                   <select
@@ -318,7 +294,7 @@ const Page = () => {
               </div>
             </CardHeader>
 
-            <DataTable<Categoria> table={table} emptyMessage="No se encontraron registros" />
+            <DataTable<Entrenador> table={table} emptyMessage="No se encontraron registros" />
 
             {table.getRowModel().rows.length > 0 && (
               <CardFooter className="border-0">
@@ -326,7 +302,7 @@ const Page = () => {
                   totalItems={totalItems}
                   start={start}
                   end={end}
-                  itemsName="categorías"
+                  itemsName="entrenadores"
                   showInfo
                   previousPage={table.previousPage}
                   canPreviousPage={table.getCanPreviousPage()}
@@ -344,7 +320,7 @@ const Page = () => {
               onHide={toggleDeleteModal}
               onConfirm={handleDelete}
               selectedCount={1}
-              itemName="categorías"
+              itemName="entrenadores"
               modalTitle="Confirmar Eliminación"
               confirmButtonText="Eliminar"
               cancelButtonText="Cancelar"
@@ -352,10 +328,10 @@ const Page = () => {
               cancelButtonVariant="light"
               isLoading={loading}
             >
-              {categoriaToDelete && (
+              {entrenadorToDelete && (
                 <div className="text-center">
-                  <p>¿Estás seguro de que quieres eliminar la categoría:</p>
-                  <h6 className="text-danger mb-3">"{categoriaToDelete.nombre}"?</h6>
+                  <p>¿Estás seguro de que quieres eliminar el entrenador:</p>
+                  <h6 className="text-danger mb-3">"{entrenadorToDelete.nombre}"?</h6>
                   <p className="text-muted small">
                     Esta acción no se puede deshacer.
                   </p>
@@ -366,11 +342,12 @@ const Page = () => {
         </Col>
       </Row>
 
+
       {/* Offcanvas Right con Formulario de Floating Labels para Crear */}
       <Offcanvas show={showOffcanvas} onHide={toggleOffcanvas} placement="end" className="offcanvas-end">
         <OffcanvasHeader closeButton>
           <OffcanvasTitle as="h5" className="mt-0">
-            Agregar Nueva Categoría
+            Agregar Nuevo Entrenador
           </OffcanvasTitle>
         </OffcanvasHeader>
         <OffcanvasBody>
@@ -385,20 +362,11 @@ const Page = () => {
             </Alert>
           )}
           
-          <Form action={handleCreateCategoria}>
+          <Form action={handleCreateEntrenador}>
             <Row className="g-3">
               <Col lg={12}>
-                <FloatingLabel label="Nombre de la Categoría">
-                  <FormControl type="text" name="nombre" placeholder="Ingrese el nombre de la categoría" required />
-                </FloatingLabel>
-              </Col>
-
-              <Col lg={12}>
-                <FloatingLabel label="Permite Revancha">
-                  <FormSelect name="permite_revancha">
-                    <option value="false">No</option>
-                    <option value="true">Sí</option>
-                  </FormSelect>
+                <FloatingLabel label="Nombre del Entrenador">
+                  <FormControl type="text" name="nombre" placeholder="Ingrese el nombre del entrenador" required />
                 </FloatingLabel>
               </Col>
 
@@ -408,7 +376,7 @@ const Page = () => {
                     Cancelar
                   </Button>
                   <Button variant="success" type="submit">
-                    Crear Categoría
+                    Crear Entrenador
                   </Button>
                 </div>
               </Col>
@@ -421,7 +389,7 @@ const Page = () => {
       <Offcanvas show={showEditOffcanvas} onHide={toggleEditOffcanvas} placement="end" className="offcanvas-end">
         <OffcanvasHeader closeButton>
           <OffcanvasTitle as="h5" className="mt-0">
-            Editar Categoría
+            Editar Entrenador
           </OffcanvasTitle>
         </OffcanvasHeader>
         <OffcanvasBody>
@@ -436,27 +404,18 @@ const Page = () => {
             </Alert>
           )}
           
-          {editingCategoria && (
-            <Form action={handleUpdateCategoria}>
+          {editingEntrenador && (
+            <Form action={handleUpdateEntrenador}>
               <Row className="g-3">
                 <Col lg={12}>
-                  <FloatingLabel label="Nombre de la Categoría">
+                  <FloatingLabel label="Nombre del Entrenador">
                     <FormControl 
                       type="text" 
                       name="nombre" 
-                      placeholder="Ingrese el nombre de la categoría" 
-                      defaultValue={editingCategoria.nombre}
+                      placeholder="Ingrese el nombre del entrenador" 
+                      defaultValue={editingEntrenador.nombre}
                       required 
                     />
-                  </FloatingLabel>
-                </Col>
-
-                <Col lg={12}>
-                  <FloatingLabel label="Permite Revancha">
-                    <FormSelect name="permite_revancha" defaultValue={editingCategoria.permite_revancha?.toString() ?? 'false'}>
-                      <option value="false">No</option>
-                      <option value="true">Sí</option>
-                    </FormSelect>
                   </FloatingLabel>
                 </Col>
 
@@ -466,7 +425,7 @@ const Page = () => {
                       Cancelar
                     </Button>
                     <Button variant="primary" type="submit">
-                      Actualizar Categoría
+                      Actualizar Entrenador
                     </Button>
                   </div>
                 </Col>

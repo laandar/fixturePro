@@ -1,7 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { User, NewUser } from '@/db/types';
+// Define User types locally since they're not in the database schema
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  createdAt: Date | null;
+}
+
+interface NewUser {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+}
 
 interface ApiResponse<T> {
   success: boolean;
@@ -216,7 +231,7 @@ const UserManagement: React.FC = () => {
           />
           <select
             value={newUser.role || 'user'}
-            onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value }))}
+            onChange={(e) => setNewUser((prev: Partial<NewUser>) => ({ ...prev, role: e.target.value }))}
             className="px-3 py-2 border border-gray-300 rounded"
           >
             <option value="user">Usuario</option>

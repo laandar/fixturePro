@@ -12,10 +12,19 @@ export async function getEquipos() {
     const equipos = await equipoQueries.getAllWithRelations()
     //console.log("Equipos con relaciones:", equipos)
     return equipos
-    return await equipoQueries.getAllWithRelations()
   } catch (error) {
     console.error('Error al obtener equipos:', error)
     throw new Error('Error al obtener equipos')
+  }
+}
+
+export async function getEquiposByCategoria(categoriaId: number) {
+  try {
+    const equipos = await equipoQueries.getByCategoriaWithRelations(categoriaId)
+    return equipos
+  } catch (error) {
+    console.error('Error al obtener equipos por categoría:', error)
+    throw new Error('Error al obtener equipos por categoría')
   }
 }
 
@@ -150,14 +159,6 @@ export async function deleteMultipleEquipos(ids: number[]) {
   }
 }
 
-export async function searchEquipos(query: string) {
-  try {
-    return await equipoQueries.search(query)
-  } catch (error) {
-    console.error('Error al buscar equipos:', error)
-    throw new Error('Error al buscar equipos')
-  }
-}
 
 // ===== CATEGORÍAS =====
 

@@ -1,14 +1,29 @@
 'use client'
-'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap'
 import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJugadoresContext'
 import { getJugadores } from '../../jugadores/actions'
 import { getEquipos } from '../../equipos/actions'
 import { getCategorias } from '../../categorias/actions'
-import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature } from '@/db/types'
+import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro } from '../actions'
+import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante } from '@/db/types'
 
 export const GestionJugadoresProvider = ({ children }: { children: React.ReactNode }) => {
+    const searchParams = useSearchParams()
+    const torneo = searchParams?.get('torneo') || null
+    const jornada = searchParams?.get('jornada') || null
+    const equipoLocalId = searchParams?.get('equipoLocal') || null
+    const equipoVisitanteId = searchParams?.get('equipoVisitante') || null
+    const nombreEquipoLocal = searchParams?.get('local') || null
+    const nombreEquipoVisitante = searchParams?.get('visitante') || null
+    
+    // Convertir a números
+    const torneoId = torneo ? parseInt(torneo) : null
+    const jornadaNum = jornada ? parseInt(jornada) : null
+    const equipoLocalIdNum = equipoLocalId ? parseInt(equipoLocalId) : null
+    const equipoVisitanteIdNum = equipoVisitanteId ? parseInt(equipoVisitanteId) : null
+    
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [jugadores, setJugadores] = useState<JugadorWithEquipo[]>([])
@@ -35,6 +50,9 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
 
     const [firmas, setFirmas] = useState<Signature>({ vocal: '', arbitro: '', capitanA: '', capitanB: '', fechaFirma: '' })
 
+    const [jugadoresParticipantes, setJugadoresParticipantes] = useState<JugadorParticipante[]>([])
+    const [isSaving, setIsSaving] = useState(false)
+
     const loadData = useCallback(async () => {
         try {
             setLoading(true)
@@ -53,12 +71,246 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         }
     }, [])
 
+    const loadGolesExistentes = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (encuentro) {
+                const golesExistentes = await getGolesEncuentro(encuentro.id)
+                console.log('Goles existentes cargados:', golesExistentes)
+                
+                // Obtener nombres de equipos desde la BD
+                const equipoLocal = equipos.find(e => e.id === equipoLocalIdNum)
+                const equipoVisitante = equipos.find(e => e.id === equipoVisitanteIdNum)
+                const nombreEquipoLocal = equipoLocal?.nombre || 'Equipo Local'
+                const nombreEquipoVisitante = equipoVisitante?.nombre || 'Equipo Visitante'
+                
+                // Convertir goles de BD a formato de contexto
+                const golesFormateados: Goal[] = golesExistentes.map(gol => ({
+                    id: gol.id.toString(),
+                    jugador: gol.jugador_id.toString(),
+                    equipo: gol.equipo_id === equipoLocalIdNum ? nombreEquipoLocal : nombreEquipoVisitante,
+                    minuto: gol.minuto || 0,
+                    tiempo: gol.tiempo || 'primer',
+                    tipo: gol.tipo || 'normal'
+                }))
+                
+                setGoles(golesFormateados)
+                console.log('Goles formateados para contexto:', golesFormateados)
+            }
+        } catch (err) {
+            console.error('Error al cargar goles existentes:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, equipos])
+
+    const loadTarjetasExistentes = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (encuentro) {
+                const tarjetasExistentes = await getTarjetasEncuentro(encuentro.id)
+                console.log('Tarjetas existentes cargadas:', tarjetasExistentes)
+                
+                // Obtener nombres de equipos desde la BD
+                const equipoLocal = equipos.find(e => e.id === equipoLocalIdNum)
+                const equipoVisitante = equipos.find(e => e.id === equipoVisitanteIdNum)
+                const nombreEquipoLocal = equipoLocal?.nombre || 'Equipo Local'
+                const nombreEquipoVisitante = equipoVisitante?.nombre || 'Equipo Visitante'
+                
+                // Convertir tarjetas de BD a formato de contexto
+                const tarjetasFormateadas: CardType[] = tarjetasExistentes.map(tarjeta => ({
+                    id: tarjeta.id.toString(),
+                    jugador: tarjeta.jugador_id.toString(),
+                    equipo: tarjeta.equipo_id === equipoLocalIdNum ? nombreEquipoLocal : nombreEquipoVisitante,
+                    minuto: tarjeta.minuto || 0,
+                    tiempo: tarjeta.tiempo || 'primer',
+                    tipo: tarjeta.tipo || 'amarilla',
+                    motivo: tarjeta.motivo || null
+                }))
+                
+                setTarjetas(tarjetasFormateadas)
+                console.log('Tarjetas formateadas para contexto:', tarjetasFormateadas)
+            }
+        } catch (err) {
+            console.error('Error al cargar tarjetas existentes:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, equipos])
+
+    const loadJugadoresParticipantes = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (encuentro) {
+                const participantes = await getJugadoresParticipantes(encuentro.id)
+                setJugadoresParticipantes(participantes)
+
+                console.log('Cargando jugadores participantes:', {
+                    encuentroId: encuentro.id,
+                    totalParticipantes: participantes.length,
+                    participantes
+                })
+
+                // Cargar jugadores participantes en los estados locales
+                const participantesLocal = participantes.filter(p => p.equipo_tipo === 'local')
+                const participantesVisitante = participantes.filter(p => p.equipo_tipo === 'visitante')
+
+                console.log('Participantes filtrados:', {
+                    participantesLocal: participantesLocal.length,
+                    participantesVisitante: participantesVisitante.length
+                })
+
+                const jugadoresLocal = jugadores.filter(j => 
+                    participantesLocal.some(p => p.jugador_id === j.id)
+                )
+                const jugadoresVisitante = jugadores.filter(j => 
+                    participantesVisitante.some(p => p.jugador_id === j.id)
+                )
+
+                console.log('Jugadores encontrados:', {
+                    jugadoresLocal: jugadoresLocal.length,
+                    jugadoresVisitante: jugadoresVisitante.length
+                })
+
+                setJugadoresParticipantesA(jugadoresLocal)
+                setJugadoresParticipantesB(jugadoresVisitante)
+            }
+        } catch (err) {
+            console.error('Error al cargar jugadores participantes:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores])
+
+    const saveJugadoresParticipantes = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum || isSaving) {
+            return
+        }
+
+        try {
+            setIsSaving(true)
+            
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (encuentro) {
+                const jugadoresData: NewJugadorParticipante[] = [
+                    ...jugadoresParticipantesA.map(j => ({
+                        encuentro_id: encuentro.id,
+                        jugador_id: j.id,
+                        equipo_tipo: 'local' as const
+                    })),
+                    ...jugadoresParticipantesB.map(j => ({
+                        encuentro_id: encuentro.id,
+                        jugador_id: j.id,
+                        equipo_tipo: 'visitante' as const
+                    }))
+                ]
+
+                console.log('Guardando jugadores participantes:', {
+                    encuentroId: encuentro.id,
+                    jugadoresLocal: jugadoresParticipantesA.length,
+                    jugadoresVisitante: jugadoresParticipantesB.length,
+                    totalJugadores: jugadoresData.length,
+                    jugadoresData
+                })
+
+                await saveJugadoresParticipantesAction(encuentro.id, jugadoresData)
+                console.log('Jugadores participantes guardados exitosamente')
+            }
+        } catch (err) {
+            console.error('Error al guardar jugadores participantes:', err)
+        } finally {
+            setIsSaving(false)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadoresParticipantesA, jugadoresParticipantesB, isSaving])
+
     useEffect(() => {
         loadData()
-    }, [loadData])
+        // Debug: mostrar información de parámetros de URL
+        if (torneo || jornada || equipoLocalId || equipoVisitanteId) {
+            console.log('Parámetros del encuentro:', {
+                torneo,
+                jornada,
+                equipoLocalId,
+                equipoVisitanteId,
+                nombreEquipoLocal,
+                nombreEquipoVisitante
+            })
+        }
+    }, [loadData, torneo, jornada, equipoLocalId, equipoVisitanteId, nombreEquipoLocal, nombreEquipoVisitante])
 
-    const jugadoresEquipoA = jugadores.filter(j => j.equipo?.nombre === 'UDEF')
-    const jugadoresEquipoB = jugadores.filter(j => j.equipo?.nombre === '9 Octubre')
+    // Cargar jugadores participantes cuando cambien los parámetros del encuentro
+    useEffect(() => {
+        if (jugadores.length > 0) {
+            loadJugadoresParticipantes()
+        }
+    }, [loadJugadoresParticipantes, jugadores.length])
+
+    // Cargar goles y tarjetas existentes cuando cambien los parámetros del encuentro
+    useEffect(() => {
+        if (torneoId && equipoLocalIdNum && equipoVisitanteIdNum && jornadaNum && jugadores.length > 0) {
+            loadGolesExistentes()
+            loadTarjetasExistentes()
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes])
+
+    // Determinar jugadores de los equipos según la URL o valores por defecto
+    const jugadoresEquipoA = jugadores.filter(j => {
+        if (equipoLocalIdNum && j.equipo?.id) {
+            return j.equipo.id === equipoLocalIdNum
+        } else if (nombreEquipoLocal && j.equipo?.nombre) {
+            return j.equipo.nombre === nombreEquipoLocal
+        }
+        // Si no hay parámetros en la URL, intentamos buscar equipo local de la BD o fallback
+        return j.equipo?.nombre === 'UDEF' || (equipos.length > 0 && j.equipo?.id === equipos[0]?.id)
+    })
+    
+    const jugadoresEquipoB = jugadores.filter(j => {
+        if (equipoVisitanteIdNum && j.equipo?.id) {
+            return j.equipo.id === equipoVisitanteIdNum
+        } else if (nombreEquipoVisitante && j.equipo?.nombre) {
+            return j.equipo.nombre === nombreEquipoVisitante
+        }
+        // Si no hay parámetros en la URL, intentamos buscar equipo visitante de la BD o fallback
+        return j.equipo?.nombre === '9 Octubre' || (equipos.length > 1 && j.equipo?.id === equipos[1]?.id)
+    })
 
     const handleTogglePlayerSelection = (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
         const setter = equipo === 'A' ? setJugadoresParticipantesA : setJugadoresParticipantesB
@@ -68,17 +320,29 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         } else {
             setter([...participantes, jugador])
         }
+        // Guardar automáticamente cuando se cambie la selección
+        setTimeout(() => {
+            saveJugadoresParticipantes()
+        }, 500) // Aumentar el tiempo para evitar condiciones de carrera
     }
 
     const handleSelectAllPlayers = (equipo: 'A' | 'B') => {
         const source = equipo === 'A' ? jugadoresEquipoA : jugadoresEquipoB
         const setter = equipo === 'A' ? setJugadoresParticipantesA : setJugadoresParticipantesB
         setter(source)
+        // Guardar automáticamente cuando se cambie la selección
+        setTimeout(() => {
+            saveJugadoresParticipantes()
+        }, 500)
     }
 
     const handleClearAllPlayers = (equipo: 'A' | 'B') => {
         const setter = equipo === 'A' ? setJugadoresParticipantesA : setJugadoresParticipantesB
         setter([])
+        // Guardar automáticamente cuando se cambie la selección
+        setTimeout(() => {
+            saveJugadoresParticipantes()
+        }, 500)
     }
 
     const handleAddCambio = () => {
@@ -106,16 +370,39 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
     }
 
         const handleQuickSanction = (jugador: JugadorWithEquipo, tipo: 'amarilla' | 'roja') => {
+        const jugadorIdStr = jugador.id.toString()
+        const tarjetasJugador = tarjetas.filter(t => t.jugador === jugadorIdStr)
+        const amarillas = tarjetasJugador.filter(t => t.tipo === 'amarilla').length
+        const rojas = tarjetasJugador.filter(t => t.tipo === 'roja').length
+        
+        // Agregar la tarjeta solicitada
         const newCard: CardType = {
             id: Date.now().toString(),
             jugador: jugador.id.toString(),
             equipo: jugador.equipo?.nombre || '',
             tipo,
-            minuto: 0, // Placeholder, maybe add a quick time input later
+            minuto: 0,
             tiempo: 'primer',
             motivo: 'Sanción rápida'
         }
-        setTarjetas([...tarjetas, newCard])
+        
+        let nuevasTarjetas = [...tarjetas, newCard]
+        
+        // Si se está agregando una amarilla y ya tiene 1 amarilla, agregar también una roja por doble amarilla
+        if (tipo === 'amarilla' && amarillas === 1) {
+            const rojaDobleAmarilla: CardType = {
+                id: (Date.now() + 1).toString(),
+                jugador: jugador.id.toString(),
+                equipo: jugador.equipo?.nombre || '',
+                tipo: 'roja',
+                minuto: 0,
+                tiempo: 'primer',
+                motivo: 'Doble amarilla (expulsión automática)'
+            }
+            nuevasTarjetas = [...nuevasTarjetas, rojaDobleAmarilla]
+        }
+        
+        setTarjetas(nuevasTarjetas)
     }
 
     const handleAddGol = () => {
@@ -152,6 +439,12 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         jugadoresEquipoB,
         jugadoresParticipantesA,
         jugadoresParticipantesB,
+        nombreEquipoA: nombreEquipoLocal || 'Equipo A',
+        nombreEquipoB: nombreEquipoVisitante || 'Equipo B',
+        torneoId,
+        equipoLocalId: equipoLocalIdNum,
+        equipoVisitanteId: equipoVisitanteIdNum,
+        jornada: jornadaNum,
         showSelectionModalA,
         setShowSelectionModalA,
         showSelectionModalB,
@@ -173,7 +466,14 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         setNuevoGol,
         firmas,
         setFirmas,
+        jugadoresParticipantes,
+        setJugadoresParticipantes,
+        isSaving,
         loadData,
+        loadJugadoresParticipantes,
+        saveJugadoresParticipantes,
+        loadGolesExistentes,
+        loadTarjetasExistentes,
         handleTogglePlayerSelection,
         handleSelectAllPlayers,
         handleClearAllPlayers,

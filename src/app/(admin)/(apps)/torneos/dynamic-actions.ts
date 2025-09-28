@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { torneoQueries, equipoTorneoQueries, encuentroQueries, equiposDescansanQueries } from '@/db/queries'
 import { DynamicFixtureGenerator, crearGeneradorDinamico, validarEquiposParaFixtureDinamico } from '@/lib/dynamic-fixture-generator'
+import { getHorarios } from './horarios-actions'
 import type { EquipoWithRelations, EncuentroWithRelations } from '@/db/types'
 import type { DynamicFixtureOptions, DynamicFixtureResult, JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
 
@@ -58,6 +59,18 @@ export async function generarPropuestaJornada(
     canchas?: string[]
     arbitros?: string[]
     fechaJornada?: Date
+    restriccionesHorarios?: Array<{
+      equipoId: number
+      horarioId: number | null
+      tipo: 'preferencial' | 'forzado' | 'bloqueado'
+    }>
+    restriccionesJornada?: Array<{
+      jornada: number
+      equipoId: number
+      horarioId: number | null
+      tipo: 'forzado' | 'bloqueado'
+    }>
+    distribucionEquitativa?: boolean
   } = {}
 ): Promise<DynamicFixtureResult> {
   try {
@@ -121,8 +134,18 @@ export async function generarPropuestaJornada(
     
     const equiposDisponibles = equipos.filter((e: any) => !equiposQueDescansan.includes(e.id))
     
+    // Obtener horarios disponibles
+    const horariosDisponibles = await getHorarios()
+    
     // Generar encuentros usando algoritmo optimizado que evita emparejamientos repetidos
-    const encuentros = generarEncuentrosOptimizados(equiposDisponibles, emparejamientosJugados, jornada, opciones)
+    const encuentros = generarEncuentrosOptimizados(
+      equiposDisponibles, 
+      emparejamientosJugados, 
+      jornada, 
+      opciones,
+      encuentrosExistentes,
+      horariosDisponibles
+    )
 
     console.log('🔍 Fecha recibida en servidor:', opciones.fechaJornada)
     console.log('🔍 Opciones completas:', opciones)
@@ -199,6 +222,7 @@ export async function confirmarJornada(
         torneo_id: torneoId,
         equipo_local_id: encuentro.equipoLocal,
         equipo_visitante_id: encuentro.equipoVisitante,
+        horario_id: (encuentro as any).horarioId || null, // Incluir horario asignado
         jornada: jornada.numero,
         fecha_programada: encuentro.fecha,
         estado: 'programado',
@@ -345,6 +369,7 @@ export async function confirmarRegeneracionJornada(
         torneo_id: torneoId,
         equipo_local_id: encuentro.equipoLocal,
         equipo_visitante_id: encuentro.equipoVisitante,
+        horario_id: (encuentro as any).horarioId || null, // Incluir horario asignado
         jornada: jornada.numero,
         fecha_programada: encuentro.fecha,
         estado: 'programado',
@@ -468,10 +493,33 @@ function generarEncuentrosOptimizados(
   equiposDisponibles: any[],
   emparejamientosJugados: Set<string>,
   jornada: number,
-  opciones: any
+  opciones: any,
+  encuentrosExistentes: any[] = [],
+  horariosDisponibles: any[] = []
 ): any[] {
   const encuentros: any[] = []
   const equiposUsados = new Set<number>()
+  
+  // Analizar restricciones de horarios
+  const restriccionesHorarios = opciones.restriccionesHorarios || []
+  const restriccionesJornada = opciones.restriccionesJornada || []
+  const distribucionEquitativa = opciones.distribucionEquitativa || false
+  
+  // Obtener horarios usados por equipos en jornadas anteriores (para distribución equitativa)
+  const horariosUsadosPorEquipo: Record<number, Set<number>> = {}
+  if (distribucionEquitativa) {
+    equiposDisponibles.forEach(equipo => {
+      horariosUsadosPorEquipo[equipo.id] = new Set()
+      
+      // Buscar horarios usados en jornadas anteriores
+      encuentrosExistentes.forEach(encuentro => {
+        if ((encuentro.equipo_local_id === equipo.id || encuentro.equipo_visitante_id === equipo.id) && 
+            encuentro.jornada < jornada && encuentro.horario_id) {
+          horariosUsadosPorEquipo[equipo.id].add(encuentro.horario_id)
+        }
+      })
+    })
+  }
   
   // Crear todas las combinaciones posibles con su información
   const combinaciones = []
@@ -484,19 +532,32 @@ function generarEncuentrosOptimizados(
       
       const esNuevoEmparejamiento = !emparejamientosJugados.has(emparejamiento) && !emparejamientosJugados.has(emparejamientoInverso)
       
+      // Calcular puntuación de restricciones para esta combinación
+      const puntuacionRestricciones = calcularPuntuacionRestricciones(
+        equipo1, equipo2, jornada, restriccionesHorarios, restriccionesJornada, horariosUsadosPorEquipo
+      )
+      
       combinaciones.push({
         equipo1,
         equipo2,
         esNuevoEmparejamiento,
-        prioridad: esNuevoEmparejamiento ? 'alta' as const : 'baja' as const
+        prioridad: esNuevoEmparejamiento ? 'alta' as const : 'baja' as const,
+        puntuacionRestricciones
       })
     }
   }
   
-  // Ordenar: nuevos emparejamientos primero
+  // Ordenar: nuevos emparejamientos primero, luego por puntuación de restricciones
   combinaciones.sort((a, b) => {
+    // Prioridad 1: Nuevos emparejamientos
     if (a.esNuevoEmparejamiento && !b.esNuevoEmparejamiento) return -1
     if (!a.esNuevoEmparejamiento && b.esNuevoEmparejamiento) return 1
+    
+    // Prioridad 2: Mejor puntuación de restricciones
+    if (a.puntuacionRestricciones !== b.puntuacionRestricciones) {
+      return b.puntuacionRestricciones - a.puntuacionRestricciones
+    }
+    
     return 0
   })
   
@@ -504,8 +565,27 @@ function generarEncuentrosOptimizados(
   const mejorCombinacion = encontrarMejorCombinacion(combinaciones, equiposDisponibles.length)
   
   // Crear encuentros con la mejor combinación encontrada
+  const horariosYaAsignados = new Set<number>()
+  
   for (const combo of mejorCombinacion) {
     if (!equiposUsados.has(combo.equipo1) && !equiposUsados.has(combo.equipo2)) {
+      // Determinar el mejor horario para este encuentro
+      const mejorHorario = determinarMejorHorario(
+        combo.equipo1, 
+        combo.equipo2, 
+        jornada, 
+        restriccionesHorarios, 
+        restriccionesJornada,
+        horariosUsadosPorEquipo,
+        horariosDisponibles,
+        horariosYaAsignados
+      )
+      
+      // Marcar el horario como asignado
+      if (mejorHorario) {
+        horariosYaAsignados.add(mejorHorario)
+      }
+      
       encuentros.push({
         equipoLocal: combo.equipo1,
         equipoVisitante: combo.equipo2,
@@ -513,7 +593,8 @@ function generarEncuentrosOptimizados(
         arbitro: (opciones.arbitros || ['Árbitro Principal'])[0],
         fecha: opciones.fechaJornada || new Date(Date.now() + (jornada - 1) * (opciones.diasEntreJornadas || 7) * 24 * 60 * 60 * 1000),
         esNuevoEmparejamiento: combo.esNuevoEmparejamiento,
-        prioridad: combo.prioridad
+        prioridad: combo.prioridad,
+        horarioId: mejorHorario
       })
       
       equiposUsados.add(combo.equipo1)
@@ -588,6 +669,186 @@ function encontrarMejorCombinacion(combinaciones: any[], totalEquipos: number): 
   }
   
   return mejorCombinacion
+}
+
+/**
+ * Determina el mejor horario para un encuentro basado en las restricciones
+ */
+function determinarMejorHorario(
+  equipo1: number,
+  equipo2: number,
+  jornada: number,
+  restriccionesHorarios: any[],
+  restriccionesJornada: any[],
+  horariosUsadosPorEquipo: Record<number, Set<number>>,
+  horariosDisponibles: any[] = [],
+  horariosYaAsignados: Set<number> = new Set()
+): number | null {
+  // Filtrar horarios ya asignados en esta jornada
+  const horariosDisponiblesNoAsignados = horariosDisponibles.filter(h => 
+    !horariosYaAsignados.has(h.id)
+  )
+  
+  // Buscar restricciones forzadas para esta jornada específica
+  const restriccionesForzadas1 = restriccionesJornada.filter(r => 
+    r.jornada === jornada && r.equipoId === equipo1 && r.tipo === 'forzado'
+  )
+  const restriccionesForzadas2 = restriccionesJornada.filter(r => 
+    r.jornada === jornada && r.equipoId === equipo2 && r.tipo === 'forzado'
+  )
+  
+  // Si ambos equipos tienen restricciones forzadas, buscar horario compatible y disponible
+  if (restriccionesForzadas1.length > 0 && restriccionesForzadas2.length > 0) {
+    const horariosForzados1 = restriccionesForzadas1.map(r => r.horarioId)
+    const horariosForzados2 = restriccionesForzadas2.map(r => r.horarioId)
+    const horariosCompatibles = horariosForzados1.filter(h => 
+      horariosForzados2.includes(h) && !horariosYaAsignados.has(h)
+    )
+    
+    if (horariosCompatibles.length > 0) {
+      return horariosCompatibles[0] // Usar el primer horario compatible y disponible
+    }
+  }
+  
+  // Si solo un equipo tiene restricción forzada, usarla si está disponible
+  if (restriccionesForzadas1.length > 0) {
+    const horarioForzado1 = restriccionesForzadas1[0].horarioId
+    if (!horariosYaAsignados.has(horarioForzado1)) {
+      return horarioForzado1
+    }
+  }
+  if (restriccionesForzadas2.length > 0) {
+    const horarioForzado2 = restriccionesForzadas2[0].horarioId
+    if (!horariosYaAsignados.has(horarioForzado2)) {
+      return horarioForzado2
+    }
+  }
+  
+  // Buscar restricciones preferenciales
+  const restriccionesPreferenciales1 = restriccionesHorarios.filter(r => 
+    r.equipoId === equipo1 && r.tipo === 'preferencial'
+  )
+  const restriccionesPreferenciales2 = restriccionesHorarios.filter(r => 
+    r.equipoId === equipo2 && r.tipo === 'preferencial'
+  )
+  
+  if (restriccionesPreferenciales1.length > 0 && restriccionesPreferenciales2.length > 0) {
+    const horariosPreferenciales1 = restriccionesPreferenciales1.map(r => r.horarioId)
+    const horariosPreferenciales2 = restriccionesPreferenciales2.map(r => r.horarioId)
+    const horariosCompatibles = horariosPreferenciales1.filter(h => 
+      horariosPreferenciales2.includes(h) && !horariosYaAsignados.has(h)
+    )
+    
+    if (horariosCompatibles.length > 0) {
+      return horariosCompatibles[0]
+    }
+  }
+  
+  // Si solo un equipo tiene restricción preferencial, usarla si está disponible
+  if (restriccionesPreferenciales1.length > 0) {
+    const horarioPreferencial1 = restriccionesPreferenciales1[0].horarioId
+    if (!horariosYaAsignados.has(horarioPreferencial1)) {
+      return horarioPreferencial1
+    }
+  }
+  if (restriccionesPreferenciales2.length > 0) {
+    const horarioPreferencial2 = restriccionesPreferenciales2[0].horarioId
+    if (!horariosYaAsignados.has(horarioPreferencial2)) {
+      return horarioPreferencial2
+    }
+  }
+  
+  // Para distribución equitativa, evitar horarios usados recientemente
+  if (horariosUsadosPorEquipo[equipo1] && horariosUsadosPorEquipo[equipo2]) {
+    const horariosUsados1 = Array.from(horariosUsadosPorEquipo[equipo1])
+    const horariosUsados2 = Array.from(horariosUsadosPorEquipo[equipo2])
+    
+    // Buscar horarios que no hayan sido usados por ninguno de los equipos
+    const todosHorariosUsados = [...new Set([...horariosUsados1, ...horariosUsados2])]
+    
+    // Buscar horarios disponibles que no hayan sido usados y no estén asignados en esta jornada
+    const horariosDisponiblesSinUsar = horariosDisponiblesNoAsignados.filter(h => 
+      !todosHorariosUsados.includes(h.id)
+    )
+    
+    if (horariosDisponiblesSinUsar.length > 0) {
+      return horariosDisponiblesSinUsar[0].id
+    }
+  }
+  
+  // Si no hay restricciones o no se puede evitar horarios usados, asignar el primer horario disponible no asignado
+  if (horariosDisponiblesNoAsignados.length > 0) {
+    return horariosDisponiblesNoAsignados[0].id
+  }
+  
+  return null // No hay horarios disponibles
+}
+
+/**
+ * Calcula la puntuación de restricciones para una combinación de equipos
+ */
+function calcularPuntuacionRestricciones(
+  equipo1: number,
+  equipo2: number,
+  jornada: number,
+  restriccionesHorarios: any[],
+  restriccionesJornada: any[],
+  horariosUsadosPorEquipo: Record<number, Set<number>>
+): number {
+  let puntuacion = 0
+  
+  // Buscar restricciones específicas para esta jornada
+  const restriccionesJornadaEquipo1 = restriccionesJornada.filter(r => 
+    r.jornada === jornada && r.equipoId === equipo1
+  )
+  const restriccionesJornadaEquipo2 = restriccionesJornada.filter(r => 
+    r.jornada === jornada && r.equipoId === equipo2
+  )
+  
+  // Restricciones forzadas para jornada específica (alta prioridad)
+  const restriccionesForzadas1 = restriccionesJornadaEquipo1.filter(r => r.tipo === 'forzado')
+  const restriccionesForzadas2 = restriccionesJornadaEquipo2.filter(r => r.tipo === 'forzado')
+  
+  if (restriccionesForzadas1.length > 0 && restriccionesForzadas2.length > 0) {
+    // Si ambos equipos tienen restricciones forzadas, verificar si son compatibles
+    const horariosForzados1 = restriccionesForzadas1.map(r => r.horarioId)
+    const horariosForzados2 = restriccionesForzadas2.map(r => r.horarioId)
+    const horariosCompatibles = horariosForzados1.filter(h => horariosForzados2.includes(h))
+    
+    if (horariosCompatibles.length > 0) {
+      puntuacion += 100 // Muy alta prioridad
+    }
+  }
+  
+  // Restricciones preferenciales generales
+  const restriccionesPreferenciales1 = restriccionesHorarios.filter(r => 
+    r.equipoId === equipo1 && r.tipo === 'preferencial'
+  )
+  const restriccionesPreferenciales2 = restriccionesHorarios.filter(r => 
+    r.equipoId === equipo2 && r.tipo === 'preferencial'
+  )
+  
+  if (restriccionesPreferenciales1.length > 0 && restriccionesPreferenciales2.length > 0) {
+    const horariosPreferenciales1 = restriccionesPreferenciales1.map(r => r.horarioId)
+    const horariosPreferenciales2 = restriccionesPreferenciales2.map(r => r.horarioId)
+    const horariosCompatibles = horariosPreferenciales1.filter(h => horariosPreferenciales2.includes(h))
+    
+    if (horariosCompatibles.length > 0) {
+      puntuacion += 50 // Alta prioridad
+    }
+  }
+  
+  // Distribución equitativa (evitar horarios usados recientemente)
+  if (horariosUsadosPorEquipo[equipo1] && horariosUsadosPorEquipo[equipo2]) {
+    const horariosUsados1 = Array.from(horariosUsadosPorEquipo[equipo1])
+    const horariosUsados2 = Array.from(horariosUsadosPorEquipo[equipo2])
+    
+    // Penalizar si ambos equipos han usado el mismo horario recientemente
+    const horariosComunes = horariosUsados1.filter(h => horariosUsados2.includes(h))
+    puntuacion -= horariosComunes.length * 10 // Penalización por repetición
+  }
+  
+  return puntuacion
 }
 
 // ===== FUNCIONES DE UTILIDAD =====

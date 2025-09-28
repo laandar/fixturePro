@@ -96,7 +96,11 @@ function generateRoundRobinJornadas(
   esVuelta: boolean = false
 ): JornadaFixture[] {
   const numEquipos = equiposIds.length
-  const numJornadas = numEquipos - 1
+  
+  // Para número impar de equipos, cada equipo debe jugar contra todos los demás
+  // lo que requiere numEquipos jornadas (una para cada equipo como descanso)
+  // Para número par de equipos, son numEquipos - 1 jornadas
+  const numJornadas = numEquipos % 2 === 1 ? numEquipos : numEquipos - 1
   const jornadas: JornadaFixture[] = []
   
   // Si hay número impar de equipos, agregar un equipo "fantasma" para el descanso

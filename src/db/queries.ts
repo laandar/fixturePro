@@ -38,6 +38,18 @@ export const equipoQueries = {
     });
   },
 
+  // Obtener equipos por categoría con relaciones
+  getByCategoriaWithRelations: async (categoriaId: number) => {
+    return await db.query.equipos.findMany({
+      where: eq(equipos.categoria_id, categoriaId),
+      with: {
+        categoria: true,
+        entrenador: true,
+      },
+      orderBy: [asc(equipos.nombre)],
+    });
+  },
+
   // Crear equipo
   create: async (equipoData: NewEquipo) => {
     const result = await db.insert(equipos).values(equipoData).returning();
@@ -372,6 +384,7 @@ export const encuentroQueries = {
             entrenador: true,
           },
         },
+        horario: true,
       },
       orderBy: [asc(encuentros.jornada), asc(encuentros.fecha_programada)],
     });
@@ -394,6 +407,7 @@ export const encuentroQueries = {
             entrenador: true,
           },
         },
+        horario: true,
       },
       orderBy: [asc(encuentros.fecha_programada)],
     });

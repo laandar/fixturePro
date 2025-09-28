@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature } from '@/db/types';
+import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante } from '@/db/types';
 
 export interface GestionJugadoresState {
     jugadores: JugadorWithEquipo[];
@@ -11,6 +11,12 @@ export interface GestionJugadoresState {
     jugadoresEquipoB: JugadorWithEquipo[];
     jugadoresParticipantesA: JugadorWithEquipo[];
     jugadoresParticipantesB: JugadorWithEquipo[];
+    nombreEquipoA: string;
+    nombreEquipoB: string;
+    torneoId: number | null;
+    equipoLocalId: number | null;
+    equipoVisitanteId: number | null;
+    jornada: number | null;
     showSelectionModalA: boolean;
     setShowSelectionModalA: (show: boolean) => void;
     showSelectionModalB: boolean;
@@ -32,7 +38,14 @@ export interface GestionJugadoresState {
     setNuevoGol: (gol: Partial<Goal>) => void;
     firmas: Signature;
     setFirmas: (firmas: Signature) => void;
+    jugadoresParticipantes: JugadorParticipante[];
+    setJugadoresParticipantes: (jugadores: JugadorParticipante[]) => void;
+    isSaving: boolean;
     loadData: () => Promise<void>;
+    loadJugadoresParticipantes: () => Promise<void>;
+    saveJugadoresParticipantes: () => Promise<void>;
+    loadGolesExistentes: () => Promise<void>;
+    loadTarjetasExistentes: () => Promise<void>;
     handleTogglePlayerSelection: (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => void;
     handleSelectAllPlayers: (equipo: 'A' | 'B') => void;
     handleClearAllPlayers: (equipo: 'A' | 'B') => void;

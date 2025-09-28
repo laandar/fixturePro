@@ -1,5 +1,5 @@
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias } from './schema';
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, horarios, goles, tarjetas, jugadoresParticipantes } from './schema';
 
 // Tipos para selección (lectura)
 export type Equipo = InferSelectModel<typeof equipos>;
@@ -11,6 +11,10 @@ export type EquipoTorneo = InferSelectModel<typeof equiposTorneo>;
 export type Encuentro = InferSelectModel<typeof encuentros>;
 export type Cancha = InferSelectModel<typeof canchas>;
 export type CanchaCategoria = InferSelectModel<typeof canchasCategorias>;
+export type Horario = InferSelectModel<typeof horarios>;
+export type Gol = InferSelectModel<typeof goles>;
+export type Tarjeta = InferSelectModel<typeof tarjetas>;
+export type JugadorParticipante = InferSelectModel<typeof jugadoresParticipantes>;
 
 // Tipos para inserción
 export type NewEquipo = InferInsertModel<typeof equipos>;
@@ -22,6 +26,10 @@ export type NewEquipoTorneo = InferInsertModel<typeof equiposTorneo>;
 export type NewEncuentro = InferInsertModel<typeof encuentros>;
 export type NewCancha = InferInsertModel<typeof canchas>;
 export type NewCanchaCategoria = InferInsertModel<typeof canchasCategorias>;
+export type NewHorario = InferInsertModel<typeof horarios>;
+export type NewGol = InferInsertModel<typeof goles>;
+export type NewTarjeta = InferInsertModel<typeof tarjetas>;
+export type NewJugadorParticipante = InferInsertModel<typeof jugadoresParticipantes>;
 
 // Tipos para equipos con relaciones
 export interface EquipoWithRelations extends Equipo {
@@ -63,6 +71,10 @@ export interface EncuentroWithRelations extends Encuentro {
   torneo: Torneo | null;
   equipoLocal: EquipoWithRelations | null;
   equipoVisitante: EquipoWithRelations | null;
+  horario: Horario | null;
+  goles?: Gol[];
+  tarjetas?: Tarjeta[];
+  jugadoresParticipantes?: JugadorParticipante[];
 }
 
 // Tipos para fixture

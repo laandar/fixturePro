@@ -80,12 +80,23 @@ export const equiposTorneo = pgTable('equipos_torneo', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Tabla de horarios
+export const horarios = pgTable('horarios', {
+  id: serial('id').primaryKey(),
+  hora_inicio: text('hora_inicio').notNull(), // Formato HH:MM (24h)
+  color: text('color').default('#007bff'), // Color para identificar el horario
+  orden: integer('orden').default(0), // Orden de aparición
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Tabla de encuentros/partidos
 export const encuentros = pgTable('encuentros', {
   id: serial('id').primaryKey(),
   torneo_id: integer('torneo_id').references(() => torneos.id).notNull(),
   equipo_local_id: integer('equipo_local_id').references(() => equipos.id).notNull(),
   equipo_visitante_id: integer('equipo_visitante_id').references(() => equipos.id).notNull(),
+  horario_id: integer('horario_id').references(() => horarios.id), // Referencia al horario asignado
   fecha_programada: timestamp('fecha_programada'),
   fecha_jugada: timestamp('fecha_jugada'),
   cancha: text('cancha'),
@@ -180,7 +191,7 @@ export const equiposTorneoRelations = relations(equiposTorneo, ({ one }) => ({
   }),
 }));
 
-export const encuentrosRelations = relations(encuentros, ({ one }) => ({
+export const encuentrosRelations = relations(encuentros, ({ one, many }) => ({
   torneo: one(torneos, {
     fields: [encuentros.torneo_id],
     references: [torneos.id],
@@ -193,6 +204,12 @@ export const encuentrosRelations = relations(encuentros, ({ one }) => ({
     fields: [encuentros.equipo_visitante_id],
     references: [equipos.id],
   }),
+  horario: one(horarios, {
+    fields: [encuentros.horario_id],
+    references: [horarios.id],
+  }),
+  goles: many(goles),
+  tarjetas: many(tarjetas),
 }));
 
 // Relaciones para equipos que descansan
@@ -237,5 +254,91 @@ export const canchasCategoriasRelations = relations(canchasCategorias, ({ one })
   categoria: one(categorias, {
     fields: [canchasCategorias.categoria_id],
     references: [categorias.id],
+  }),
+}));
+
+// Tabla de goles
+export const goles = pgTable('goles', {
+  id: serial('id').primaryKey(),
+  encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
+  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  minuto: integer('minuto').notNull(),
+  tiempo: text('tiempo', { enum: ['primer', 'segundo'] }).notNull(),
+  tipo: text('tipo', { enum: ['gol', 'penal', 'autogol'] }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Relaciones para horarios
+export const horariosRelations = relations(horarios, ({ many }) => ({
+  encuentros: many(encuentros),
+}));
+
+// Tabla de tarjetas
+export const tarjetas = pgTable('tarjetas', {
+  id: serial('id').primaryKey(),
+  encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
+  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  minuto: integer('minuto').notNull(),
+  tiempo: text('tiempo', { enum: ['primer', 'segundo'] }).notNull(),
+  tipo: text('tipo', { enum: ['amarilla', 'roja'] }).notNull(),
+  motivo: text('motivo'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Relaciones para goles
+export const golesRelations = relations(goles, ({ one }) => ({
+  encuentro: one(encuentros, {
+    fields: [goles.encuentro_id],
+    references: [encuentros.id],
+  }),
+  jugador: one(jugadores, {
+    fields: [goles.jugador_id],
+    references: [jugadores.id],
+  }),
+  equipo: one(equipos, {
+    fields: [goles.equipo_id],
+    references: [equipos.id],
+  }),
+}));
+
+// Tabla de jugadores participantes en encuentros
+export const jugadoresParticipantes = pgTable('jugadores_participantes', {
+  id: serial('id').primaryKey(),
+  encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
+  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  equipo_tipo: text('equipo_tipo', { enum: ['local', 'visitante'] }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Relaciones para tarjetas
+export const tarjetasRelations = relations(tarjetas, ({ one }) => ({
+  encuentro: one(encuentros, {
+    fields: [tarjetas.encuentro_id],
+    references: [encuentros.id],
+  }),
+  jugador: one(jugadores, {
+    fields: [tarjetas.jugador_id],
+    references: [jugadores.id],
+  }),
+  equipo: one(equipos, {
+    fields: [tarjetas.equipo_id],
+    references: [equipos.id],
+  }),
+}));
+
+// Relaciones para jugadores participantes
+export const jugadoresParticipantesRelations = relations(jugadoresParticipantes, ({ one }) => ({
+  encuentro: one(encuentros, {
+    fields: [jugadoresParticipantes.encuentro_id],
+    references: [encuentros.id],
+  }),
+  jugador: one(jugadores, {
+    fields: [jugadoresParticipantes.jugador_id],
+    references: [jugadores.id],
   }),
 }));

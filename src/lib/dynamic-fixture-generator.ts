@@ -40,6 +40,7 @@ export interface EncuentroPropuesto {
   fecha: Date
   esNuevoEmparejamiento: boolean
   prioridad: 'alta' | 'media' | 'baja' // Basado en cuánto tiempo hace que se enfrentaron
+  horarioId?: number | null // ID del horario asignado
 }
 
 export interface EstadisticasJornada {
@@ -394,8 +395,10 @@ export class DynamicFixtureGenerator {
     const emparejamientosRepetidos = jornada.encuentros.length - nuevosEmparejamientos
     
     const balanceDescansos = { ...this.estado.descansosPorEquipo }
-    if (jornada.equipoQueDescansa) {
-      balanceDescansos[jornada.equipoQueDescansa]++
+    if (jornada.equiposQueDescansan) {
+      jornada.equiposQueDescansan.forEach(equipoId => {
+        balanceDescansos[equipoId]++
+      })
     }
 
     // Calcular cuántas opciones quedan para próximas jornadas
@@ -405,7 +408,7 @@ export class DynamicFixtureGenerator {
       totalEncuentros: jornada.encuentros.length,
       nuevosEmparejamientos,
       emparejamientosRepetidos,
-      equiposConDescanso: jornada.equipoQueDescansa ? 1 : 0,
+      equiposConDescanso: jornada.equiposQueDescansan?.length || 0,
       balanceDescansos,
       proximasOpciones
     }
@@ -442,8 +445,10 @@ export class DynamicFixtureGenerator {
       equiposEnJornada.add(encuentro.equipoVisitante)
     })
 
-    if (jornada.equipoQueDescansa) {
-      equiposEnJornada.add(jornada.equipoQueDescansa)
+    if (jornada.equiposQueDescansan) {
+      jornada.equiposQueDescansan.forEach(equipoId => {
+        equiposEnJornada.add(equipoId)
+      })
     }
 
     const equiposFaltantes = this.estado.equipos.filter(e => !equiposEnJornada.has(e.id))
@@ -499,7 +504,7 @@ export class DynamicFixtureGenerator {
         const generadorAlternativo = new DynamicFixtureGenerator(
           this.estado.equipos,
           this.estado.encuentrosJugados,
-          this.estado.descansosPorEquipo,
+          {},
           opcionesAlternativas
         )
         
@@ -536,8 +541,10 @@ export class DynamicFixtureGenerator {
     })
 
     // Actualizar descansos
-    if (jornada.equipoQueDescansa) {
-      this.estado.descansosPorEquipo[jornada.equipoQueDescansa]++
+    if (jornada.equiposQueDescansan) {
+      jornada.equiposQueDescansan.forEach(equipoId => {
+        this.estado.descansosPorEquipo[equipoId]++
+      })
     }
   }
 

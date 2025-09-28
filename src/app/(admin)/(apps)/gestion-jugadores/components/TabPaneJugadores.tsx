@@ -50,6 +50,8 @@ const TabPaneJugadores = () => {
         jugadoresEquipoB,
         jugadoresParticipantesA,
         jugadoresParticipantesB,
+        nombreEquipoA,
+        nombreEquipoB,
         showSelectionModalA,
         setShowSelectionModalA,
         showSelectionModalB,
@@ -60,7 +62,9 @@ const TabPaneJugadores = () => {
         handleQuickSanction,
         handleQuickGoal,
         goles,
-        tarjetas
+        tarjetas,
+        isSaving,
+        saveJugadoresParticipantes
     } = useGestionJugadores();
 
     const handleImageClick = (imageUrl: string) => {
@@ -78,13 +82,28 @@ const TabPaneJugadores = () => {
 
     return (
         <>
+            {/* Botón de guardado manual para debug */}
+            <div className="mb-3 text-center">
+                <Button 
+                    variant="primary" 
+                    onClick={saveJugadoresParticipantes}
+                    disabled={isSaving}
+                    size="sm"
+                >
+                    {isSaving ? 'Guardando...' : 'Guardar Selección Manualmente'}
+                </Button>
+                <small className="d-block text-muted mt-1">
+                    Equipo A: {jugadoresParticipantesA.length} | Equipo B: {jugadoresParticipantesB.length}
+                </small>
+            </div>
+            
             <Row>
                 <Col md={6}>
                     <div className="mb-4">
                         <div className="d-flex align-items-center justify-content-between mb-3">
                             <h5 className="d-flex align-items-center mb-0">
                                 <TbUsers className="me-2" />
-                                UDEF
+                                {nombreEquipoA}
                                 <Badge bg="secondary" className="ms-2">
                                     {jugadoresParticipantesA.length}/{jugadoresEquipoA.length}
                                 </Badge>
@@ -213,7 +232,7 @@ const TabPaneJugadores = () => {
                         ) : (
                             <div className="text-center text-muted py-5">
                                 <TbUserPlus size={48} className="mb-3" />
-                                <p>No hay jugadores seleccionados para UDEF</p>
+                                <p>No hay jugadores seleccionados para {nombreEquipoA}</p>
                                 <Button
                                     variant="primary"
                                     onClick={() => setShowSelectionModalA(true)}
@@ -230,7 +249,7 @@ const TabPaneJugadores = () => {
                         <div className="d-flex align-items-center justify-content-between mb-3">
                             <h5 className="d-flex align-items-center mb-0">
                                 <TbUsers className="me-2" />
-                                9 Octubre
+                                {nombreEquipoB}
                                 <Badge bg="secondary" className="ms-2">
                                     {jugadoresParticipantesB.length}/{jugadoresEquipoB.length}
                                 </Badge>
@@ -359,7 +378,7 @@ const TabPaneJugadores = () => {
                         ) : (
                             <div className="text-center text-muted py-5">
                                 <TbUserPlus size={48} className="mb-3" />
-                                <p>No hay jugadores seleccionados para 9 Octubre</p>
+                                <p>No hay jugadores seleccionados para {nombreEquipoB}</p>
                                 <Button
                                     variant="primary"
                                     onClick={() => setShowSelectionModalB(true)}

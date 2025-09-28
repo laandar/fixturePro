@@ -169,7 +169,7 @@ export default function FixtureDisplay({ encuentros, equiposDescansan, equiposPa
                       {/* Información del encuentro */}
                       <div className="border-top pt-3">
                         <div className="row g-2 text-center">
-                          <div className="col-4">
+                          <div className="col-3">
                             <div className="d-flex align-items-center justify-content-center gap-1">
                               <LuCalendar className="text-muted" />
                               <small className="text-muted">
@@ -182,7 +182,15 @@ export default function FixtureDisplay({ encuentros, equiposDescansan, equiposPa
                               </small>
                             </div>
                           </div>
-                          <div className="col-4">
+                          <div className="col-3">
+                            <div className="d-flex align-items-center justify-content-center gap-1">
+                              <span className="text-info">🕐</span>
+                              <small className="text-muted">
+                                {encuentro.horario?.hora_inicio || 'Por definir'}
+                              </small>
+                            </div>
+                          </div>
+                          <div className="col-3">
                             <div className="d-flex align-items-center justify-content-center gap-1">
                               <LuMapPin className="text-muted" />
                               <small className="text-muted">
@@ -190,7 +198,7 @@ export default function FixtureDisplay({ encuentros, equiposDescansan, equiposPa
                               </small>
                             </div>
                           </div>
-                          <div className="col-4">
+                          <div className="col-3">
                             <div className="d-flex align-items-center justify-content-center gap-1">
                               <LuUser className="text-muted" />
                               <small className="text-muted">

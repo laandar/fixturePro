@@ -84,7 +84,7 @@ const Page = () => {
         }
         return (
           <Badge bg={tipo === 'liga' ? 'primary' : tipo === 'eliminacion' ? 'danger' : 'warning'}>
-            {tipoLabels[tipo] || tipo}
+            {tipo ? tipoLabels[tipo] || tipo : 'Sin tipo'}
           </Badge>
         )
       },
@@ -134,7 +134,7 @@ const Page = () => {
           finalizado: { bg: 'primary', text: 'primary', label: 'Finalizado' },
           cancelado: { bg: 'danger', text: 'danger', label: 'Cancelado' }
         }
-        const config = estadoConfig[estado] || { bg: 'secondary', text: 'secondary', label: estado }
+        const config = estado ? estadoConfig[estado] || { bg: 'secondary', text: 'secondary', label: estado } : { bg: 'secondary', text: 'secondary', label: 'Sin estado' }
         
         return (
           <Badge bg={config.bg} className={`text-${config.text}`}>
@@ -147,14 +147,14 @@ const Page = () => {
       header: 'Acciones',
       cell: ({ row }: { row: TableRow<TorneoWithRelations> }) => (
         <div className="d-flex gap-1">
-          <Button 
-            variant="light" 
-            size="sm" 
-            className="btn-icon rounded-circle"
-            as={Link}
-            href={`/torneos/${row.original.id}`}>
-            <TbEye className="fs-lg" />
-          </Button>
+          <Link href={`/torneos/${row.original.id}`}>
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="btn-icon rounded-circle">
+              <TbEye className="fs-lg" />
+            </Button>
+          </Link>
           <Button 
             variant="light" 
             size="sm" 
@@ -303,7 +303,7 @@ const Page = () => {
         getTorneos(),
         getCategorias()
       ])
-      setData(torneosData)
+      setData(torneosData as TorneoWithRelations[])
       setCategorias(categoriasData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar datos')
@@ -642,13 +642,12 @@ const Page = () => {
               <Row>
                 <Col md={6}>
                   <FloatingLabel controlId="edit_categoria_id" label="Categoría" className="mb-3">
-                    <FormSelect name="categoria_id" required>
+                    <FormSelect name="categoria_id" defaultValue={editingTorneo.categoria_id?.toString() || ''} required>
                       <option value="">Seleccionar categoría</option>
                       {categorias.map((categoria) => (
                         <option 
                           key={categoria.id} 
                           value={categoria.id}
-                          selected={categoria.id === editingTorneo.categoria_id}
                         >
                           {categoria.nombre}
                         </option>
@@ -658,11 +657,11 @@ const Page = () => {
                 </Col>
                 <Col md={6}>
                   <FloatingLabel controlId="edit_tipo_torneo" label="Tipo de Torneo" className="mb-3">
-                    <FormSelect name="tipo_torneo" required>
+                    <FormSelect name="tipo_torneo" defaultValue={editingTorneo.tipo_torneo || ''} required>
                       <option value="">Seleccionar tipo</option>
-                      <option value="liga" selected={editingTorneo.tipo_torneo === 'liga'}>Liga</option>
-                      <option value="eliminacion" selected={editingTorneo.tipo_torneo === 'eliminacion'}>Eliminación</option>
-                      <option value="grupos" selected={editingTorneo.tipo_torneo === 'grupos'}>Grupos</option>
+                      <option value="liga">Liga</option>
+                      <option value="eliminacion">Eliminación</option>
+                      <option value="grupos">Grupos</option>
                     </FormSelect>
                   </FloatingLabel>
                 </Col>
@@ -694,11 +693,11 @@ const Page = () => {
               <Row>
                 <Col md={6}>
                   <FloatingLabel controlId="edit_estado" label="Estado" className="mb-3">
-                    <FormSelect name="estado" required>
-                      <option value="planificado" selected={editingTorneo.estado === 'planificado'}>Planificado</option>
-                      <option value="en_curso" selected={editingTorneo.estado === 'en_curso'}>En Curso</option>
-                      <option value="finalizado" selected={editingTorneo.estado === 'finalizado'}>Finalizado</option>
-                      <option value="cancelado" selected={editingTorneo.estado === 'cancelado'}>Cancelado</option>
+                    <FormSelect name="estado" defaultValue={editingTorneo.estado || ''} required>
+                      <option value="planificado">Planificado</option>
+                      <option value="en_curso">En Curso</option>
+                      <option value="finalizado">Finalizado</option>
+                      <option value="cancelado">Cancelado</option>
                     </FormSelect>
                   </FloatingLabel>
                 </Col>
@@ -709,7 +708,7 @@ const Page = () => {
                       id="edit_permite_revancha"
                       name="permite_revancha"
                       label="Permitir Revancha"
-                      defaultChecked={editingTorneo.permite_revancha}
+                      defaultChecked={editingTorneo.permite_revancha || false}
                     />
                   </div>
                 </Col>

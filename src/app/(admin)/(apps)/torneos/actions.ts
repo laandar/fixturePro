@@ -254,11 +254,38 @@ export async function updateEncuentro(id: number, formData: FormData) {
   }
 }
 
+export async function updateEstadoEncuentro(id: number, estado: string) {
+  try {
+    const encuentroData: any = {
+      estado,
+    }
+
+    // Si el estado es 'finalizado' o 'en_curso', actualizar fecha_jugada
+    if (estado === 'finalizado' || estado === 'en_curso') {
+      encuentroData.fecha_jugada = new Date()
+    }
+
+    await encuentroQueries.update(id, encuentroData)
+    revalidatePath('/torneos')
+    return { success: true, message: `Estado del encuentro actualizado a: ${estado}` }
+  } catch (error) {
+    throw new Error('Error al actualizar estado del encuentro')
+  }
+}
+
 export async function getEncuentrosByTorneo(torneoId: number) {
   try {
     return await encuentroQueries.getByTorneoId(torneoId)
   } catch (error) {
     throw new Error('Error al obtener encuentros')
+  }
+}
+
+export async function getEncuentroById(id: number) {
+  try {
+    return await encuentroQueries.getById(id)
+  } catch (error) {
+    throw new Error('Error al obtener encuentro')
   }
 }
 
@@ -636,7 +663,7 @@ export async function crearJornadaConEmparejamientos(
   try {
     // Obtener encuentros existentes para calcular la próxima jornada
     const encuentrosExistentes = await encuentroQueries.getByTorneoId(torneoId)
-    const jornadasExistentes = [...new Set(encuentrosExistentes.map(e => e.jornada).filter(Boolean))]
+    const jornadasExistentes = [...new Set(encuentrosExistentes.map(e => e.jornada).filter((j): j is number => j !== null))]
     const proximaJornada = jornadasExistentes.length > 0 ? Math.max(...jornadasExistentes) + 1 : 1
     
     let encuentrosCreados = 0

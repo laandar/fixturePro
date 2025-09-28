@@ -11,6 +11,8 @@ import {
     Col
 } from 'react-bootstrap';
 import { TbUsers, TbExchange, TbCards, TbSoccerField, TbSignature } from 'react-icons/tb';
+import EstadoEncuentro from './EstadoEncuentro';
+import { useGestionJugadores } from './GestionJugadoresContext';
 
 interface LayoutProps {
     tabJugadores: React.ReactNode;
@@ -18,12 +20,32 @@ interface LayoutProps {
     tabAmonestaciones: React.ReactNode;
     tabGoles: React.ReactNode;
     tabFirmas: React.ReactNode;
+    nombreEquipoA?: string;
+    nombreEquipoB?: string;
 }
 
-const Layout = ({ tabJugadores, tabCambios, tabAmonestaciones, tabGoles, tabFirmas }: LayoutProps) => {
+const Layout = ({ tabJugadores, tabCambios, tabAmonestaciones, tabGoles, tabFirmas, nombreEquipoA, nombreEquipoB }: LayoutProps) => {
+    const { torneoId, equipoLocalId, equipoVisitanteId, jornada } = useGestionJugadores()
+    const tituloPartido = (nombreEquipoA && nombreEquipoB) ? `${nombreEquipoA} vs ${nombreEquipoB}` : "Gestión del Partido"
+    
     return (
         <Container fluid>
-            <PageBreadcrumb title="Gestión del Partido" />
+            <PageBreadcrumb title={tituloPartido} />
+            
+            {/* Componente de Estado del Encuentro */}
+            {torneoId && equipoLocalId && equipoVisitanteId && jornada && (
+                <Row className="mb-4">
+                    <Col xs={12}>
+                        <EstadoEncuentro 
+                            torneoId={torneoId}
+                            equipoLocalId={equipoLocalId}
+                            equipoVisitanteId={equipoVisitanteId}
+                            jornada={jornada}
+                        />
+                    </Col>
+                </Row>
+            )}
+            
             <Row>
                 <Col xs={12}>
                     <TabContainer defaultActiveKey="jugadores">
