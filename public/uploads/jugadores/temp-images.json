@@ -1,0 +1,44 @@
+{
+  "jugadores": [
+    {
+      "nombre": "Lionel Messi",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/header/28003-1671435885.jpg?lm=1"
+    },
+    {
+      "nombre": "Cristiano Ronaldo",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/medium/739443-1707939484.jpg?lm=1"
+    },
+    {
+      "nombre": "Neymar Jr",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/medium/425918-1683101307.jpg?lm=1"
+    },
+    {
+      "nombre": "Kylian Mbappé",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/header/342229-1671435885.jpg?lm=1"
+    },
+    {
+      "nombre": "Erling Haaland",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/medium/418560-1709108116.png?lm=1"
+    },
+    {
+      "nombre": "Kevin De Bruyne",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/medium/132098-1700211169.jpg?lm=1"
+    },
+    {
+      "nombre": "Luka Modrić",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/header/30972-1671435885.jpg?lm=1"
+    },
+    {
+      "nombre": "Virgil van Dijk",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/header/134425-1671435885.jpg?lm=1"
+    },
+    {
+      "nombre": "Mohamed Salah",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/header/28003-1671435885.jpg?lm=1"
+    },
+    {
+      "nombre": "Robert Lewandowski",
+      "imagen": "https://img.a.transfermarkt.technology/portrait/medium/132098-1700211169.jpg?lm=1"
+    }
+  ]
+}

@@ -26,6 +26,8 @@ import { TbEdit, TbPlus, TbTrash, TbCamera } from 'react-icons/tb'
 import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquipos, getCategorias } from './actions'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
+import ProfileCard from '@/components/ProfileCard'
+import { getTempPlayerImage } from '@/components/TempPlayerImages'
 
 const columnHelper = createColumnHelper<JugadorWithEquipo>()
 
@@ -112,21 +114,19 @@ const Page = () => {
       cell: ({ row }) => (
         <div className="d-flex justify-content-start align-items-center gap-2">
           <div className="avatar avatar-sm">
-            {row.original.foto ? (
-              <img
-                src={row.original.foto}
-                alt={row.original.apellido_nombre}
-                className="avatar-title rounded-circle"
-                style={{ width: '40px', height: '40px', objectFit: 'cover' }}
-                onError={(e) => {
-                  // Fallback a icono si la imagen no carga
-                  const target = e.target as HTMLImageElement
-                  target.style.display = 'none'
-                  target.nextElementSibling?.classList.remove('d-none')
-                }}
-              />
-            ) : null}
-            <div className={`avatar-title bg-light rounded-circle ${row.original.foto ? 'd-none' : ''}`}>
+            <img
+              src={row.original.foto || getTempPlayerImage(row.original.id)}
+              alt={row.original.apellido_nombre}
+              className="avatar-title rounded-circle"
+              style={{ width: '40px', height: '40px', objectFit: 'cover' }}
+              onError={(e) => {
+                // Fallback a icono si la imagen no carga
+                const target = e.target as HTMLImageElement
+                target.style.display = 'none'
+                target.nextElementSibling?.classList.remove('d-none')
+              }}
+            />
+            <div className={`avatar-title bg-light rounded-circle d-none`}>
               <LuUser className="fs-lg text-primary" />
             </div>
           </div>
@@ -659,9 +659,9 @@ const Page = () => {
         {/* Main Content Area */}
         <Col xl={9}>
 
-          {/* Grid View - Cards */}
+          {/* Grid View - ProfileCards */}
           {viewMode === 'grid' && (
-            <Row className="row-cols-xxl-4 row-cols-lg-3 row-cols-sm-2 row-col-1 g-2">
+            <Row className="row-cols-xxl-4 row-cols-lg-3 row-cols-sm-2 row-col-1 g-4 profile-cards-grid" style={{ margin: '0 -15px' }}>
               {table.getRowModel().rows.length === 0 && (
                 <Col>
                   <Alert variant="info" className="text-center">
@@ -672,60 +672,45 @@ const Page = () => {
               {table.getRowModel().rows.map((row) => {
                 const jugador = row.original
                 return (
-                  <Col className="col" key={jugador.id}>
-                    <Card className="h-100 mb-2">
-                      <Badge className={`text-bg-${jugador.estado ? 'success' : 'danger'} badge-label fs-base rounded position-absolute top-0 start-0 m-3`}>
-                        {jugador.estado ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                      <CardBody>
-                        <div className="bg-light-subtle p-3 mb-3 border border-light rounded d-flex justify-content-center align-items-center" style={{ minHeight: '200px' }}>
-                          {jugador.foto ? (
-                            <img
-                              src={jugador.foto}
-                              alt={jugador.apellido_nombre}
-                              className="img-fluid rounded-circle"
-                              style={{ width: '120px', height: '120px', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            <div className="d-flex align-items-center justify-content-center rounded-circle bg-light" style={{ width: '120px', height: '120px' }}>
-                              <LuUser size={48} className="text-primary" />
-                            </div>
-                          )}
+                  <Col className="col mb-4" key={jugador.id} style={{ padding: '0 15px' }}>
+                    <div className="profile-card-container" style={{ height: '400px', width: '100%' }}>
+                      <div className="position-relative">
+                        <ProfileCard
+                          name={jugador.apellido_nombre}
+                          title={jugador.categoria?.nombre || 'Sin categoría'}
+                          handle={jugador.equipo?.nombre || 'Sin equipo'}
+                          status={jugador.estado ? 'Activo' : 'Inactivo'}
+                          avatarUrl={jugador.foto || getTempPlayerImage(jugador.id)}
+                          showUserInfo={true}
+                          enableTilt={true}
+                          enableMobileTilt={false}
+                          onContactClick={() => window.location.href = `/jugadores/${jugador.id}`}
+                          contactText="Ver Perfil"
+                          className="h-100"
+                        />
+                        {/* Botones de acción flotantes */}
+                        <div className="position-absolute top-0 end-0 p-2 d-flex gap-1">
+                          <Button 
+                            variant="light" 
+                            size="sm" 
+                            className="btn-icon rounded-circle shadow-sm"
+                            onClick={() => handleEditClick(jugador)}
+                            title="Editar jugador"
+                          >
+                            <TbEdit className="fs-sm" />
+                          </Button>
+                          <Button
+                            variant="light"
+                            size="sm"
+                            className="btn-icon rounded-circle shadow-sm"
+                            onClick={() => handleDeleteSingle(jugador)}
+                            title="Eliminar jugador"
+                          >
+                            <TbTrash className="fs-sm" />
+                          </Button>
                         </div>
-                        <h6 className="fs-sm lh-base mb-2 text-center">
-                          <Link href={`/jugadores/${jugador.id}`} className="link-reset">
-                            {jugador.apellido_nombre}
-                          </Link>
-                        </h6>
-                        <div className="text-center">
-                          <div className="text-muted fs-sm mb-1">
-                            <LuTrophy className="me-1" />
-                            {jugador.categoria?.nombre || 'Sin categoría'}
-                          </div>
-                          <div className="text-muted fs-xs">
-                            {jugador.equipo?.nombre || 'Sin equipo'}
-                          </div>
-                        </div>
-                      </CardBody>
-                      <CardFooter className="bg-transparent d-flex justify-content-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          className="btn-icon"
-                          onClick={() => handleEditClick(jugador)}
-                        >
-                          <TbEdit className="fs-lg" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          className="btn-icon"
-                          onClick={() => handleDeleteSingle(jugador)}
-                        >
-                          <TbTrash className="fs-lg" />
-                        </Button>
-                      </CardFooter>
-                    </Card>
+                      </div>
+                    </div>
                   </Col>
                 )
               })}

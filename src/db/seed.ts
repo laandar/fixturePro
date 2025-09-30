@@ -1,5 +1,5 @@
 import { db } from './index';
-import { categorias, entrenadores, equipos } from './schema';
+import { categorias, entrenadores, equipos, jugadores } from './schema';
 
 export async function seedDatabase() {
   try {
@@ -115,12 +115,120 @@ export async function seedDatabase() {
     ]).returning();
 
     console.log(`✅ ${equiposData.length} equipos insertados`);
+
+    // Insertar jugadores con imágenes temporales
+    console.log('⚽ Insertando jugadores...');
+    const jugadoresData = await db.insert(jugadores).values([
+      {
+        cedula: '12345678',
+        apellido_nombre: 'Lionel Messi',
+        nacionalidad: 'Argentina',
+        liga: 'Ligue 1',
+        categoria_id: categoriasData[0].id,
+        equipo_id: equiposData[0].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/28003-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '87654321',
+        apellido_nombre: 'Cristiano Ronaldo',
+        nacionalidad: 'Portugal',
+        liga: 'Saudi Pro League',
+        categoria_id: categoriasData[0].id,
+        equipo_id: equiposData[1].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/8198-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '11223344',
+        apellido_nombre: 'Neymar Jr',
+        nacionalidad: 'Brasil',
+        liga: 'Saudi Pro League',
+        categoria_id: categoriasData[0].id,
+        equipo_id: equiposData[2].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/68290-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '44332211',
+        apellido_nombre: 'Kylian Mbappé',
+        nacionalidad: 'Francia',
+        liga: 'Ligue 1',
+        categoria_id: categoriasData[1].id,
+        equipo_id: equiposData[3].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/342229-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '55667788',
+        apellido_nombre: 'Erling Haaland',
+        nacionalidad: 'Noruega',
+        liga: 'Premier League',
+        categoria_id: categoriasData[1].id,
+        equipo_id: equiposData[4].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/418560-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '99887766',
+        apellido_nombre: 'Kevin De Bruyne',
+        nacionalidad: 'Bélgica',
+        liga: 'Premier League',
+        categoria_id: categoriasData[2].id,
+        equipo_id: equiposData[5].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/88755-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '33445566',
+        apellido_nombre: 'Luka Modrić',
+        nacionalidad: 'Croacia',
+        liga: 'La Liga',
+        categoria_id: categoriasData[2].id,
+        equipo_id: equiposData[6].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/30972-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '77889900',
+        apellido_nombre: 'Virgil van Dijk',
+        nacionalidad: 'Países Bajos',
+        liga: 'Premier League',
+        categoria_id: categoriasData[3].id,
+        equipo_id: equiposData[7].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/134425-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '11224455',
+        apellido_nombre: 'Mohamed Salah',
+        nacionalidad: 'Egipto',
+        liga: 'Premier League',
+        categoria_id: categoriasData[3].id,
+        equipo_id: equiposData[0].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/148455-1671435885.jpg?lm=1',
+        estado: true,
+      },
+      {
+        cedula: '66778899',
+        apellido_nombre: 'Robert Lewandowski',
+        nacionalidad: 'Polonia',
+        liga: 'La Liga',
+        categoria_id: categoriasData[0].id,
+        equipo_id: equiposData[1].id,
+        foto: 'https://img.a.transfermarkt.technology/portrait/header/38272-1671435885.jpg?lm=1',
+        estado: true,
+      },
+    ]).returning();
+
+    console.log(`✅ ${jugadoresData.length} jugadores insertados`);
     console.log('🎉 ¡Datos de prueba insertados exitosamente!');
 
     return {
       categorias: categoriasData,
       entrenadores: entrenadoresData,
       equipos: equiposData,
+      jugadores: jugadoresData,
     };
   } catch (error) {
     console.error('❌ Error al insertar datos de prueba:', error);

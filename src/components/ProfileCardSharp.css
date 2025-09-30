@@ -1,0 +1,65 @@
+/* Parche específico para mejorar la nitidez de las imágenes en ProfileCard */
+
+/* Mejorar la nitidez de las imágenes principales */
+.pc-avatar-content .avatar {
+  /* Forzar alta calidad de renderizado */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  
+  /* Eliminar cualquier filtro que cause borrosidad */
+  filter: none !important;
+  -webkit-filter: none !important;
+  
+  /* Mejorar la aceleración por hardware */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  
+  /* Asegurar que la imagen se renderice con la máxima calidad */
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+  
+  /* Mejorar la calidad de la imagen */
+  image-rendering: auto;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: optimize-contrast;
+}
+
+/* Mejorar la nitidez de las mini imágenes */
+.pc-mini-avatar img {
+  /* Forzar alta calidad de renderizado */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  
+  /* Eliminar filtros que causen borrosidad */
+  filter: none !important;
+  -webkit-filter: none !important;
+  
+  /* Mejorar la aceleración por hardware */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Asegurar que las imágenes temporales se vean nítidas */
+.pc-avatar-content .avatar[src*="transfermarkt"] {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+/* Mejorar la calidad general del contenedor de avatar */
+.pc-avatar-content {
+  /* Reducir el blur del backdrop-filter que puede afectar las imágenes */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Asegurar que el contenedor no afecte la nitidez */
+.pc-avatar-content::before {
+  /* Reducir el blur que puede afectar las imágenes */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}

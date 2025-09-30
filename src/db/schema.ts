@@ -32,7 +32,7 @@ export const equipos = pgTable('equipos', {
 
 // Tabla de jugadores
 export const jugadores = pgTable('jugadores', {
-  id: serial('id').primaryKey(),
+  id: integer('id').primaryKey(), // IDENTITY se maneja en la DB
   cedula: varchar('cedula', { length: 20 }).notNull().unique(),
   apellido_nombre: text('apellido_nombre').notNull(),
   nacionalidad: text('nacionalidad').notNull(),
