@@ -65,6 +65,18 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
   showUserInfo = true,
   onContactClick
 }) => {
+  // Detectar si estamos en Firefox
+  const isFirefox = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+  }, []);
+
+  // Función helper para obtener la URL correcta del avatar
+  const getAvatarUrl = useCallback((url: string | undefined) => {
+    // Siempre usar la imagen local person.png
+    const personUrl = isFirefox ? `${window.location.origin}/uploads/jugadores/person.png` : '/uploads/jugadores/person.png';
+    return personUrl;
+  }, [isFirefox]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -206,6 +218,17 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
   );
 
   useEffect(() => {
+    // Establecer la variable CSS para el patrón de fondo de fútbol
+    // Firefox necesita un manejo especial para las rutas
+    if (typeof window !== 'undefined') {
+      const patternUrl = isFirefox 
+        ? `${window.location.origin}/uploads/jugadores/soccer.jpg`
+        : '/uploads/jugadores/soccer.jpg';
+      document.documentElement.style.setProperty('--pattern-bg', `url('${patternUrl}')`);
+    }
+  }, [isFirefox]);
+
+  useEffect(() => {
     if (!enableTilt || !animationHandlers) return;
 
     const card = cardRef.current;
@@ -297,12 +320,12 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
           <div className="pc-content pc-avatar-content">
             <img
               className="avatar"
-              src={avatarUrl && avatarUrl !== 'undefined' ? avatarUrl : '/uploads/jugadores/person.png'}
+              src={getAvatarUrl(avatarUrl)}
               alt={`${name || 'User'} avatar`}
               loading="lazy"
               onError={e => {
                 const target = e.target as HTMLImageElement;
-                target.src = '/uploads/jugadores/person.png';
+                target.src = isFirefox ? `${window.location.origin}/uploads/jugadores/person.png` : '/uploads/jugadores/person.png';
               }}
             />
           </div>
@@ -313,12 +336,12 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
               <div className="pc-user-details">
                 <div className="pc-mini-avatar">
                   <img
-                    src={miniAvatarUrl || (avatarUrl && avatarUrl !== 'undefined' ? avatarUrl : '/uploads/jugadores/person.png')}
+                    src={getAvatarUrl(miniAvatarUrl || avatarUrl)}
                     alt={`${name || 'User'} mini avatar`}
                     loading="lazy"
                     onError={e => {
                       const target = e.target as HTMLImageElement;
-                      target.src = '/uploads/jugadores/person.png';
+                      target.src = isFirefox ? `${window.location.origin}/uploads/jugadores/person.png` : '/uploads/jugadores/person.png';
                     }}
                   />
                 </div>

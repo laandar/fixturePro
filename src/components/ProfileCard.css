@@ -13,6 +13,7 @@
   --icon: none;
   --behind-gradient: none;
   --inner-gradient: none;
+  --pattern-bg: url('/uploads/jugadores/soccer.jpg');
   --sunpillar-1: hsl(2, 100%, 73%);
   --sunpillar-2: hsl(53, 100%, 69%);
   --sunpillar-3: hsl(93, 100%, 69%);
@@ -71,7 +72,7 @@
 
 .pc-card {
   width: 100%;
-  max-width: 320px;
+  max-width: 380px;
   height: 380px;
   display: flex;
   flex-direction: column;
@@ -83,16 +84,19 @@
     calc((var(--pointer-from-top) * 20px) - 6px) 20px -5px;
   transition: transform 1s ease;
   transform: translate3d(0, 0, 0.1px) rotateX(0deg) rotateY(0deg);
-  background-size: 200px 200px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%;
   background-position:
     0 0,
     0 0,
     0 0,
     50% 50%,
     0 0;
+  background-attachment: fixed;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  /* Mejorar el escalado en Firefox */
+  -moz-transform: scale(1);
+  -moz-transform-origin: 0 0;
   background-image:
-    /* Patrón de fondo */
-    url('/uploads/jugadores/iconpattern.png'),
     radial-gradient(
       farthest-side circle at var(--pointer-x) var(--pointer-y),
       hsla(200, 100%, 85%, var(--card-opacity)) 4%,
@@ -104,6 +108,69 @@
     radial-gradient(100% 100% at 50% 50%, rgba(59, 130, 246, 0.2) 1%, rgba(147, 51, 234, 0.1) 76%),
     conic-gradient(from 124deg at 50% 50%, rgba(34, 197, 94, 0.4) 0%, rgba(59, 130, 246, 0.3) 40%, rgba(147, 51, 234, 0.3) 60%, rgba(236, 72, 153, 0.4) 100%);
   overflow: hidden;
+}
+
+/* Pseudo-elemento para el patrón de fondo que funciona mejor en Firefox */
+.pc-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--pattern-bg);
+  background-size: 200px 200px;
+  background-repeat: repeat;
+  background-position: 0 0;
+  opacity: 0.6;
+  z-index: -1;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* Reglas específicas para Firefox */
+@-moz-document url-prefix() {
+  .pc-card::before {
+    background-attachment: local;
+    -moz-background-size: 200px 200px;
+    transform: scale(1);
+  }
+
+  @media (max-width: 1200px) {
+    .pc-card::before {
+      -moz-background-size: 180px 180px;
+    }
+  }
+
+  @media (max-width: 992px) {
+    .pc-card::before {
+      -moz-background-size: 160px 160px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .pc-card::before {
+      -moz-background-size: 150px 150px;
+    }
+  }
+
+  @media (max-width: 576px) {
+    .pc-card::before {
+      -moz-background-size: 120px 120px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .pc-card::before {
+      -moz-background-size: 110px 110px;
+    }
+  }
+
+  @media (max-width: 320px) {
+    .pc-card::before {
+      -moz-background-size: 100px 100px;
+    }
+  }
 }
 
 .pc-card:hover,
@@ -536,10 +603,92 @@
   }
 }
 
+
+@media (max-width: 1200px) {
+  .pc-card {
+    height: 360px;
+    max-width: 360px;
+  }
+
+  .pc-card::before {
+    background-size: 180px 180px;
+  }
+}
+
+@media (max-width: 992px) {
+  .pc-card {
+    height: 340px;
+    max-width: 340px;
+  }
+
+  .pc-card::before {
+    background-size: 160px 160px;
+  }
+}
+
 @media (max-width: 768px) {
   .pc-card {
-    height: 320px;
-    max-width: 300px;
+    height: 400px;
+    max-width: 100%;
+    min-width: 320px;
+  }
+
+  .pc-card::before {
+    background-size: 150px 150px;
+  }
+
+  .pc-content {
+    padding: 0px 15px 0px 15px;
+    margin-top: -5px;
+  }
+
+  .pc-details h3 {
+    font-size: 1.4em;
+  }
+
+  .pc-details p {
+    font-size: 13px;
+  }
+
+  .pc-user-info {
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    padding: 8px 12px;
+  }
+
+  .pc-mini-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .pc-user-details {
+    gap: 10px;
+  }
+
+  .pc-handle {
+    font-size: 14px;
+  }
+
+  .pc-status {
+    font-size: 12px;
+  }
+
+  .pc-contact-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 576px) {
+  .pc-card {
+    height: 380px;
+    max-width: 100%;
+    min-width: 300px;
+  }
+
+  .pc-card::before {
+    background-size: 120px 120px;
   }
 
   .pc-content {
@@ -559,12 +708,12 @@
     bottom: 6px;
     left: 6px;
     right: 6px;
-    padding: 5px 8px;
+    padding: 6px 10px;
   }
 
   .pc-mini-avatar {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
   }
 
   .pc-user-details {
@@ -576,7 +725,7 @@
   }
 
   .pc-status {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .pc-contact-btn {
@@ -587,12 +736,72 @@
 
 @media (max-width: 480px) {
   .pc-card {
-    height: 280px;
-    max-width: 260px;
+    height: 360px;
+    max-width: 100%;
+    min-width: 280px;
+  }
+
+  .pc-card::before {
+    background-size: 110px 110px;
   }
 
   .pc-content {
     padding: 0px 10px 0px 10px;
+    margin-top: -5px;
+  }
+
+  .pc-details h3 {
+    font-size: 1.2em;
+  }
+
+  .pc-details p {
+    font-size: 11px;
+  }
+
+  .pc-user-info {
+    bottom: 5px;
+    left: 5px;
+    right: 5px;
+    padding: 5px 8px;
+  }
+
+  .pc-mini-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .pc-user-details {
+    gap: 6px;
+  }
+
+  .pc-handle {
+    font-size: 12px;
+  }
+
+  .pc-status {
+    font-size: 10px;
+  }
+
+  .pc-contact-btn {
+    padding: 5px 10px;
+    font-size: 10px;
+  }
+}
+
+
+@media (max-width: 320px) {
+  .pc-card {
+    height: 340px;
+    max-width: 100%;
+    min-width: 260px;
+  }
+
+  .pc-card::before {
+    background-size: 100px 100px;
+  }
+
+  .pc-content {
+    padding: 0px 8px 0px 8px;
     margin-top: -5px;
   }
 
@@ -608,8 +817,7 @@
     bottom: 5px;
     left: 5px;
     right: 5px;
-    padding: 5px 6px;
-    border-radius: 50px;
+    padding: 4px 6px;
   }
 
   .pc-mini-avatar {
@@ -622,67 +830,15 @@
   }
 
   .pc-handle {
-    font-size: 12px;
-  }
-
-  .pc-status {
-    font-size: 9px;
-  }
-
-  .pc-contact-btn {
-    padding: 5px 10px;
-    font-size: 10px;
-    border-radius: 50px;
-  }
-}
-
-@media (max-width: 320px) {
-  .pc-card {
-    height: 250px;
-    max-width: 240px;
-  }
-
-  .pc-content {
-    padding: 0px 8px 0px 8px;
-    margin-top: -5px;
-  }
-
-  .pc-details h3 {
-    font-size: 1em;
-  }
-
-  .pc-details p {
-    font-size: 9px;
-  }
-
-  .pc-user-info {
-    bottom: 5px;
-    left: 5px;
-    right: 5px;
-    padding: 4px 6px;
-    border-radius: 50px;
-  }
-
-  .pc-mini-avatar {
-    width: 20px;
-    height: 20px;
-  }
-
-  .pc-user-details {
-    gap: 6px;
-  }
-
-  .pc-handle {
     font-size: 11px;
   }
 
   .pc-status {
-    font-size: 8px;
+    font-size: 9px;
   }
 
   .pc-contact-btn {
     padding: 4px 8px;
     font-size: 9px;
-    border-radius: 50px;
   }
 }

@@ -1,0 +1,127 @@
+/* Estilos para el carrusel móvil */
+.mobile-carousel-container {
+  padding: 20px 0;
+}
+
+.mobile-swiper {
+  height: 450px;
+  padding: 20px 0 60px 0;
+}
+
+.mobile-swiper .swiper-slide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-profile-card-container {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+/* Controles de navegación personalizados */
+.mobile-swiper .swiper-button-next,
+.mobile-swiper .swiper-button-prev {
+  color: #007bff;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-swiper .swiper-button-next:after,
+.mobile-swiper .swiper-button-prev:after {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.mobile-swiper .swiper-button-prev {
+  left: 10px;
+}
+
+.mobile-swiper .swiper-button-next {
+  right: 10px;
+}
+
+/* Paginación personalizada */
+.mobile-swiper .swiper-pagination {
+  bottom: 10px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: auto !important;
+  max-width: 90% !important;
+  position: absolute !important;
+  z-index: 10;
+  display: flex !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+}
+
+.mobile-swiper .swiper-pagination-bullet {
+  background: rgba(255, 255, 255, 0.5);
+  opacity: 1;
+  width: 8px !important;
+  height: 8px !important;
+  margin: 0 2px !important;
+  flex-shrink: 0;
+}
+
+.mobile-swiper .swiper-pagination-bullet-active {
+  background: #007bff;
+  transform: scale(1.2);
+}
+
+/* Responsive para diferentes tamaños de móvil */
+@media (max-width: 640px) {
+  .mobile-swiper .swiper-pagination {
+    max-width: 85% !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .mobile-swiper {
+    height: 420px;
+    padding: 15px 0 50px 0;
+  }
+  
+  .mobile-profile-card-container {
+    max-width: 360px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mobile-swiper {
+    height: 400px;
+    padding: 10px 0 45px 0;
+  }
+  
+  .mobile-profile-card-container {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 320px) {
+  .mobile-swiper {
+    height: 380px;
+    padding: 10px 0 40px 0;
+  }
+  
+  .mobile-profile-card-container {
+    max-width: 280px;
+  }
+  
+  .mobile-swiper .swiper-pagination {
+    max-width: 95% !important;
+    gap: 2px !important;
+  }
+  
+  .mobile-swiper .swiper-pagination-bullet {
+    width: 6px !important;
+    height: 6px !important;
+    margin: 0 1px !important;
+  }
+}

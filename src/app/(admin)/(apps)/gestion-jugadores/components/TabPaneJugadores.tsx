@@ -42,6 +42,7 @@ CustomToggle.displayName = 'CustomToggle';
 const TabPaneJugadores = () => {
     const [showImageModal, setShowImageModal] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     const {
         loading,
@@ -72,6 +73,27 @@ const TabPaneJugadores = () => {
         setShowImageModal(true);
     };
 
+    const handleConfirmSave = async (equipo: 'A' | 'B') => {
+        try {
+            setSaveMessage(null);
+            await saveJugadoresParticipantes();
+            setSaveMessage({ type: 'success', text: '✅ Jugadores guardados exitosamente' });
+            
+            // Cerrar el modal después de un breve delay
+            setTimeout(() => {
+                if (equipo === 'A') {
+                    setShowSelectionModalA(false);
+                } else {
+                    setShowSelectionModalB(false);
+                }
+                setSaveMessage(null);
+            }, 1500);
+        } catch (err) {
+            console.error('Error al guardar:', err);
+            setSaveMessage({ type: 'error', text: '❌ Error al guardar jugadores' });
+        }
+    };
+
     if (loading) {
         return <p>Cargando jugadores...</p>;
     }
@@ -82,21 +104,6 @@ const TabPaneJugadores = () => {
 
     return (
         <>
-            {/* Botón de guardado manual para debug */}
-            <div className="mb-3 text-center">
-                <Button 
-                    variant="primary" 
-                    onClick={saveJugadoresParticipantes}
-                    disabled={isSaving}
-                    size="sm"
-                >
-                    {isSaving ? 'Guardando...' : 'Guardar Selección Manualmente'}
-                </Button>
-                <small className="d-block text-muted mt-1">
-                    Equipo A: {jugadoresParticipantesA.length} | Equipo B: {jugadoresParticipantesB.length}
-                </small>
-            </div>
-            
             <Row>
                 <Col md={6}>
                     <div className="mb-4">
@@ -420,11 +427,23 @@ const TabPaneJugadores = () => {
                     </Row>
                 </ModalBody>
                 <ModalFooter>
-                    <Button variant="secondary" onClick={() => setShowSelectionModalA(false)}>
+                    {saveMessage && (
+                        <div className={`alert alert-${saveMessage.type === 'success' ? 'success' : 'danger'} py-2 px-3 mb-0 me-auto`}>
+                            {saveMessage.text}
+                        </div>
+                    )}
+                    <Button variant="secondary" onClick={() => {
+                        setShowSelectionModalA(false);
+                        setSaveMessage(null);
+                    }}>
                         Cerrar
                     </Button>
-                    <Button variant="primary" onClick={() => setShowSelectionModalA(false)}>
-                        <TbCheck /> Confirmar Selección
+                    <Button 
+                        variant="primary" 
+                        onClick={() => handleConfirmSave('A')}
+                        disabled={isSaving}
+                    >
+                        <TbCheck /> {isSaving ? 'Guardando...' : 'Confirmar Selección'}
                     </Button>
                 </ModalFooter>
             </Modal>
@@ -458,11 +477,23 @@ const TabPaneJugadores = () => {
                     </Row>
                 </ModalBody>
                 <ModalFooter>
-                    <Button variant="secondary" onClick={() => setShowSelectionModalB(false)}>
+                    {saveMessage && (
+                        <div className={`alert alert-${saveMessage.type === 'success' ? 'success' : 'danger'} py-2 px-3 mb-0 me-auto`}>
+                            {saveMessage.text}
+                        </div>
+                    )}
+                    <Button variant="secondary" onClick={() => {
+                        setShowSelectionModalB(false);
+                        setSaveMessage(null);
+                    }}>
                         Cerrar
                     </Button>
-                    <Button variant="primary" onClick={() => setShowSelectionModalB(false)}>
-                        <TbCheck /> Confirmar Selección
+                    <Button 
+                        variant="primary" 
+                        onClick={() => handleConfirmSave('B')}
+                        disabled={isSaving}
+                    >
+                        <TbCheck /> {isSaving ? 'Guardando...' : 'Confirmar Selección'}
                     </Button>
                 </ModalFooter>
             </Modal>

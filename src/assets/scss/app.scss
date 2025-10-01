@@ -97,3 +97,19 @@
 @import "plugins/treeview";
 @import "plugins/typehead";
 @import "plugins/wizard";
+
+// Custom text colors for better contrast
+.text-white-75 {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+// Custom button hover effects
+.btn-hover-lift {
+  transition: all 0.3s ease !important;
+  
+  &:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 24px rgba(108, 117, 125, 0.5) !important;
+    background: linear-gradient(135deg, #495057 0%, #6c757d 50%, #5a6268 100%) !important;
+  }
+}

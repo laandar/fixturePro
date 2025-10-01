@@ -283,7 +283,9 @@ export async function getEncuentrosByTorneo(torneoId: number) {
 
 export async function getEncuentroById(id: number) {
   try {
-    return await encuentroQueries.getById(id)
+    // Obtener todos los encuentros y filtrar por ID
+    const encuentros = await encuentroQueries.getByTorneoId(0) // Obtener todos
+    return encuentros.find(e => e.id === id)
   } catch (error) {
     throw new Error('Error al obtener encuentro')
   }

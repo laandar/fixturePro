@@ -120,6 +120,7 @@ export async function seedDatabase() {
     console.log('⚽ Insertando jugadores...');
     const jugadoresData = await db.insert(jugadores).values([
       {
+        id: 1,
         cedula: '12345678',
         apellido_nombre: 'Lionel Messi',
         nacionalidad: 'Argentina',
@@ -130,6 +131,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 2,
         cedula: '87654321',
         apellido_nombre: 'Cristiano Ronaldo',
         nacionalidad: 'Portugal',
@@ -140,6 +142,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 3,
         cedula: '11223344',
         apellido_nombre: 'Neymar Jr',
         nacionalidad: 'Brasil',
@@ -150,6 +153,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 4,
         cedula: '44332211',
         apellido_nombre: 'Kylian Mbappé',
         nacionalidad: 'Francia',
@@ -160,6 +164,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 5,
         cedula: '55667788',
         apellido_nombre: 'Erling Haaland',
         nacionalidad: 'Noruega',
@@ -170,6 +175,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 6,
         cedula: '99887766',
         apellido_nombre: 'Kevin De Bruyne',
         nacionalidad: 'Bélgica',
@@ -180,6 +186,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 7,
         cedula: '33445566',
         apellido_nombre: 'Luka Modrić',
         nacionalidad: 'Croacia',
@@ -190,6 +197,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 8,
         cedula: '77889900',
         apellido_nombre: 'Virgil van Dijk',
         nacionalidad: 'Países Bajos',
@@ -200,6 +208,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 9,
         cedula: '11224455',
         apellido_nombre: 'Mohamed Salah',
         nacionalidad: 'Egipto',
@@ -210,6 +219,7 @@ export async function seedDatabase() {
         estado: true,
       },
       {
+        id: 10,
         cedula: '66778899',
         apellido_nombre: 'Robert Lewandowski',
         nacionalidad: 'Polonia',

@@ -28,6 +28,12 @@ import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
 import { getTempPlayerImage } from '@/components/TempPlayerImages'
+import { Swiper, SwiperSlide } from 'swiper/react'
+import { Navigation, Pagination as SwiperPagination, Autoplay } from 'swiper/modules'
+import 'swiper/css'
+import 'swiper/css/navigation'
+import 'swiper/css/pagination'
+import '@/styles/mobile-carousel.css'
 
 const columnHelper = createColumnHelper<JugadorWithEquipo>()
 
@@ -75,6 +81,9 @@ const Page = () => {
   
   // Estados para la vista (cards o tabla)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  
+  // Estado para detectar si estamos en móvil
+  const [isMobile, setIsMobile] = useState(false)
   
   // Estados para filtros con checkboxes
   const [selectedCategorias, setSelectedCategorias] = useState<string[]>([])
@@ -406,6 +415,18 @@ const Page = () => {
     loadData()
   }, [])
 
+  // Detectar si estamos en móvil
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   if (loading) {
     return (
       <Container fluid>
@@ -439,7 +460,7 @@ const Page = () => {
       <Row className="mb-2">
         <Col lg={12}>
           <div className="bg-light-subtle rounded border p-3">
-            <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
               <div className="d-lg-none">
                 <Button variant="light" className="btn-icon" onClick={toggleFilterOffcanvas}>
                   <LuMenu className="fs-lg" />
@@ -466,145 +487,113 @@ const Page = () => {
                 </Button>
               </div>
             </div>
-          </div>
-        </Col>
-      </Row>
 
-      {/* Main content area with sidebar and content */}
-      <Row className="g-2">
-        {/* Filter Sidebar */}
-        <Col xl={3} className="d-none d-xl-block">
-          <Card className="h-100">
-            <CardHeader className="border-bottom">
-              <h6 className="mb-0">Filtros</h6>
-            </CardHeader>
-            <CardBody>
-              <div className="mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <label className="form-label fw-semibold mb-0">Categoría:</label>
+            {/* Filtros superiores - Solo visible en escritorio */}
+            <div className="d-none d-lg-block">
+              <Row className="g-2 align-items-end">
+                <Col lg={3}>
+                  <label className="form-label fw-semibold mb-1">Buscar Jugador</label>
+                  <div className="position-relative">
+                    <FormControl
+                      type="text"
+                      placeholder="Buscar por nombre..."
+                      value={globalFilter ?? ''}
+                      onChange={(e) => setGlobalFilter(e.target.value)}
+                      className="ps-5"
+                    />
+                    <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
+                  </div>
+                </Col>
+                <Col lg={3}>
+                  <label className="form-label fw-semibold mb-1">Categoría</label>
+                  <FormSelect
+                    value={selectedCategorias.length === 1 ? selectedCategorias[0] : 'Todas'}
+                    onChange={(e) => {
+                      if (e.target.value === 'Todas') {
+                        setSelectedCategorias([])
+                        table.getColumn('categoria')?.setFilterValue(undefined)
+                        setSelectedEquipos([])
+                        table.getColumn('equipo')?.setFilterValue(undefined)
+                      } else {
+                        setSelectedCategorias([e.target.value])
+                        table.getColumn('categoria')?.setFilterValue([e.target.value])
+                        setSelectedEquipos([])
+                        table.getColumn('equipo')?.setFilterValue(undefined)
+                      }
+                    }}
+                  >
+                    <option value="Todas">Todas las categorías</option>
+                    {categorias.map((categoria) => (
+                      <option key={categoria.id} value={categoria.nombre}>
+                        {categoria.nombre}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </Col>
+                <Col lg={3}>
+                  <label className="form-label fw-semibold mb-1">Equipo</label>
+                  <FormSelect
+                    value={selectedEquipos.length === 1 ? selectedEquipos[0] : 'Todos'}
+                    onChange={(e) => {
+                      if (e.target.value === 'Todos') {
+                        setSelectedEquipos([])
+                        table.getColumn('equipo')?.setFilterValue(undefined)
+                      } else {
+                        setSelectedEquipos([e.target.value])
+                        table.getColumn('equipo')?.setFilterValue([e.target.value])
+                      }
+                    }}
+                    disabled={selectedCategorias.length === 0}
+                  >
+                    <option value="Todos">Todos los equipos</option>
+                    {getFilteredEquipos().map((equipo) => (
+                      <option key={equipo.id} value={equipo.nombre}>
+                        {equipo.nombre}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </Col>
+                <Col lg={3}>
+                  <label className="form-label fw-semibold mb-1">Elementos por página</label>
+                  <FormSelect
+                    value={table.getState().pagination.pageSize}
+                    onChange={(e) => table.setPageSize(Number(e.target.value))}
+                  >
+                    {[5, 8, 10, 15, 20].map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </Col>
+              </Row>
+              
+              {/* Botón para limpiar todos los filtros */}
+              {(selectedCategorias.length > 0 || selectedEquipos.length > 0 || globalFilter) && (
+                <div className="mt-2">
                   <Button 
                     variant="link" 
                     size="sm" 
                     className="p-0 text-decoration-none"
                     onClick={() => {
                       setSelectedCategorias([])
+                      setSelectedEquipos([])
+                      setGlobalFilter('')
                       table.getColumn('categoria')?.setFilterValue(undefined)
-                      // También limpiar equipos cuando se limpian categorías
-                      setSelectedEquipos([])
                       table.getColumn('equipo')?.setFilterValue(undefined)
                     }}
                   >
-                    Ver Todas
+                    Limpiar todos los filtros
                   </Button>
                 </div>
-                <div className="filter-list">
-                  {categorias.map((categoria) => {
-                    const count = data.filter(jugador => jugador.categoria?.nombre === categoria.nombre).length
-                    const isChecked = selectedCategorias.includes(categoria.nombre)
-                    return (
-                      <div key={categoria.id} className="d-flex justify-content-between align-items-center py-1">
-                        <FormCheck
-                          type="checkbox"
-                          id={`categoria-${categoria.id}`}
-                          label={categoria.nombre}
-                          checked={isChecked}
-                          onChange={(e) => {
-                            const newSelected = e.target.checked 
-                              ? [...selectedCategorias, categoria.nombre]
-                              : selectedCategorias.filter(c => c !== categoria.nombre)
-                            setSelectedCategorias(newSelected)
-                            table.getColumn('categoria')?.setFilterValue(newSelected.length > 0 ? newSelected : undefined)
-                            
-                            // Limpiar equipos seleccionados cuando cambian las categorías
-                            setSelectedEquipos([])
-                            table.getColumn('equipo')?.setFilterValue(undefined)
-                          }}
-                          className="flex-grow-1"
-                        />
-                        <span className="text-primary fw-semibold">{count}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <label className="form-label fw-semibold mb-0">Equipo:</label>
-                  <Button 
-                    variant="link" 
-                    size="sm" 
-                    className="p-0 text-decoration-none"
-                    onClick={() => {
-                      setSelectedEquipos([])
-                      table.getColumn('equipo')?.setFilterValue(undefined)
-                    }}
-                  >
-                    Ver Todos
-                  </Button>
-                </div>
-                <div className="filter-list">
-                  {getFilteredEquipos().map((equipo) => {
-                    // Contar solo jugadores en las categorías seleccionadas (o todos si no hay categorías seleccionadas)
-                    const count = selectedCategorias.length > 0 
-                      ? data.filter(jugador => 
-                          jugador.equipo?.nombre === equipo.nombre && 
-                          jugador.categoria && 
-                          selectedCategorias.includes(jugador.categoria.nombre)
-                        ).length
-                      : data.filter(jugador => jugador.equipo?.nombre === equipo.nombre).length
-                    const isChecked = selectedEquipos.includes(equipo.nombre)
-                    return (
-                      <div key={equipo.id} className="d-flex justify-content-between align-items-center py-1">
-                        <FormCheck
-                          type="checkbox"
-                          id={`equipo-${equipo.id}`}
-                          label={equipo.nombre}
-                          checked={isChecked}
-                          onChange={(e) => {
-                            const newSelected = e.target.checked 
-                              ? [...selectedEquipos, equipo.nombre]
-                              : selectedEquipos.filter(eq => eq !== equipo.nombre)
-                            setSelectedEquipos(newSelected)
-                            table.getColumn('equipo')?.setFilterValue(newSelected.length > 0 ? newSelected : undefined)
-                          }}
-                          className="flex-grow-1"
-                        />
-                        <span className="text-primary fw-semibold">{count}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              
-              <div className="mb-3">
-                <label className="form-label fw-semibold">Estado</label>
-                <Form.Select
-                  value={(table.getColumn('estado')?.getFilterValue() as string) ?? 'Todos'}
-                  onChange={(e) => table.getColumn('estado')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}
-                >
-                  <option value="Todos">Todos los estados</option>
-                  <option value="true">Activo</option>
-                  <option value="false">Inactivo</option>
-                </Form.Select>
-              </div>
-              
-              <div className="mb-3">
-                <label className="form-label fw-semibold">Elementos por página</label>
-                <Form.Select
-                  value={table.getState().pagination.pageSize}
-                  onChange={(e) => table.setPageSize(Number(e.target.value))}
-                >
-                  {[5, 8, 10, 15, 20].map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </Form.Select>
-              </div>
-            </CardBody>
-          </Card>
+              )}
+            </div>
+          </div>
         </Col>
+      </Row>
+
+      {/* Main content area */}
+      <Row className="g-2">
         
         {/* Mobile Filter Offcanvas */}
         <Offcanvas show={showFilterOffcanvas} onHide={toggleFilterOffcanvas} placement="start">
@@ -613,10 +602,36 @@ const Page = () => {
           </OffcanvasHeader>
           <OffcanvasBody>
             <div className="mb-3">
+              <label className="form-label fw-semibold">Buscar Jugador</label>
+              <div className="position-relative">
+                <FormControl
+                  type="text"
+                  placeholder="Buscar por nombre..."
+                  value={globalFilter ?? ''}
+                  onChange={(e) => setGlobalFilter(e.target.value)}
+                  className="ps-5"
+                />
+                <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
+              </div>
+            </div>
+
+            <div className="mb-3">
               <label className="form-label fw-semibold">Categoría</label>
-              <Form.Select
-                value={(table.getColumn('categoria')?.getFilterValue() as string) ?? 'Todas'}
-                onChange={(e) => table.getColumn('categoria')?.setFilterValue(e.target.value === 'Todas' ? undefined : e.target.value)}
+              <FormSelect
+                value={selectedCategorias.length === 1 ? selectedCategorias[0] : 'Todas'}
+                onChange={(e) => {
+                  if (e.target.value === 'Todas') {
+                    setSelectedCategorias([])
+                    table.getColumn('categoria')?.setFilterValue(undefined)
+                    setSelectedEquipos([])
+                    table.getColumn('equipo')?.setFilterValue(undefined)
+                  } else {
+                    setSelectedCategorias([e.target.value])
+                    table.getColumn('categoria')?.setFilterValue([e.target.value])
+                    setSelectedEquipos([])
+                    table.getColumn('equipo')?.setFilterValue(undefined)
+                  }
+                }}
               >
                 <option value="Todas">Todas las categorías</option>
                 {categorias.map((categoria) => (
@@ -624,97 +639,196 @@ const Page = () => {
                     {categoria.nombre}
                   </option>
                 ))}
-              </Form.Select>
+              </FormSelect>
             </div>
             
             <div className="mb-3">
               <label className="form-label fw-semibold">Equipo</label>
-              <Form.Select
-                value={(table.getColumn('equipo')?.getFilterValue() as string) ?? 'Todos'}
-                onChange={(e) => table.getColumn('equipo')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}
+              <FormSelect
+                value={selectedEquipos.length === 1 ? selectedEquipos[0] : 'Todos'}
+                onChange={(e) => {
+                  if (e.target.value === 'Todos') {
+                    setSelectedEquipos([])
+                    table.getColumn('equipo')?.setFilterValue(undefined)
+                  } else {
+                    setSelectedEquipos([e.target.value])
+                    table.getColumn('equipo')?.setFilterValue([e.target.value])
+                  }
+                }}
+                disabled={selectedCategorias.length === 0}
               >
                 <option value="Todos">Todos los equipos</option>
-                {equipos.map((equipo) => (
+                {getFilteredEquipos().map((equipo) => (
                   <option key={equipo.id} value={equipo.nombre}>
                     {equipo.nombre}
                   </option>
                 ))}
-              </Form.Select>
+              </FormSelect>
             </div>
             
-            <div className="mb-3">
-              <label className="form-label fw-semibold">Estado</label>
-              <Form.Select
-                value={(table.getColumn('estado')?.getFilterValue() as string) ?? 'Todos'}
-                onChange={(e) => table.getColumn('estado')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}
-              >
-                <option value="Todos">Todos los estados</option>
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
-              </Form.Select>
-            </div>
+            {/* Botón para limpiar filtros en móvil */}
+            {(selectedCategorias.length > 0 || selectedEquipos.length > 0 || globalFilter) && (
+              <div className="mt-3">
+                <Button 
+                  variant="outline-secondary" 
+                  size="sm" 
+                  className="w-100"
+                  onClick={() => {
+                    setSelectedCategorias([])
+                    setSelectedEquipos([])
+                    setGlobalFilter('')
+                    table.getColumn('categoria')?.setFilterValue(undefined)
+                    table.getColumn('equipo')?.setFilterValue(undefined)
+                  }}
+                >
+                  Limpiar todos los filtros
+                </Button>
+              </div>
+            )}
           </OffcanvasBody>
         </Offcanvas>
         
         {/* Main Content Area */}
-        <Col xl={9}>
+        <Col xl={12}>
 
           {/* Grid View - ProfileCards */}
           {viewMode === 'grid' && (
-            <Row className="row-cols-xxl-4 row-cols-lg-3 row-cols-sm-2 row-col-1 g-4 profile-cards-grid" style={{ margin: '0 -15px' }}>
-              {table.getRowModel().rows.length === 0 && (
-                <Col>
-                  <Alert variant="info" className="text-center">
-                    No se encontraron jugadores.
-                  </Alert>
-                </Col>
-              )}
-              {table.getRowModel().rows.map((row) => {
-                const jugador = row.original
-                return (
-                  <Col className="col mb-4" key={jugador.id} style={{ padding: '0 15px' }}>
-                    <div className="profile-card-container" style={{ height: '400px', width: '100%' }}>
-                      <div className="position-relative">
-                        <ProfileCard
-                          name={jugador.apellido_nombre}
-                          title={jugador.categoria?.nombre || 'Sin categoría'}
-                          handle={jugador.equipo?.nombre || 'Sin equipo'}
-                          status={jugador.estado ? 'Activo' : 'Inactivo'}
-                          avatarUrl={jugador.foto || getTempPlayerImage(jugador.id)}
-                          showUserInfo={true}
-                          enableTilt={true}
-                          enableMobileTilt={false}
-                          onContactClick={() => window.location.href = `/jugadores/${jugador.id}`}
-                          contactText="Ver Perfil"
-                          className="h-100"
-                        />
-                        {/* Botones de acción flotantes */}
-                        <div className="position-absolute top-0 end-0 p-2 d-flex gap-1">
-                          <Button 
-                            variant="light" 
-                            size="sm" 
-                            className="btn-icon rounded-circle shadow-sm"
-                            onClick={() => handleEditClick(jugador)}
-                            title="Editar jugador"
-                          >
-                            <TbEdit className="fs-sm" />
-                          </Button>
-                          <Button
-                            variant="light"
-                            size="sm"
-                            className="btn-icon rounded-circle shadow-sm"
-                            onClick={() => handleDeleteSingle(jugador)}
-                            title="Eliminar jugador"
-                          >
-                            <TbTrash className="fs-sm" />
-                          </Button>
+            <>
+              {/* Vista de escritorio/tablet - Grid normal */}
+              {!isMobile && (
+                <Row className="row-cols-xxl-5 row-cols-xl-5 row-cols-lg-4 row-cols-md-3 row-cols-sm-2 g-4 profile-cards-grid" style={{ margin: '0 -15px' }}>
+                  {table.getRowModel().rows.length === 0 && (
+                    <Col>
+                      <Alert variant="info" className="text-center">
+                        No se encontraron jugadores.
+                      </Alert>
+                    </Col>
+                  )}
+                  {table.getRowModel().rows.map((row) => {
+                    const jugador = row.original
+                    return (
+                      <Col className="col mb-4" key={jugador.id} style={{ padding: '0 15px' }}>
+                        <div className="profile-card-container" style={{ height: '400px', width: '100%' }}>
+                          <div className="position-relative">
+                            <ProfileCard
+                              name={jugador.apellido_nombre}
+                              title={jugador.categoria?.nombre || 'Sin categoría'}
+                              handle={jugador.equipo?.nombre || 'Sin equipo'}
+                              status={jugador.estado ? 'Activo' : 'Inactivo'}
+                              avatarUrl={jugador.foto || getTempPlayerImage(jugador.id)}
+                              showUserInfo={true}
+                              enableTilt={true}
+                              enableMobileTilt={false}
+                              onContactClick={() => window.location.href = `/jugadores/${jugador.id}`}
+                              contactText="Ver Perfil"
+                              className="h-100"
+                            />
+                            {/* Botones de acción flotantes */}
+                            <div className="position-absolute top-0 end-0 p-2 d-flex gap-1">
+                              <Button 
+                                variant="light" 
+                                size="sm" 
+                                className="btn-icon rounded-circle shadow-sm"
+                                onClick={() => handleEditClick(jugador)}
+                                title="Editar jugador"
+                              >
+                                <TbEdit className="fs-sm" />
+                              </Button>
+                              <Button
+                                variant="light"
+                                size="sm"
+                                className="btn-icon rounded-circle shadow-sm"
+                                onClick={() => handleDeleteSingle(jugador)}
+                                title="Eliminar jugador"
+                              >
+                                <TbTrash className="fs-sm" />
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </Col>
-                )
-              })}
-            </Row>
+                      </Col>
+                    )
+                  })}
+                </Row>
+              )}
+
+              {/* Vista móvil - Carrusel */}
+              {isMobile && (
+                <div className="mobile-carousel-container">
+                  {table.getRowModel().rows.length === 0 ? (
+                    <Alert variant="info" className="text-center">
+                      No se encontraron jugadores.
+                    </Alert>
+                  ) : (
+                    <Swiper
+                      modules={[Navigation, SwiperPagination, Autoplay]}
+                      spaceBetween={20}
+                      slidesPerView={1}
+                      navigation={{
+                        nextEl: '.swiper-button-next',
+                        prevEl: '.swiper-button-prev',
+                      }}
+                      pagination={{
+                        clickable: true,
+                        dynamicBullets: true,
+                      }}
+                      autoplay={{
+                        delay: 4000,
+                        disableOnInteraction: false,
+                      }}
+                      loop={table.getRowModel().rows.length > 1}
+                      className="mobile-swiper"
+                    >
+                      {table.getRowModel().rows.map((row) => {
+                        const jugador = row.original
+                        return (
+                          <SwiperSlide key={jugador.id}>
+                            <div className="mobile-profile-card-container" style={{ padding: '0 20px' }}>
+                              <div className="position-relative">
+                                <ProfileCard
+                                  name={jugador.apellido_nombre}
+                                  title={jugador.categoria?.nombre || 'Sin categoría'}
+                                  handle={jugador.equipo?.nombre || 'Sin equipo'}
+                                  status={jugador.estado ? 'Activo' : 'Inactivo'}
+                                  avatarUrl={jugador.foto || getTempPlayerImage(jugador.id)}
+                                  showUserInfo={true}
+                                  enableTilt={false}
+                                  enableMobileTilt={false}
+                                  onContactClick={() => window.location.href = `/jugadores/${jugador.id}`}
+                                  contactText="Ver Perfil"
+                                  className="h-100"
+                                />
+                                {/* Botones de acción flotantes */}
+                                <div className="position-absolute top-0 end-0 p-2 d-flex gap-1">
+                                  <Button 
+                                    variant="light" 
+                                    size="sm" 
+                                    className="btn-icon rounded-circle shadow-sm"
+                                    onClick={() => handleEditClick(jugador)}
+                                    title="Editar jugador"
+                                  >
+                                    <TbEdit className="fs-sm" />
+                                  </Button>
+                                  <Button
+                                    variant="light"
+                                    size="sm"
+                                    className="btn-icon rounded-circle shadow-sm"
+                                    onClick={() => handleDeleteSingle(jugador)}
+                                    title="Eliminar jugador"
+                                  >
+                                    <TbTrash className="fs-sm" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </SwiperSlide>
+                        )
+                      })}
+                    </Swiper>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {/* List View - DataTable */}
@@ -748,9 +862,7 @@ const Page = () => {
           {/* Pagination for Grid View */}
           {viewMode === 'grid' && table.getRowModel().rows.length > 0 && (
             <div className="d-flex justify-content-between align-items-center mb-4 mt-3">
-              <span className="text-muted fst-italic">
-                Última modificación: <LuClock className="me-1" /> {new Date().toLocaleString()}
-              </span>
+             
               <Pagination className="pagination-boxed justify-content-center mb-0">
                 <Pagination.Prev 
                   disabled={!table.getCanPreviousPage()}

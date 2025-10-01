@@ -77,7 +77,7 @@ export async function createJugador(formData: FormData) {
       throw new Error('Ya existe un jugador con esta cédula')
     }
 
-    const jugadorData: NewJugador = {
+    const jugadorData = {
       cedula,
       apellido_nombre,
       nacionalidad,
@@ -88,7 +88,7 @@ export async function createJugador(formData: FormData) {
     }
 
     // Crear el jugador primero para obtener el ID
-    const nuevoJugador = await jugadorQueries.create(jugadorData)
+    const nuevoJugador = await jugadorQueries.create(jugadorData as any)
     
     // Si hay una foto, guardarla y actualizar el jugador
     if (foto && foto.size > 0) {

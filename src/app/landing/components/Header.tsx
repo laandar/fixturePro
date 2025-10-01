@@ -57,6 +57,9 @@ export default function Header() {
                 ))}
               </Nav>
               <div className="d-flex align-items-center">
+                <Link href="/estadisticas" className="btn btn-outline-primary me-2">
+                  Estadísticas
+                </Link>
                 <Button variant="link" className="btn-icon fw-semibold text-body me-2" onClick={toggleTheme}>
                   <TbContrast className="fs-22" />
                 </Button>

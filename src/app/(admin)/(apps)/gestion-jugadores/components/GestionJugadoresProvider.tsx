@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap'
 import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJugadoresContext'
@@ -10,13 +10,14 @@ import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresP
 import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante } from '@/db/types'
 
 export const GestionJugadoresProvider = ({ children }: { children: React.ReactNode }) => {
+    const isInitialLoad = useRef(true)
     const searchParams = useSearchParams()
     const torneo = searchParams?.get('torneo') || null
     const jornada = searchParams?.get('jornada') || null
-    const equipoLocalId = searchParams?.get('equipoLocal') || null
-    const equipoVisitanteId = searchParams?.get('equipoVisitante') || null
-    const nombreEquipoLocal = searchParams?.get('local') || null
-    const nombreEquipoVisitante = searchParams?.get('visitante') || null
+    const equipoLocalId = searchParams?.get('equipoLocalId') || null
+    const equipoVisitanteId = searchParams?.get('equipoVisitanteId') || null
+    const nombreEquipoLocal = searchParams?.get('nombreEquipoLocal') || null
+    const nombreEquipoVisitante = searchParams?.get('nombreEquipoVisitante') || null
     
     // Convertir a números
     const torneoId = torneo ? parseInt(torneo) : null
@@ -147,7 +148,7 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
                     minuto: tarjeta.minuto || 0,
                     tiempo: tarjeta.tiempo || 'primer',
                     tipo: tarjeta.tipo || 'amarilla',
-                    motivo: tarjeta.motivo || null
+                    motivo: tarjeta.motivo || ''
                 }))
                 
                 setTarjetas(tarjetasFormateadas)
@@ -206,6 +207,9 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
 
                 setJugadoresParticipantesA(jugadoresLocal)
                 setJugadoresParticipantesB(jugadoresVisitante)
+                
+                // Marcar que la carga inicial está completa
+                isInitialLoad.current = false
             }
         } catch (err) {
             console.error('Error al cargar jugadores participantes:', err)
@@ -213,7 +217,28 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
     }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores])
 
     const saveJugadoresParticipantes = useCallback(async () => {
-        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum || isSaving) {
+        console.log('saveJugadoresParticipantes - Inicio', {
+            torneoId,
+            equipoLocalIdNum,
+            equipoVisitanteIdNum,
+            jornadaNum,
+            isSaving,
+            jugadoresA: jugadoresParticipantesA.length,
+            jugadoresB: jugadoresParticipantesB.length
+        })
+
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            console.error('Faltan parámetros para guardar:', {
+                torneoId,
+                equipoLocalIdNum,
+                equipoVisitanteIdNum,
+                jornadaNum
+            })
+            return
+        }
+
+        if (isSaving) {
+            console.log('Ya se está guardando, saltando...')
             return
         }
 
@@ -223,39 +248,59 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             // Obtener el encuentro actual
             const { getEncuentrosByTorneo } = await import('../../torneos/actions')
             const encuentros = await getEncuentrosByTorneo(torneoId)
+            
+            console.log('Encuentros encontrados:', encuentros.length)
+            console.log('Buscando encuentro con:', {
+                equipo_local_id: equipoLocalIdNum,
+                equipo_visitante_id: equipoVisitanteIdNum,
+                jornada: jornadaNum
+            })
+            
             const encuentro = encuentros.find(e => 
                 e.equipo_local_id === equipoLocalIdNum && 
                 e.equipo_visitante_id === equipoVisitanteIdNum && 
                 e.jornada === jornadaNum
             )
 
-            if (encuentro) {
-                const jugadoresData: NewJugadorParticipante[] = [
-                    ...jugadoresParticipantesA.map(j => ({
-                        encuentro_id: encuentro.id,
-                        jugador_id: j.id,
-                        equipo_tipo: 'local' as const
-                    })),
-                    ...jugadoresParticipantesB.map(j => ({
-                        encuentro_id: encuentro.id,
-                        jugador_id: j.id,
-                        equipo_tipo: 'visitante' as const
-                    }))
-                ]
-
-                console.log('Guardando jugadores participantes:', {
-                    encuentroId: encuentro.id,
-                    jugadoresLocal: jugadoresParticipantesA.length,
-                    jugadoresVisitante: jugadoresParticipantesB.length,
-                    totalJugadores: jugadoresData.length,
-                    jugadoresData
-                })
-
-                await saveJugadoresParticipantesAction(encuentro.id, jugadoresData)
-                console.log('Jugadores participantes guardados exitosamente')
+            if (!encuentro) {
+                console.error('No se encontró el encuentro!')
+                console.log('Encuentros disponibles:', encuentros.map(e => ({
+                    id: e.id,
+                    local: e.equipo_local_id,
+                    visitante: e.equipo_visitante_id,
+                    jornada: e.jornada
+                })))
+                return
             }
+
+            console.log('Encuentro encontrado:', encuentro.id)
+
+            const jugadoresData: NewJugadorParticipante[] = [
+                ...jugadoresParticipantesA.map(j => ({
+                    encuentro_id: encuentro.id,
+                    jugador_id: j.id,
+                    equipo_tipo: 'local' as const
+                })),
+                ...jugadoresParticipantesB.map(j => ({
+                    encuentro_id: encuentro.id,
+                    jugador_id: j.id,
+                    equipo_tipo: 'visitante' as const
+                }))
+            ]
+
+            console.log('Guardando jugadores participantes:', {
+                encuentroId: encuentro.id,
+                jugadoresLocal: jugadoresParticipantesA.length,
+                jugadoresVisitante: jugadoresParticipantesB.length,
+                totalJugadores: jugadoresData.length,
+                jugadoresData
+            })
+
+            const result = await saveJugadoresParticipantesAction(encuentro.id, jugadoresData)
+            console.log('Resultado del guardado:', result)
+            console.log('✅ Jugadores participantes guardados exitosamente')
         } catch (err) {
-            console.error('Error al guardar jugadores participantes:', err)
+            console.error('❌ Error al guardar jugadores participantes:', err)
         } finally {
             setIsSaving(false)
         }
@@ -264,17 +309,19 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
     useEffect(() => {
         loadData()
         // Debug: mostrar información de parámetros de URL
-        if (torneo || jornada || equipoLocalId || equipoVisitanteId) {
-            console.log('Parámetros del encuentro:', {
-                torneo,
-                jornada,
-                equipoLocalId,
-                equipoVisitanteId,
-                nombreEquipoLocal,
-                nombreEquipoVisitante
-            })
-        }
-    }, [loadData, torneo, jornada, equipoLocalId, equipoVisitanteId, nombreEquipoLocal, nombreEquipoVisitante])
+        console.log('🔍 Parámetros recibidos de la URL:', {
+            torneo,
+            jornada,
+            equipoLocalId,
+            equipoVisitanteId,
+            nombreEquipoLocal,
+            nombreEquipoVisitante,
+            torneoIdNum: torneoId,
+            jornadaNum,
+            equipoLocalIdNum,
+            equipoVisitanteIdNum
+        })
+    }, [loadData, torneo, jornada, equipoLocalId, equipoVisitanteId, nombreEquipoLocal, nombreEquipoVisitante, torneoId, jornadaNum, equipoLocalIdNum, equipoVisitanteIdNum])
 
     // Cargar jugadores participantes cuando cambien los parámetros del encuentro
     useEffect(() => {
@@ -320,29 +367,17 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         } else {
             setter([...participantes, jugador])
         }
-        // Guardar automáticamente cuando se cambie la selección
-        setTimeout(() => {
-            saveJugadoresParticipantes()
-        }, 500) // Aumentar el tiempo para evitar condiciones de carrera
     }
 
     const handleSelectAllPlayers = (equipo: 'A' | 'B') => {
         const source = equipo === 'A' ? jugadoresEquipoA : jugadoresEquipoB
         const setter = equipo === 'A' ? setJugadoresParticipantesA : setJugadoresParticipantesB
         setter(source)
-        // Guardar automáticamente cuando se cambie la selección
-        setTimeout(() => {
-            saveJugadoresParticipantes()
-        }, 500)
     }
 
     const handleClearAllPlayers = (equipo: 'A' | 'B') => {
         const setter = equipo === 'A' ? setJugadoresParticipantesA : setJugadoresParticipantesB
         setter([])
-        // Guardar automáticamente cuando se cambie la selección
-        setTimeout(() => {
-            saveJugadoresParticipantes()
-        }, 500)
     }
 
     const handleAddCambio = () => {

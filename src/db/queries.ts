@@ -1,6 +1,6 @@
 import { db } from './index'
-import { eq, asc, count, and, desc, inArray } from 'drizzle-orm'
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan } from './schema'
+import { eq, asc, count, and, desc, inArray, or } from 'drizzle-orm'
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles } from './schema'
 import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha } from './types'
 
 // ===== EQUIPOS =====
@@ -713,5 +713,261 @@ export const equiposDescansanQueries = {
   // Eliminar todos los descansos de un torneo
   deleteByTorneoId: async (torneoId: number) => {
     return await db.delete(equiposDescansan).where(eq(equiposDescansan.torneo_id, torneoId));
+  },
+};
+
+// ===== ESTADÍSTICAS PÚBLICAS =====
+export const estadisticasQueries = {
+  // Obtener tabla de posiciones de un torneo (calculada desde goles reales)
+  getTablaPosiciones: async (torneoId: number) => {
+    // Obtener equipos del torneo
+    const equiposTorneoData = await db.query.equiposTorneo.findMany({
+      where: eq(equiposTorneo.torneo_id, torneoId),
+      with: {
+        equipo: {
+          with: {
+            categoria: true,
+            entrenador: true,
+          },
+        },
+      },
+    });
+
+    // Obtener encuentros finalizados del torneo
+    const encuentrosFinalizados = await db.query.encuentros.findMany({
+      where: (encuentros, { and, eq }) => and(
+        eq(encuentros.torneo_id, torneoId),
+        eq(encuentros.estado, 'finalizado')
+      ),
+    });
+
+    // Obtener goles del torneo
+    const encuentrosIds = encuentrosFinalizados.map(e => e.id);
+    const golesData = encuentrosIds.length > 0 
+      ? await db.select().from(goles).where(inArray(goles.encuentro_id, encuentrosIds))
+      : [];
+
+    // Calcular estadísticas para cada equipo
+    const estadisticasEquipos = equiposTorneoData.map(equipoTorneo => {
+      const equipoId = equipoTorneo.equipo_id;
+      
+      // Encuentros donde participó el equipo
+      const encuentrosEquipo = encuentrosFinalizados.filter(e => 
+        e.equipo_local_id === equipoId || e.equipo_visitante_id === equipoId
+      );
+
+      let partidosJugados = 0;
+      let partidosGanados = 0;
+      let partidosEmpatados = 0;
+      let partidosPerdidos = 0;
+      let golesFavor = 0;
+      let golesContra = 0;
+      let puntos = 0;
+
+      encuentrosEquipo.forEach(encuentro => {
+        partidosJugados++;
+        
+        // Calcular goles reales desde la tabla goles
+        const golesLocal = golesData.filter(g => 
+          g.encuentro_id === encuentro.id && 
+          g.equipo_id === encuentro.equipo_local_id && 
+          (g.tipo === 'gol' || g.tipo === 'penal')
+        ).length;
+        
+        const golesVisitante = golesData.filter(g => 
+          g.encuentro_id === encuentro.id && 
+          g.equipo_id === encuentro.equipo_visitante_id && 
+          (g.tipo === 'gol' || g.tipo === 'penal')
+        ).length;
+
+        // Determinar resultado según el equipo
+        if (equipoId === encuentro.equipo_local_id) {
+          // El equipo jugó de local
+          golesFavor += golesLocal;
+          golesContra += golesVisitante;
+          
+          if (golesLocal > golesVisitante) {
+            partidosGanados++;
+            puntos += 3;
+          } else if (golesVisitante > golesLocal) {
+            partidosPerdidos++;
+          } else {
+            partidosEmpatados++;
+            puntos += 1;
+          }
+        } else {
+          // El equipo jugó de visitante
+          golesFavor += golesVisitante;
+          golesContra += golesLocal;
+          
+          if (golesVisitante > golesLocal) {
+            partidosGanados++;
+            puntos += 3;
+          } else if (golesLocal > golesVisitante) {
+            partidosPerdidos++;
+          } else {
+            partidosEmpatados++;
+            puntos += 1;
+          }
+        }
+      });
+
+      return {
+        posicion: 0, // Se calculará después
+        equipo: equipoTorneo.equipo,
+        puntos,
+        partidosJugados,
+        partidosGanados,
+        partidosEmpatados,
+        partidosPerdidos,
+        golesFavor,
+        golesContra,
+        diferenciaGoles: golesFavor - golesContra,
+      };
+    });
+
+    // Ordenar por puntos y diferencia de goles
+    estadisticasEquipos.sort((a, b) => {
+      if (b.puntos !== a.puntos) return b.puntos - a.puntos;
+      return b.diferenciaGoles - a.diferenciaGoles;
+    });
+
+    // Asignar posiciones
+    estadisticasEquipos.forEach((estadistica, index) => {
+      estadistica.posicion = index + 1;
+    });
+
+    return estadisticasEquipos;
+  },
+
+  // Obtener tabla de goleadores de un torneo
+  getTablaGoleadores: async (torneoId: number) => {
+    // Primero obtener todos los encuentros del torneo
+    const encuentrosTorneo = await db.query.encuentros.findMany({
+      where: eq(encuentros.torneo_id, torneoId),
+      columns: { id: true }
+    });
+
+    const encuentrosIds = encuentrosTorneo.map(e => e.id);
+
+    if (encuentrosIds.length === 0) {
+      return [];
+    }
+
+    // Luego obtener todos los goles de esos encuentros usando select directo
+    const golesData = await db.select().from(goles).where(inArray(goles.encuentro_id, encuentrosIds));
+    
+    // Obtener información de jugadores por separado
+    const jugadoresIds = [...new Set(golesData.map(g => g.jugador_id))];
+    const jugadoresData = await db.query.jugadores.findMany({
+      where: inArray(jugadores.id, jugadoresIds),
+      with: {
+        equipo: {
+          with: {
+            categoria: true,
+            entrenador: true,
+          },
+        },
+      },
+    });
+
+    // Agrupar goles por jugador
+    const golesPorJugador: Record<number, {
+      jugador: any,
+      goles: number,
+      penales: number,
+      totalGoles: number
+    }> = {};
+
+    golesData.forEach(gol => {
+      if (!golesPorJugador[gol.jugador_id]) {
+        const jugador = jugadoresData.find(j => j.id === gol.jugador_id);
+        golesPorJugador[gol.jugador_id] = {
+          jugador: jugador,
+          goles: 0,
+          penales: 0,
+          totalGoles: 0
+        };
+      }
+
+      if (gol.tipo === 'gol') {
+        golesPorJugador[gol.jugador_id].goles++;
+      } else if (gol.tipo === 'penal') {
+        golesPorJugador[gol.jugador_id].penales++;
+      }
+      
+      if (gol.tipo === 'gol' || gol.tipo === 'penal') {
+        golesPorJugador[gol.jugador_id].totalGoles++;
+      }
+    });
+
+    // Convertir a array y ordenar por total de goles
+    return Object.values(golesPorJugador)
+      .filter(item => item.jugador && item.totalGoles > 0)
+      .sort((a, b) => b.totalGoles - a.totalGoles)
+      .map((item, index) => ({
+        posicion: index + 1,
+        jugador: item.jugador,
+        goles: item.goles,
+        penales: item.penales,
+        totalGoles: item.totalGoles,
+      }));
+  },
+
+  // Obtener información básica del torneo para la página pública
+  getTorneoPublico: async (torneoId: number) => {
+    return await db.query.torneos.findFirst({
+      where: eq(torneos.id, torneoId),
+      with: {
+        categoria: true,
+      },
+    });
+  },
+
+  // Obtener todos los torneos públicos (activos, finalizados o planificados)
+  getTorneosPublicos: async () => {
+    const torneosData = await db.query.torneos.findMany({
+      where: (torneos, { or, eq }) => or(
+        eq(torneos.estado, 'en_curso'),
+        eq(torneos.estado, 'finalizado'),
+        eq(torneos.estado, 'planificado')
+      ),
+      with: {
+        categoria: true,
+        equiposTorneo: true,
+      },
+      orderBy: [asc(torneos.fecha_inicio)],
+    });
+
+    return torneosData.map(torneo => ({
+      ...torneo,
+      equiposCount: torneo.equiposTorneo?.length || 0
+    }));
+  },
+
+  // Obtener TODOS los torneos (para debug)
+  getAllTorneos: async () => {
+    return await db.query.torneos.findMany({
+      with: {
+        categoria: true,
+        equiposTorneo: true,
+      },
+      orderBy: [asc(torneos.fecha_inicio)],
+    });
+  },
+
+  // Obtener equipos del torneo (para debug)
+  getEquiposTorneo: async (torneoId: number) => {
+    return await db.query.equiposTorneo.findMany({
+      where: eq(equiposTorneo.torneo_id, torneoId),
+      with: {
+        equipo: {
+          with: {
+            categoria: true,
+            entrenador: true,
+          },
+        },
+      },
+    });
   },
 };

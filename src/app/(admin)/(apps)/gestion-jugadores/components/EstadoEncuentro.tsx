@@ -42,7 +42,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       if (encuentroEncontrado) {
         console.log('Encuentro encontrado:', encuentroEncontrado)
         console.log('Estado actual:', encuentroEncontrado.estado)
-        setEncuentro(encuentroEncontrado)
+        setEncuentro(encuentroEncontrado as EncuentroWithRelations)
       } else {
         console.log('Encuentro no encontrado. Encuentros disponibles:', encuentros.map(e => ({
           id: e.id,
@@ -304,40 +304,8 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           </div>
         </div>
 
-        {/* Información adicional del encuentro */}
-        <div className="mt-3 pt-3 border-top">
-          <div className="row text-center">
-            <div className="col-4">
-              <small className="text-muted d-block">Goles Local</small>
-              <strong className="fs-5">{encuentro.goles_local ?? '-'}</strong>
-            </div>
-            <div className="col-4">
-              <small className="text-muted d-block">Goles Visitante</small>
-              <strong className="fs-5">{encuentro.goles_visitante ?? '-'}</strong>
-            </div>
-            <div className="col-4">
-              <small className="text-muted d-block">Cancha</small>
-              <strong className="fs-6">{encuentro.cancha || 'Por definir'}</strong>
-            </div>
-          </div>
-          
-          {/* Debug: Mostrar estados disponibles */}
-          <div className="mt-3 pt-3 border-top">
-            <small className="text-muted d-block mb-2">Estados disponibles:</small>
-            <div className="d-flex flex-wrap gap-1 justify-content-center">
-              {getEstadosDisponibles(encuentro.estado || 'programado').map(estado => (
-                <Badge key={estado} bg="outline-secondary" className="px-2 py-1">
-                  {getEstadoLabel(estado)}
-                </Badge>
-              ))}
-              {getEstadosDisponibles(encuentro.estado || 'programado').length === 0 && (
-                <Badge bg="outline-warning" className="px-2 py-1">
-                  No hay cambios disponibles
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
+        
+         
       </CardBody>
     </Card>
   )
