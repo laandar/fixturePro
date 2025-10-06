@@ -127,6 +127,20 @@
       "when": 1759249048793,
       "tag": "0017_friendly_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1759551468722,
+      "tag": "0018_dry_big_bertha",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1759612895399,
+      "tag": "0019_giant_millenium_guard",
+      "breakpoints": true
     }
   ]
 }

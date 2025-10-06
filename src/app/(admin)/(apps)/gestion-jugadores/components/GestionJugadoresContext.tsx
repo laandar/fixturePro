@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante } from '@/db/types';
+import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewCambioJugador } from '@/db/types';
 
 export interface GestionJugadoresState {
     jugadores: JugadorWithEquipo[];
@@ -57,6 +57,15 @@ export interface GestionJugadoresState {
     handleAddGol: () => void;
     handleDeleteGol: (id: string) => void;
     handleQuickGoal: (jugador: JugadorWithEquipo, tipo: 'gol' | 'penal') => void;
+    saveCambiosJugadores: () => Promise<void>;
+    saveCambioJugador: (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => Promise<void>;
+  realizarCambioJugadorCompleto: (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => Promise<void>;
+    addCambioJugador: (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B', id?: number}) => void;
+    loadCambiosJugadores: () => Promise<void>;
+  handlePlayerChange: (jugadorSale: JugadorWithEquipo, jugadorEntra: JugadorWithEquipo, equipo: 'A' | 'B', cambioId?: number) => Promise<void>;
+  deshacerCambioJugador: (cambioId: number, jugadorEntraId: number, encuentroId: number) => Promise<void>;
+  cambiosJugadores: Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>;
+  setCambiosJugadores: React.Dispatch<React.SetStateAction<Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>>;
 }
 
 export const GestionJugadoresContext = createContext<GestionJugadoresState | undefined>(undefined);

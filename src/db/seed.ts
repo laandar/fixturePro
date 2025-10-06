@@ -10,19 +10,23 @@ export async function seedDatabase() {
     const categoriasData = await db.insert(categorias).values([
       {
         nombre: 'Primera División',
-        permite_revancha: true,
+        estado: true,
+        usuario_id: 1,
       },
       {
         nombre: 'Segunda División',
-        permite_revancha: true,
+        estado: true,
+        usuario_id: 1,
       },
       {
         nombre: 'Tercera División',
-        permite_revancha: false,
+        estado: true,
+        usuario_id: 1,
       },
       {
         nombre: 'Cuarta División',
-        permite_revancha: false,
+        estado: true,
+        usuario_id: 1,
       },
     ]).returning();
 

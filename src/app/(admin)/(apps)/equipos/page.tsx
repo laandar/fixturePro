@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
-import DeleteConfirmationModal from '@/components/table/DeleteConfirmationModal'
+import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
@@ -96,12 +96,19 @@ const Page = () => {
       ),
     },
     {
-      id: 'permite_revancha',
-      header: 'Permite Revancha',
+      id: 'estado_categoria',
+      header: 'Estado Categoría',
       cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => (
-        <span className={`badge ${row.original.categoria?.permite_revancha ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'} badge-label`}>
-          {row.original.categoria?.permite_revancha ? 'Sí' : 'No'}
+        <span className={`badge ${row.original.categoria?.estado ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'} badge-label`}>
+          {row.original.categoria?.estado ? 'Activo' : 'Inactivo'}
         </span>
+      ),
+    },
+    {
+      id: 'usuario_id',
+      header: 'Usuario ID',
+      cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => (
+        <span>{row.original.categoria?.usuario_id || 'N/A'}</span>
       ),
     },
     columnHelper.accessor('createdAt', { 
@@ -419,29 +426,18 @@ const Page = () => {
               </CardFooter>
             )}
 
-            <DeleteConfirmationModal
+            <ConfirmationModal
               show={showDeleteModal}
               onHide={toggleDeleteModal}
               onConfirm={handleDelete}
               selectedCount={1}
-              itemName="equipos"
-              modalTitle="Confirmar Eliminación"
-              confirmButtonText="Eliminar"
-              cancelButtonText="Cancelar"
-              confirmButtonVariant="danger"
-              cancelButtonVariant="light"
+              itemName="equipo"
+              variant="danger"
               isLoading={loading}
-            >
-              {equipoToDelete && (
-                <div className="text-center">
-                  <p>¿Estás seguro de que quieres eliminar el equipo:</p>
-                  <h6 className="text-danger mb-3">"{equipoToDelete.nombre}"?</h6>
-                  <p className="text-muted small">
-                    Esta acción no se puede deshacer.
-                  </p>
-                </div>
-              )}
-            </DeleteConfirmationModal>
+              showBadgeDesign={false}
+              itemToDelete={equipoToDelete?.nombre}
+              confirmButtonVariant='danger'
+            />
           </Card>
         </Col>
       </Row>

@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
-import DeleteConfirmationModal from '@/components/table/DeleteConfirmationModal'
+import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
@@ -899,29 +899,17 @@ const Page = () => {
       </Row>
 
       {/* Delete Confirmation Modal */}
-      <DeleteConfirmationModal
+      <ConfirmationModal
         show={showDeleteModal}
         onHide={toggleDeleteModal}
         onConfirm={handleDelete}
         selectedCount={1}
-        itemName="jugadores"
-        modalTitle="Confirmar Eliminación"
-        confirmButtonText="Eliminar"
-        cancelButtonText="Cancelar"
-        confirmButtonVariant="danger"
-        cancelButtonVariant="light"
+        itemName="jugador"
+        variant="danger"
         isLoading={loading}
-      >
-        {jugadorToDelete && (
-          <div className="text-center">
-            <p>¿Estás seguro de que quieres eliminar el jugador:</p>
-            <h6 className="text-danger mb-3">"{jugadorToDelete.apellido_nombre}"?</h6>
-            <p className="text-muted small">
-              Esta acción no se puede deshacer.
-            </p>
-          </div>
-        )}
-      </DeleteConfirmationModal>
+        showBadgeDesign={false}
+        itemToDelete={jugadorToDelete?.apellido_nombre}
+      />
 
       {/* Offcanvas Right con Formulario de Floating Labels para Crear */}
       <Offcanvas show={showOffcanvas} onHide={toggleOffcanvas} placement="end" className="offcanvas-end">

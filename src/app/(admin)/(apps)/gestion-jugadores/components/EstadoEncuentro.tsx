@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button, Card, CardBody, Badge, Dropdown, DropdownButton, Alert } from 'react-bootstrap'
+import { Button, Card, CardBody, Badge, Dropdown, DropdownButton } from 'react-bootstrap'
 import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings } from 'react-icons/lu'
+import NotificationCard from '@/components/NotificationCard'
 import { updateEstadoEncuentro, getEncuentrosByTorneo } from '../../torneos/actions'
 import { saveGolesEncuentro, saveTarjetasEncuentro } from '../actions'
 import { useGestionJugadores } from './GestionJugadoresContext'
@@ -238,9 +239,11 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
     return (
       <Card>
         <CardBody>
-          <Alert variant="danger">
-            <strong>Error:</strong> {error}
-          </Alert>
+          <NotificationCard
+            type="error"
+            title="Error"
+            message={error}
+          />
         </CardBody>
       </Card>
     )
@@ -250,9 +253,11 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
     return (
       <Card>
         <CardBody>
-          <Alert variant="warning">
-            <strong>Advertencia:</strong> No se encontró el encuentro especificado.
-          </Alert>
+          <NotificationCard
+            type="warning"
+            title="Advertencia"
+            message="No se encontró el encuentro especificado."
+          />
         </CardBody>
       </Card>
     )
@@ -278,9 +283,13 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           
           <div className="d-flex align-items-center gap-2">
             {success && (
-              <Alert variant="success" className="mb-0 py-1 px-2" style={{ fontSize: '0.8rem' }}>
-                {success}
-              </Alert>
+              <NotificationCard
+                type="success"
+                message={success}
+                onClose={() => setSuccess('')}
+                className="mb-0"
+                size="sm"
+              />
             )}
             
             {estadosDisponibles.length > 0 && (

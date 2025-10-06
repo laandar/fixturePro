@@ -5,7 +5,8 @@ import { relations } from 'drizzle-orm';
 export const categorias = pgTable('categorias', {
   id: serial('id').primaryKey(),
   nombre: text('nombre').notNull(),
-  permite_revancha: boolean('permite_revancha').default(false),
+  estado: boolean('estado').default(true),
+  usuario_id: integer('usuario_id'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -210,6 +211,7 @@ export const encuentrosRelations = relations(encuentros, ({ one, many }) => ({
   }),
   goles: many(goles),
   tarjetas: many(tarjetas),
+  cambiosJugadores: many(cambiosJugadores),
 }));
 
 // Relaciones para equipos que descansan
@@ -331,6 +333,19 @@ export const tarjetasRelations = relations(tarjetas, ({ one }) => ({
   }),
 }));
 
+// Tabla de cambios de jugadores
+export const cambiosJugadores = pgTable('cambios_jugadores', {
+  id: serial('id').primaryKey(),
+  encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
+  jugador_sale_id: integer('jugador_sale_id').references(() => jugadores.id).notNull(),
+  jugador_entra_id: integer('jugador_entra_id').references(() => jugadores.id).notNull(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  minuto: integer('minuto').notNull(),
+  tiempo: text('tiempo', { enum: ['primer', 'segundo'] }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Relaciones para jugadores participantes
 export const jugadoresParticipantesRelations = relations(jugadoresParticipantes, ({ one }) => ({
   encuentro: one(encuentros, {
@@ -340,5 +355,27 @@ export const jugadoresParticipantesRelations = relations(jugadoresParticipantes,
   jugador: one(jugadores, {
     fields: [jugadoresParticipantes.jugador_id],
     references: [jugadores.id],
+  }),
+}));
+
+// Relaciones para cambios de jugadores
+export const cambiosJugadoresRelations = relations(cambiosJugadores, ({ one }) => ({
+  encuentro: one(encuentros, {
+    fields: [cambiosJugadores.encuentro_id],
+    references: [encuentros.id],
+  }),
+  jugadorSale: one(jugadores, {
+    fields: [cambiosJugadores.jugador_sale_id],
+    references: [jugadores.id],
+    relationName: 'jugadorSale',
+  }),
+  jugadorEntra: one(jugadores, {
+    fields: [cambiosJugadores.jugador_entra_id],
+    references: [jugadores.id],
+    relationName: 'jugadorEntra',
+  }),
+  equipo: one(equipos, {
+    fields: [cambiosJugadores.equipo_id],
+    references: [equipos.id],
   }),
 }));

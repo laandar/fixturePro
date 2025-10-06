@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
-import DeleteConfirmationModal from '@/components/table/DeleteConfirmationModal'
+import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import useToggle from '@/hooks/useToggle'
 import {
@@ -315,29 +315,17 @@ const Page = () => {
               </CardFooter>
             )}
 
-            <DeleteConfirmationModal
+            <ConfirmationModal
               show={showDeleteModal}
               onHide={toggleDeleteModal}
               onConfirm={handleDelete}
               selectedCount={1}
-              itemName="entrenadores"
-              modalTitle="Confirmar Eliminación"
-              confirmButtonText="Eliminar"
-              cancelButtonText="Cancelar"
-              confirmButtonVariant="danger"
-              cancelButtonVariant="light"
+              itemName="entrenador"
+              variant="danger"
               isLoading={loading}
-            >
-              {entrenadorToDelete && (
-                <div className="text-center">
-                  <p>¿Estás seguro de que quieres eliminar el entrenador:</p>
-                  <h6 className="text-danger mb-3">"{entrenadorToDelete.nombre}"?</h6>
-                  <p className="text-muted small">
-                    Esta acción no se puede deshacer.
-                  </p>
-                </div>
-              )}
-            </DeleteConfirmationModal>
+              showBadgeDesign={false}
+              itemToDelete={entrenadorToDelete?.nombre}
+            />
           </Card>
         </Col>
       </Row>

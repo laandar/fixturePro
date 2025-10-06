@@ -496,7 +496,8 @@ export const canchaQueries = {
           .select({
             id: categorias.id,
             nombre: categorias.nombre,
-            permite_revancha: categorias.permite_revancha,
+            estado: categorias.estado,
+            usuario_id: categorias.usuario_id,
             createdAt: categorias.createdAt,
             updatedAt: categorias.updatedAt,
           })
@@ -529,7 +530,8 @@ export const canchaQueries = {
       .select({
         id: categorias.id,
         nombre: categorias.nombre,
-        permite_revancha: categorias.permite_revancha,
+        estado: categorias.estado,
+        usuario_id: categorias.usuario_id,
         createdAt: categorias.createdAt,
         updatedAt: categorias.updatedAt,
       })
@@ -647,7 +649,8 @@ export const canchaQueries = {
       .select({
         id: categorias.id,
         nombre: categorias.nombre,
-        permite_revancha: categorias.permite_revancha,
+        estado: categorias.estado,
+        usuario_id: categorias.usuario_id,
         createdAt: categorias.createdAt,
         updatedAt: categorias.updatedAt,
       })

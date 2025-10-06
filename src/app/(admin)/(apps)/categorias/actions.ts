@@ -28,7 +28,8 @@ export async function getCategoriaById(id: number) {
 export async function createCategoria(formData: FormData) {
   try {
     const nombre = formData.get('nombre') as string
-    const permite_revancha = formData.get('permite_revancha') === 'true'
+    const estado = formData.get('estado') === 'true'
+    const usuario_id = parseInt(formData.get('usuario_id') as string) || null
 
     if (!nombre) {
       throw new Error('El nombre de la categoría es obligatorio')
@@ -36,7 +37,8 @@ export async function createCategoria(formData: FormData) {
 
     const categoriaData: NewCategoria = {
       nombre,
-      permite_revancha,
+      estado,
+      usuario_id,
     }
 
     await categoriaQueries.create(categoriaData)
@@ -50,7 +52,8 @@ export async function createCategoria(formData: FormData) {
 export async function updateCategoria(id: number, formData: FormData) {
   try {
     const nombre = formData.get('nombre') as string
-    const permite_revancha = formData.get('permite_revancha') === 'true'
+    const estado = formData.get('estado') === 'true'
+    const usuario_id = parseInt(formData.get('usuario_id') as string) || null
 
     if (!nombre) {
       throw new Error('El nombre de la categoría es obligatorio')
@@ -58,7 +61,8 @@ export async function updateCategoria(id: number, formData: FormData) {
 
     const categoriaData: Partial<NewCategoria> = {
       nombre,
-      permite_revancha,
+      estado,
+      usuario_id,
     }
 
     await categoriaQueries.update(id, categoriaData)

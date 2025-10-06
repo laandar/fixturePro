@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
-import DeleteConfirmationModal from '@/components/table/DeleteConfirmationModal'
+import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
@@ -63,13 +63,13 @@ const Page = () => {
         </div>
       ),
     }),
-    columnHelper.accessor('permite_revancha', {
-      header: 'Permite Revancha',
+    columnHelper.accessor('estado', {
+      header: 'Estado',
       filterFn: 'equalsString',
       enableColumnFilter: true,
       cell: ({ row }) => (
-        <span className={`badge ${row.original.permite_revancha ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'} badge-label`}>
-          {row.original.permite_revancha ? 'Sí' : 'No'}
+        <span className={`badge ${row.original.estado ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'} badge-label`}>
+          {row.original.estado ? 'Activo' : 'Inactivo'}
         </span>
       ),
     }),
@@ -294,11 +294,11 @@ const Page = () => {
                 <div className="app-search">
                   <select
                     className="form-select form-control my-1 my-md-0"
-                    value={(table.getColumn('permite_revancha')?.getFilterValue() as string) ?? 'Todos'}
-                    onChange={(e) => table.getColumn('permite_revancha')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}>
-                    <option value="Todos">Permite Revancha</option>
-                    <option value="true">Sí</option>
-                    <option value="false">No</option>
+                    value={(table.getColumn('estado')?.getFilterValue() as string) ?? 'Todos'}
+                    onChange={(e) => table.getColumn('estado')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}>
+                    <option value="Todos">Estado</option>
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
                   </select>
                   <LuTrophy className="app-search-icon text-muted" />
                 </div>
@@ -339,29 +339,17 @@ const Page = () => {
               </CardFooter>
             )}
 
-            <DeleteConfirmationModal
+            <ConfirmationModal
               show={showDeleteModal}
               onHide={toggleDeleteModal}
               onConfirm={handleDelete}
               selectedCount={1}
-              itemName="categorías"
-              modalTitle="Confirmar Eliminación"
-              confirmButtonText="Eliminar"
-              cancelButtonText="Cancelar"
-              confirmButtonVariant="danger"
-              cancelButtonVariant="light"
+              itemName="categoría"
+              variant="danger"
               isLoading={loading}
-            >
-              {categoriaToDelete && (
-                <div className="text-center">
-                  <p>¿Estás seguro de que quieres eliminar la categoría:</p>
-                  <h6 className="text-danger mb-3">"{categoriaToDelete.nombre}"?</h6>
-                  <p className="text-muted small">
-                    Esta acción no se puede deshacer.
-                  </p>
-                </div>
-              )}
-            </DeleteConfirmationModal>
+              showBadgeDesign={false}
+              itemToDelete={categoriaToDelete?.nombre}
+            />
           </Card>
         </Col>
       </Row>
@@ -394,10 +382,10 @@ const Page = () => {
               </Col>
 
               <Col lg={12}>
-                <FloatingLabel label="Permite Revancha">
-                  <FormSelect name="permite_revancha">
-                    <option value="false">No</option>
-                    <option value="true">Sí</option>
+                <FloatingLabel label="Estado">
+                  <FormSelect name="estado">
+                    <option value="false">Inactivo</option>
+                    <option value="true">Activo</option>
                   </FormSelect>
                 </FloatingLabel>
               </Col>
@@ -452,10 +440,10 @@ const Page = () => {
                 </Col>
 
                 <Col lg={12}>
-                  <FloatingLabel label="Permite Revancha">
-                    <FormSelect name="permite_revancha" defaultValue={editingCategoria.permite_revancha?.toString() ?? 'false'}>
-                      <option value="false">No</option>
-                      <option value="true">Sí</option>
+                  <FloatingLabel label="Estado">
+                    <FormSelect name="estado" defaultValue={editingCategoria.estado?.toString() ?? 'true'}>
+                      <option value="false">Inactivo</option>
+                      <option value="true">Activo</option>
                     </FormSelect>
                   </FloatingLabel>
                 </Col>

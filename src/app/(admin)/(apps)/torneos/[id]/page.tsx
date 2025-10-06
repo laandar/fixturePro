@@ -232,6 +232,19 @@ const TorneoDetailPage = () => {
     setShowAsignarHorarioModal(true)
   }
 
+  const navigateToGestionJugadores = (encuentro: EncuentroWithRelations) => {
+    // Almacenar parámetros en localStorage
+    localStorage.setItem('gestion-jugadores-torneo', torneoId.toString())
+    localStorage.setItem('gestion-jugadores-jornada', (encuentro.jornada || 1).toString())
+    localStorage.setItem('gestion-jugadores-equipoLocalId', encuentro.equipo_local_id.toString())
+    localStorage.setItem('gestion-jugadores-equipoVisitanteId', encuentro.equipo_visitante_id.toString())
+    localStorage.setItem('gestion-jugadores-nombreEquipoLocal', encuentro.equipoLocal?.nombre || '')
+    localStorage.setItem('gestion-jugadores-nombreEquipoVisitante', encuentro.equipoVisitante?.nombre || '')
+    
+    // Navegar a la página de gestión de jugadores
+    router.push('/gestion-jugadores')
+  }
+
 
 
 
@@ -1022,9 +1035,7 @@ const TorneoDetailPage = () => {
                                 <Col key={encuentro.id} md={6} lg={4} className="mb-2">
                                   <EncuentroCard 
                                     encuentro={encuentro}
-                                    onManagePlayers={(encuentro) => {
-                                      router.push(`/gestion-jugadores?torneo=${torneoId}&jornada=${encuentro.jornada}&equipoLocalId=${encuentro.equipo_local_id}&equipoVisitanteId=${encuentro.equipo_visitante_id}&nombreEquipoLocal=${encodeURIComponent(encuentro.equipoLocal?.nombre || '')}&nombreEquipoVisitante=${encodeURIComponent(encuentro.equipoVisitante?.nombre || '')}`)
-                                    }}
+                                    onManagePlayers={navigateToGestionJugadores}
                                     onEditHorario={(encuentro) => {
                                       handleSeleccionarHorario(encuentro)
                                     }}

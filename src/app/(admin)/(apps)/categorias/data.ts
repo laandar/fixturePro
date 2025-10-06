@@ -7,7 +7,8 @@ const placeholderImage = 'https://via.placeholder.com/32x32/ffc107/ffffff?text=�
 export type CategoriaType = {
   id: number
   nombre: string
-  permite_revancha: boolean
+  estado: boolean
+  usuario_id: number | null
   fechaCreacion: string
   equiposCount: number
   imagen: string
@@ -18,7 +19,8 @@ export const categorias: CategoriaType[] = [
   {
     id: 1,
     nombre: 'Primera División',
-    permite_revancha: true,
+    estado: true,
+    usuario_id: 1,
     fechaCreacion: 'Ene 15, 2024',
     equiposCount: 8,
     imagen: placeholderImage,
@@ -27,7 +29,8 @@ export const categorias: CategoriaType[] = [
   {
     id: 2,
     nombre: 'Segunda División',
-    permite_revancha: false,
+    estado: true,
+    usuario_id: 1,
     fechaCreacion: 'Ene 20, 2024',
     equiposCount: 6,
     imagen: placeholderImage,
@@ -36,7 +39,8 @@ export const categorias: CategoriaType[] = [
   {
     id: 3,
     nombre: 'Tercera División',
-    permite_revancha: false,
+    estado: true,
+    usuario_id: 1,
     fechaCreacion: 'Feb 5, 2024',
     equiposCount: 4,
     imagen: placeholderImage,
@@ -45,7 +49,8 @@ export const categorias: CategoriaType[] = [
   {
     id: 4,
     nombre: 'Copa del Rey',
-    permite_revancha: true,
+    estado: true,
+    usuario_id: 1,
     fechaCreacion: 'Feb 12, 2024',
     equiposCount: 12,
     imagen: placeholderImage,
@@ -54,7 +59,8 @@ export const categorias: CategoriaType[] = [
   {
     id: 5,
     nombre: 'Supercopa',
-    permite_revancha: true,
+    estado: true,
+    usuario_id: 1,
     fechaCreacion: 'Mar 1, 2024',
     equiposCount: 4,
     imagen: placeholderImage,

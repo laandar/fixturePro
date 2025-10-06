@@ -6,18 +6,28 @@ import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJu
 import { getJugadores } from '../../jugadores/actions'
 import { getEquipos } from '../../equipos/actions'
 import { getCategorias } from '../../categorias/actions'
-import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro } from '../actions'
-import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante } from '@/db/types'
+import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction } from '../actions'
+import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante, NewCambioJugador } from '@/db/types'
 
 export const GestionJugadoresProvider = ({ children }: { children: React.ReactNode }) => {
     const isInitialLoad = useRef(true)
     const searchParams = useSearchParams()
-    const torneo = searchParams?.get('torneo') || null
-    const jornada = searchParams?.get('jornada') || null
-    const equipoLocalId = searchParams?.get('equipoLocalId') || null
-    const equipoVisitanteId = searchParams?.get('equipoVisitanteId') || null
-    const nombreEquipoLocal = searchParams?.get('nombreEquipoLocal') || null
-    const nombreEquipoVisitante = searchParams?.get('nombreEquipoVisitante') || null
+    
+    // Intentar obtener parámetros del localStorage primero, luego de la URL como fallback
+    const getParamFromStorageOrURL = (key: string) => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(`gestion-jugadores-${key}`)
+            if (stored) return stored
+        }
+        return searchParams?.get(key) || null
+    }
+    
+    const torneo = getParamFromStorageOrURL('torneo')
+    const jornada = getParamFromStorageOrURL('jornada')
+    const equipoLocalId = getParamFromStorageOrURL('equipoLocalId')
+    const equipoVisitanteId = getParamFromStorageOrURL('equipoVisitanteId')
+    const nombreEquipoLocal = getParamFromStorageOrURL('nombreEquipoLocal')
+    const nombreEquipoVisitante = getParamFromStorageOrURL('nombreEquipoVisitante')
     
     // Convertir a números
     const torneoId = torneo ? parseInt(torneo) : null
@@ -53,6 +63,7 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
 
     const [jugadoresParticipantes, setJugadoresParticipantes] = useState<JugadorParticipante[]>([])
     const [isSaving, setIsSaving] = useState(false)
+    const [cambiosJugadores, setCambiosJugadores] = useState<Array<{sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>([])
 
     const loadData = useCallback(async () => {
         try {
@@ -158,6 +169,65 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             console.error('Error al cargar tarjetas existentes:', err)
         }
     }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, equipos])
+
+    const loadCambiosJugadores = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (!encuentro) {
+                console.log('No se encontró el encuentro para cargar cambios')
+                return
+            }
+
+            console.log('Cargando cambios de jugadores para encuentro:', encuentro.id)
+            const cambiosBD = await getCambiosEncuentro(encuentro.id)
+            console.log('Cambios encontrados en BD:', cambiosBD)
+
+            if (cambiosBD.length === 0) {
+                console.log('No hay cambios de jugadores en la BD')
+                return
+            }
+
+            // Convertir cambios de BD a formato del contexto
+            const cambiosFormateados = cambiosBD.map(cambio => {
+                // Buscar los jugadores en la lista de jugadores cargados
+                const jugadorSale = jugadores.find(j => j.id === cambio.jugador_sale_id)
+                const jugadorEntra = jugadores.find(j => j.id === cambio.jugador_entra_id)
+                
+                if (!jugadorSale || !jugadorEntra) {
+                    console.warn('No se encontraron jugadores para el cambio:', cambio)
+                    return null
+                }
+
+                // Determinar el equipo basado en el equipo_id del cambio
+                const equipo = cambio.equipo_id === equipoLocalIdNum ? 'A' : 'B'
+
+                return {
+                    id: cambio.id,
+                    sale: jugadorSale,
+                    entra: jugadorEntra,
+                    timestamp: new Date(cambio.createdAt || Date.now()),
+                    equipo: equipo as 'A' | 'B'
+                }
+            }).filter(Boolean) // Filtrar cambios nulos
+
+            console.log('Cambios formateados para contexto:', cambiosFormateados)
+            setCambiosJugadores(cambiosFormateados)
+        } catch (err) {
+            console.error('❌ Error al cargar cambios de jugadores:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores])
 
     const loadJugadoresParticipantes = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -330,13 +400,14 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         }
     }, [loadJugadoresParticipantes, jugadores.length])
 
-    // Cargar goles y tarjetas existentes cuando cambien los parámetros del encuentro
+    // Cargar goles, tarjetas y cambios existentes cuando cambien los parámetros del encuentro
     useEffect(() => {
         if (torneoId && equipoLocalIdNum && equipoVisitanteIdNum && jornadaNum && jugadores.length > 0) {
             loadGolesExistentes()
             loadTarjetasExistentes()
+            loadCambiosJugadores()
         }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes])
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores])
 
     // Determinar jugadores de los equipos según la URL o valores por defecto
     const jugadoresEquipoA = jugadores.filter(j => {
@@ -464,6 +535,224 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         setGoles([...goles, newGoal])
     }
 
+    const saveCambiosJugadores = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            console.error('Faltan parámetros para guardar cambios:', {
+                torneoId,
+                equipoLocalIdNum,
+                equipoVisitanteIdNum,
+                jornadaNum
+            })
+            return
+        }
+
+        if (cambiosJugadores.length === 0) {
+            console.log('No hay cambios de jugadores para guardar')
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (!encuentro) {
+                console.error('No se encontró el encuentro para guardar cambios!')
+                return
+            }
+
+            console.log('Guardando cambios de jugadores:', {
+                encuentroId: encuentro.id,
+                totalCambios: cambiosJugadores.length,
+                cambiosJugadores
+            })
+
+            // Convertir cambios a formato de BD
+            const cambiosData: NewCambioJugador[] = cambiosJugadores.map(cambio => ({
+                encuentro_id: encuentro.id,
+                jugador_sale_id: cambio.sale.id,
+                jugador_entra_id: cambio.entra.id,
+                equipo_id: cambio.equipo === 'A' ? equipoLocalIdNum! : equipoVisitanteIdNum!,
+                minuto: 0, // Por ahora 0, se puede agregar un campo de minuto en el futuro
+                tiempo: 'primer' as const
+            }))
+
+            const result = await saveCambiosEncuentro(encuentro.id, cambiosData)
+            console.log('✅ Cambios de jugadores guardados exitosamente:', result)
+        } catch (err) {
+            console.error('❌ Error al guardar cambios de jugadores:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, cambiosJugadores])
+
+    const addCambioJugador = useCallback((cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B', id?: number}) => {
+        const changeRecord = {
+            ...cambio,
+            timestamp: new Date()
+        };
+        setCambiosJugadores(prev => [...prev, changeRecord]);
+    }, [])
+
+    const handlePlayerChange = useCallback(async (jugadorSale: JugadorWithEquipo, jugadorEntra: JugadorWithEquipo, equipo: 'A' | 'B', cambioId?: number) => {
+        console.log('Realizando cambio de jugador:', {
+            jugadorSale: jugadorSale.apellido_nombre,
+            jugadorEntra: jugadorEntra.apellido_nombre,
+            equipo
+        });
+
+        if (equipo === 'A') {
+            // NO remover jugador que sale - se mantiene en jugadores participantes
+            // Solo agregar jugador que entra al equipo A
+            setJugadoresParticipantesA(prev => [...prev, jugadorEntra]);
+        } else {
+            // NO remover jugador que sale - se mantiene en jugadores participantes  
+            // Solo agregar jugador que entra al equipo B
+            setJugadoresParticipantesB(prev => [...prev, jugadorEntra]);
+        }
+
+        // Registrar el cambio con ID si está disponible
+        addCambioJugador({ sale: jugadorSale, entra: jugadorEntra, equipo, id: cambioId });
+
+        // Actualizar jugadores participantes en la base de datos de forma síncrona
+        try {
+            await saveJugadoresParticipantes();
+            console.log('✅ Jugadores participantes actualizados correctamente después del cambio');
+        } catch (err) {
+            console.error('❌ Error al actualizar jugadores participantes después del cambio:', err);
+        }
+    }, [addCambioJugador, saveJugadoresParticipantes])
+
+    const realizarCambioJugadorCompleto = useCallback(async (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            console.error('Faltan parámetros para realizar cambio completo:', {
+                torneoId,
+                equipoLocalIdNum,
+                equipoVisitanteIdNum,
+                jornadaNum
+            })
+            return
+        }
+        try {
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+            if (!encuentro) {
+                console.error('No se encontró el encuentro para realizar cambio completo!')
+                return
+            }
+            console.log('Realizando cambio completo de jugador:', {
+                encuentroId: encuentro.id,
+                jugadorSale: cambio.sale.apellido_nombre,
+                jugadorEntra: cambio.entra.apellido_nombre,
+                equipo: cambio.equipo
+            })
+            
+            const cambioData: NewCambioJugador = {
+                encuentro_id: encuentro.id,
+                jugador_sale_id: cambio.sale.id,
+                jugador_entra_id: cambio.entra.id,
+                equipo_id: cambio.equipo === 'A' ? equipoLocalIdNum! : equipoVisitanteIdNum!,
+                minuto: 0,
+                tiempo: 'primer' as const
+            }
+            
+            const jugadorEntraData: NewJugadorParticipante = {
+                encuentro_id: encuentro.id,
+                jugador_id: cambio.entra.id,
+                equipo_tipo: cambio.equipo === 'A' ? 'local' : 'visitante'
+            }
+            
+            const result = await realizarCambioJugadorCompletoAction(cambioData, jugadorEntraData)
+            console.log('✅ Cambio completo de jugador realizado exitosamente:', result)
+            return result; // Return the result to get the ID
+        } catch (err) {
+            console.error('❌ Error al realizar cambio completo de jugador:', err)
+            throw err; // Re-throw to handle in the calling function
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
+
+    const deshacerCambioJugador = useCallback(async (cambioId: number, jugadorEntraId: number, encuentroId: number) => {
+        try {
+            console.log('Deshaciendo cambio de jugador:', {
+                cambioId,
+                jugadorEntraId,
+                encuentroId
+            })
+            
+            const result = await deshacerCambioJugadorAction(cambioId, jugadorEntraId, encuentroId)
+            console.log('✅ Cambio de jugador deshecho exitosamente:', result)
+            
+            // Actualizar estado local sin recargar toda la pantalla
+            // 1. Remover el cambio de la lista local
+            setCambiosJugadores(prev => prev.filter(cambio => cambio.id !== cambioId))
+            
+            // 2. Remover el jugador que entra de la lista de participantes
+            setJugadoresParticipantesA(prev => prev.filter(jugador => jugador.id !== jugadorEntraId))
+            setJugadoresParticipantesB(prev => prev.filter(jugador => jugador.id !== jugadorEntraId))
+            
+        } catch (err) {
+            console.error('❌ Error al deshacer cambio de jugador:', err)
+        }
+    }, [])
+
+    const saveCambioJugador = useCallback(async (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            console.error('Faltan parámetros para guardar cambio:', {
+                torneoId,
+                equipoLocalIdNum,
+                equipoVisitanteIdNum,
+                jornadaNum
+            })
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (!encuentro) {
+                console.error('No se encontró el encuentro para guardar cambio!')
+                return
+            }
+
+            console.log('Guardando cambio de jugador:', {
+                encuentroId: encuentro.id,
+                jugadorSale: cambio.sale.apellido_nombre,
+                jugadorEntra: cambio.entra.apellido_nombre,
+                equipo: cambio.equipo
+            })
+
+            // Convertir cambio a formato de BD
+            const cambioData: NewCambioJugador = {
+                encuentro_id: encuentro.id,
+                jugador_sale_id: cambio.sale.id,
+                jugador_entra_id: cambio.entra.id,
+                equipo_id: cambio.equipo === 'A' ? equipoLocalIdNum! : equipoVisitanteIdNum!,
+                minuto: 0, // Por ahora 0, se puede agregar un campo de minuto en el futuro
+                tiempo: 'primer' as const
+            }
+
+            const result = await saveCambioJugadorAction(cambioData)
+            console.log('✅ Cambio de jugador guardado exitosamente:', result)
+        } catch (err) {
+            console.error('❌ Error al guardar cambio de jugador:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
+
     const value: GestionJugadoresState = {
         jugadores,
         equipos,
@@ -520,6 +809,15 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         handleAddGol,
         handleDeleteGol,
         handleQuickGoal,
+        saveCambiosJugadores,
+        saveCambioJugador,
+        realizarCambioJugadorCompleto,
+        addCambioJugador,
+        loadCambiosJugadores,
+        handlePlayerChange,
+        deshacerCambioJugador,
+        cambiosJugadores,
+        setCambiosJugadores,
     }
 
     const jugadoresDisponiblesSale = nuevoCambio.equipoA === equipos[0]?.id.toString()

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
-import DeleteConfirmationModal from '@/components/table/DeleteConfirmationModal'
+import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
@@ -432,29 +432,17 @@ const Page = () => {
               </CardFooter>
             )}
 
-            <DeleteConfirmationModal
+            <ConfirmationModal
               show={showDeleteModal}
               onHide={toggleDeleteModal}
               onConfirm={handleDelete}
               selectedCount={1}
-              itemName="torneos"
-              modalTitle="Confirmar Eliminación"
-              confirmButtonText="Eliminar"
-              cancelButtonText="Cancelar"
-              confirmButtonVariant="danger"
-              cancelButtonVariant="light"
+              itemName="torneo"
+              variant="danger"
               isLoading={loading}
-            >
-              {torneoToDelete && (
-                <div className="text-center">
-                  <p>¿Estás seguro de que quieres eliminar el torneo:</p>
-                  <h6 className="text-danger mb-3">"{torneoToDelete.nombre}"?</h6>
-                  <p className="text-muted small">
-                    Esta acción eliminará también todos los encuentros asociados y no se puede deshacer.
-                  </p>
-                </div>
-              )}
-            </DeleteConfirmationModal>
+              showBadgeDesign={false}
+              itemToDelete={torneoToDelete?.nombre}
+            />
           </Card>
         </Col>
       </Row>

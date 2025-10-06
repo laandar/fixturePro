@@ -10,13 +10,12 @@ import {
     Row,
     Col
 } from 'react-bootstrap';
-import { TbUsers, TbExchange, TbCards, TbSoccerField, TbSignature } from 'react-icons/tb';
+import { TbUsers, TbCards, TbSoccerField, TbSignature } from 'react-icons/tb';
 import EstadoEncuentro from './EstadoEncuentro';
 import { useGestionJugadores } from './GestionJugadoresContext';
 
 interface LayoutProps {
     tabJugadores: React.ReactNode;
-    tabCambios: React.ReactNode;
     tabAmonestaciones: React.ReactNode;
     tabGoles: React.ReactNode;
     tabFirmas: React.ReactNode;
@@ -24,7 +23,7 @@ interface LayoutProps {
     nombreEquipoB?: string;
 }
 
-const Layout = ({ tabJugadores, tabCambios, tabAmonestaciones, tabGoles, tabFirmas, nombreEquipoA, nombreEquipoB }: LayoutProps) => {
+const Layout = ({ tabJugadores, tabAmonestaciones, tabGoles, tabFirmas, nombreEquipoA, nombreEquipoB }: LayoutProps) => {
     const { torneoId, equipoLocalId, equipoVisitanteId, jornada } = useGestionJugadores()
     const tituloPartido = (nombreEquipoA && nombreEquipoB) ? `${nombreEquipoA} vs ${nombreEquipoB}` : "Gestión del Partido"
     
@@ -56,11 +55,6 @@ const Layout = ({ tabJugadores, tabCambios, tabAmonestaciones, tabGoles, tabFirm
                                 </NavLink>
                             </NavItem>
                             <NavItem as="li">
-                                <NavLink eventKey="cambios">
-                                    <TbExchange size={20} />
-                                </NavLink>
-                            </NavItem>
-                            <NavItem as="li">
                                 <NavLink eventKey="amonestaciones">
                                     <TbCards size={20} />
                                 </NavLink>
@@ -79,9 +73,6 @@ const Layout = ({ tabJugadores, tabCambios, tabAmonestaciones, tabGoles, tabFirm
                         <TabContent>
                             <TabPane eventKey="jugadores">
                                 {tabJugadores}
-                            </TabPane>
-                            <TabPane eventKey="cambios">
-                                {tabCambios}
                             </TabPane>
                             <TabPane eventKey="amonestaciones">
                                 {tabAmonestaciones}

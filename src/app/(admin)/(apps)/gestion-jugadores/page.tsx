@@ -5,7 +5,6 @@ import { GestionJugadoresProvider } from './components/GestionJugadoresProvider'
 import { useGestionJugadores } from './components/GestionJugadoresContext'
 import Layout from './components/Layout'
 import TabPaneAmonestaciones from './components/TabPaneAmonestaciones'
-import TabPaneCambios from './components/TabPaneCambios'
 import TabPaneFirmas from './components/TabPaneFirmas'
 import TabPaneGoles from './components/TabPaneGoles'
 import TabPaneJugadores from './components/TabPaneJugadores'
@@ -16,7 +15,6 @@ const GestionJugadoresContent = () => {
   return (
     <Layout
       tabJugadores={<TabPaneJugadores />}
-      tabCambios={<TabPaneCambios />}
       tabAmonestaciones={<TabPaneAmonestaciones />}
       tabGoles={<TabPaneGoles />}
       tabFirmas={<TabPaneFirmas />}

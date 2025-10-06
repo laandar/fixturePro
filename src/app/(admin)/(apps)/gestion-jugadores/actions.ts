@@ -1,9 +1,9 @@
 'use server'
 
 import { db } from '@/db'
-import { goles, encuentros, tarjetas, jugadoresParticipantes } from '@/db/schema'
+import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
-import type { NewGol, Gol, NewTarjeta, Tarjeta, NewJugadorParticipante, JugadorParticipante } from '@/db/types'
+import type { NewGol, Gol, NewTarjeta, Tarjeta, NewJugadorParticipante, JugadorParticipante, NewCambioJugador, CambioJugador } from '@/db/types'
 
 // Guardar un gol en la base de datos
 export async function saveGol(golData: NewGol) {
@@ -274,16 +274,39 @@ export async function getJugadoresParticipantesByTipo(encuentroId: number, equip
   }
 }
 
-// Eliminar un jugador participante
-export async function deleteJugadorParticipante(participanteId: number) {
+// Insertar un jugador participante individual
+export async function insertJugadorParticipante(jugadorData: NewJugadorParticipante) {
   try {
-    await db.delete(jugadoresParticipantes).where(eq(jugadoresParticipantes.id, participanteId))
+    console.log('insertJugadorParticipante - Insertando:', jugadorData)
+    
+    const [jugador] = await db.insert(jugadoresParticipantes).values(jugadorData).returning()
+    
+    console.log('✅ Jugador participante insertado exitosamente:', jugador)
+    return { success: true, jugador }
+  } catch (error) {
+    console.error('❌ Error al insertar jugador participante:', error)
+    throw new Error('Error al insertar jugador participante')
+  }
+}
+
+// Eliminar un jugador participante específico
+export async function deleteJugadorParticipante(encuentroId: number, jugadorId: number) {
+  try {
+    console.log('deleteJugadorParticipante - Eliminando:', { encuentroId, jugadorId })
+    
+    await db.delete(jugadoresParticipantes).where(and(
+      eq(jugadoresParticipantes.encuentro_id, encuentroId),
+      eq(jugadoresParticipantes.jugador_id, jugadorId)
+    ))
+    
+    console.log('✅ Jugador participante eliminado exitosamente')
     return { success: true }
   } catch (error) {
-    console.error('Error al eliminar jugador participante:', error)
+    console.error('❌ Error al eliminar jugador participante:', error)
     throw new Error('Error al eliminar jugador participante')
   }
 }
+
 
 // Actualizar un jugador participante
 export async function updateJugadorParticipante(participanteId: number, participanteData: Partial<NewJugadorParticipante>) {
@@ -298,5 +321,167 @@ export async function updateJugadorParticipante(participanteId: number, particip
   } catch (error) {
     console.error('Error al actualizar jugador participante:', error)
     throw new Error('Error al actualizar jugador participante')
+  }
+}
+
+// ===== FUNCIONES PARA CAMBIOS DE JUGADORES =====
+
+// Guardar un cambio de jugador en la base de datos
+export async function saveCambioJugador(cambioData: NewCambioJugador) {
+  try {
+    const [cambio] = await db.insert(cambiosJugadores).values(cambioData).returning()
+    return { success: true, cambio }
+  } catch (error) {
+    console.error('Error al guardar cambio de jugador:', error)
+    throw new Error('Error al guardar cambio de jugador en la base de datos')
+  }
+}
+
+// Realizar cambio de jugador completo: registrar cambio y actualizar jugadores participantes
+export async function realizarCambioJugadorCompleto(
+  cambioData: NewCambioJugador,
+  jugadorEntraData: NewJugadorParticipante
+) {
+  try {
+    console.log('realizarCambioJugadorCompleto - Iniciando cambio completo:', {
+      cambio: cambioData,
+      jugadorEntra: jugadorEntraData
+    })
+
+    // 1. Registrar el cambio en la tabla de cambios
+    const [cambio] = await db.insert(cambiosJugadores).values(cambioData).returning()
+    console.log('✅ Cambio registrado:', cambio)
+
+    // 2. Insertar el jugador que entra en jugadores_participantes
+    const [jugadorParticipante] = await db.insert(jugadoresParticipantes).values(jugadorEntraData).returning()
+    console.log('✅ Jugador participante insertado:', jugadorParticipante)
+
+    return { 
+      success: true, 
+      cambio, 
+      jugadorParticipante 
+    }
+  } catch (error) {
+    console.error('❌ Error al realizar cambio completo:', error)
+    throw new Error('Error al realizar cambio completo de jugador')
+  }
+}
+
+// Guardar múltiples cambios de jugadores de un encuentro
+export async function saveCambiosEncuentro(encuentroId: number, cambiosData: NewCambioJugador[]) {
+  try {
+    if (cambiosData.length === 0) {
+      return { success: true, cambios: [] }
+    }
+
+    // Eliminar cambios existentes del encuentro
+    await db.delete(cambiosJugadores).where(eq(cambiosJugadores.encuentro_id, encuentroId))
+
+    // Insertar nuevos cambios
+    const cambiosGuardados = await db.insert(cambiosJugadores).values(cambiosData).returning()
+    
+    return { success: true, cambios: cambiosGuardados }
+  } catch (error) {
+    console.error('Error al guardar cambios del encuentro:', error)
+    throw new Error('Error al guardar cambios del encuentro')
+  }
+}
+
+// Obtener cambios de jugadores de un encuentro
+export async function getCambiosEncuentro(encuentroId: number) {
+  try {
+    const cambiosEncuentro = await db
+      .select()
+      .from(cambiosJugadores)
+      .where(eq(cambiosJugadores.encuentro_id, encuentroId))
+    
+    return cambiosEncuentro
+  } catch (error) {
+    console.error('Error al obtener cambios del encuentro:', error)
+    throw new Error('Error al obtener cambios del encuentro')
+  }
+}
+
+// Obtener todos los cambios de un torneo
+export async function getCambiosTorneo(torneoId: number) {
+  try {
+    const cambiosTorneo = await db
+      .select({
+        id: cambiosJugadores.id,
+        encuentro_id: cambiosJugadores.encuentro_id,
+        jugador_sale_id: cambiosJugadores.jugador_sale_id,
+        jugador_entra_id: cambiosJugadores.jugador_entra_id,
+        equipo_id: cambiosJugadores.equipo_id,
+        minuto: cambiosJugadores.minuto,
+        tiempo: cambiosJugadores.tiempo,
+        createdAt: cambiosJugadores.createdAt,
+        updatedAt: cambiosJugadores.updatedAt
+      })
+      .from(cambiosJugadores)
+      .innerJoin(encuentros, eq(cambiosJugadores.encuentro_id, encuentros.id))
+      .where(eq(encuentros.torneo_id, torneoId))
+    
+    return cambiosTorneo
+  } catch (error) {
+    console.error('Error al obtener cambios del torneo:', error)
+    throw new Error('Error al obtener cambios del torneo')
+  }
+}
+
+// Eliminar un cambio de jugador
+export async function deleteCambioJugador(cambioId: number) {
+  try {
+    await db.delete(cambiosJugadores).where(eq(cambiosJugadores.id, cambioId))
+    return { success: true }
+  } catch (error) {
+    console.error('Error al eliminar cambio de jugador:', error)
+    throw new Error('Error al eliminar cambio de jugador')
+  }
+}
+
+// Deshacer un cambio de jugador: eliminar el cambio y remover el jugador que entra de jugadores_participantes
+export async function deshacerCambioJugador(
+  cambioId: number,
+  jugadorEntraId: number,
+  encuentroId: number
+) {
+  try {
+    console.log('deshacerCambioJugador - Iniciando:', {
+      cambioId,
+      jugadorEntraId,
+      encuentroId
+    })
+
+    // 1. Eliminar el cambio de la tabla cambios_jugadores
+    await db.delete(cambiosJugadores).where(eq(cambiosJugadores.id, cambioId))
+    console.log('✅ Cambio eliminado de cambios_jugadores')
+
+    // 2. Eliminar el jugador que entra de jugadores_participantes
+    await db.delete(jugadoresParticipantes).where(and(
+      eq(jugadoresParticipantes.encuentro_id, encuentroId),
+      eq(jugadoresParticipantes.jugador_id, jugadorEntraId)
+    ))
+    console.log('✅ Jugador que entra eliminado de jugadores_participantes')
+
+    return { success: true }
+  } catch (error) {
+    console.error('❌ Error al deshacer cambio de jugador:', error)
+    throw new Error('Error al deshacer cambio de jugador')
+  }
+}
+
+// Actualizar un cambio de jugador
+export async function updateCambioJugador(cambioId: number, cambioData: Partial<NewCambioJugador>) {
+  try {
+    const [cambio] = await db
+      .update(cambiosJugadores)
+      .set(cambioData)
+      .where(eq(cambiosJugadores.id, cambioId))
+      .returning()
+    
+    return { success: true, cambio }
+  } catch (error) {
+    console.error('Error al actualizar cambio de jugador:', error)
+    throw new Error('Error al actualizar cambio de jugador')
   }
 }
