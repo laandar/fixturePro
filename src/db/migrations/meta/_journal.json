@@ -141,6 +141,34 @@
       "when": 1759612895399,
       "tag": "0019_giant_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1759768656409,
+      "tag": "0020_noisy_hex",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1759972614387,
+      "tag": "0021_eager_apocalypse",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1759974347231,
+      "tag": "0022_purple_alice",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1759977866561,
+      "tag": "0023_wide_spectrum",
+      "breakpoints": true
     }
   ]
 }

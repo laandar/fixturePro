@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import './EstadoEncuentro.css'
 import { Button, Card, CardBody, Badge, Dropdown, DropdownButton } from 'react-bootstrap'
-import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings } from 'react-icons/lu'
+import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings, LuRefreshCw } from 'react-icons/lu'
 import NotificationCard from '@/components/NotificationCard'
 import { updateEstadoEncuentro, getEncuentrosByTorneo } from '../../torneos/actions'
 import { saveGolesEncuentro, saveTarjetasEncuentro } from '../actions'
@@ -17,12 +18,25 @@ interface EstadoEncuentroProps {
 }
 
 const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }: EstadoEncuentroProps) => {
-  const { goles, tarjetas, nombreEquipoA } = useGestionJugadores()
+  const { goles, tarjetas, nombreEquipoA, loadEstadoEncuentro } = useGestionJugadores()
   const [encuentro, setEncuentro] = useState<EncuentroWithRelations | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true)
+      await loadEncuentro()
+      await loadEstadoEncuentro() // También actualizar el contexto
+    } catch (err) {
+      console.error('Error al refrescar:', err)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const loadEncuentro = async () => {
     try {
@@ -291,6 +305,16 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
                 size="sm"
               />
             )}
+            
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Actualizar estado del encuentro"
+            >
+              <LuRefreshCw size={16} className={refreshing ? 'spinning' : ''} />
+            </Button>
             
             {estadosDisponibles.length > 0 && (
               <DropdownButton

@@ -1,9 +1,9 @@
 'use server'
 
 import { db } from '@/db'
-import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores } from '@/db/schema'
+import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
-import type { NewGol, Gol, NewTarjeta, Tarjeta, NewJugadorParticipante, JugadorParticipante, NewCambioJugador, CambioJugador } from '@/db/types'
+import type { NewGol, Gol, NewTarjeta, Tarjeta, NewJugadorParticipante, JugadorParticipante, NewCambioJugador, CambioJugador, NewFirmaEncuentro, FirmaEncuentro } from '@/db/types'
 
 // Guardar un gol en la base de datos
 export async function saveGol(golData: NewGol) {
@@ -161,10 +161,7 @@ export async function getTarjetasTorneo(torneoId: number) {
         encuentro_id: tarjetas.encuentro_id,
         jugador_id: tarjetas.jugador_id,
         equipo_id: tarjetas.equipo_id,
-        minuto: tarjetas.minuto,
-        tiempo: tarjetas.tiempo,
         tipo: tarjetas.tipo,
-        motivo: tarjetas.motivo,
         createdAt: tarjetas.createdAt,
         updatedAt: tarjetas.updatedAt
       })
@@ -241,14 +238,14 @@ export async function saveJugadoresParticipantes(encuentroId: number, jugadoresD
 // Obtener jugadores participantes de un encuentro
 export async function getJugadoresParticipantes(encuentroId: number) {
   try {
-    console.log('getJugadoresParticipantes - Buscando para encuentro:', encuentroId)
+    
     
     const jugadores = await db
       .select()
       .from(jugadoresParticipantes)
       .where(eq(jugadoresParticipantes.encuentro_id, encuentroId))
     
-    console.log('Jugadores participantes encontrados:', jugadores)
+    
     return jugadores
   } catch (error) {
     console.error('Error al obtener jugadores participantes:', error)
@@ -483,5 +480,105 @@ export async function updateCambioJugador(cambioId: number, cambioData: Partial<
   } catch (error) {
     console.error('Error al actualizar cambio de jugador:', error)
     throw new Error('Error al actualizar cambio de jugador')
+  }
+}
+
+// ===== FUNCIONES PARA FIRMAS DE ENCUENTROS =====
+
+// Guardar o actualizar firmas de un encuentro
+export async function saveFirmasEncuentro(firmasData: NewFirmaEncuentro) {
+  try {
+    // Verificar si ya existen firmas para este encuentro
+    const firmasExistentes = await db
+      .select()
+      .from(firmasEncuentros)
+      .where(eq(firmasEncuentros.encuentro_id, firmasData.encuentro_id!))
+      .limit(1)
+    
+    let firmas
+    
+    if (firmasExistentes.length > 0) {
+      // Actualizar firmas existentes
+      const [firmasActualizadas] = await db
+        .update(firmasEncuentros)
+        .set({
+          ...firmasData,
+          updatedAt: new Date()
+        })
+        .where(eq(firmasEncuentros.encuentro_id, firmasData.encuentro_id!))
+        .returning()
+      
+      firmas = firmasActualizadas
+    } else {
+      // Insertar nuevas firmas
+      const [firmasNuevas] = await db
+        .insert(firmasEncuentros)
+        .values(firmasData)
+        .returning()
+      
+      firmas = firmasNuevas
+    }
+    
+    return { success: true, firmas }
+  } catch (error) {
+    throw new Error('Error al guardar firmas del encuentro')
+  }
+}
+
+// Obtener firmas de un encuentro
+export async function getFirmasEncuentro(encuentroId: number) {
+  try {
+    const firmas = await db
+      .select()
+      .from(firmasEncuentros)
+      .where(eq(firmasEncuentros.encuentro_id, encuentroId))
+      .limit(1)
+    
+    return firmas.length > 0 ? firmas[0] : null
+  } catch (error) {
+    throw new Error('Error al obtener firmas del encuentro')
+  }
+}
+
+// Eliminar firmas de un encuentro
+export async function deleteFirmasEncuentro(encuentroId: number) {
+  try {
+    await db.delete(firmasEncuentros).where(eq(firmasEncuentros.encuentro_id, encuentroId))
+    
+    return { success: true }
+  } catch (error) {
+    throw new Error('Error al eliminar firmas del encuentro')
+  }
+}
+
+// Función para designar capitán
+export async function designarCapitan(encuentroId: number, jugadorId: number, equipoTipo: 'local' | 'visitante') {
+  try {
+    // Primero, quitar el capitán actual del equipo
+    await db.update(jugadoresParticipantes)
+      .set({ es_capitan: false })
+      .where(
+        and(
+          eq(jugadoresParticipantes.encuentro_id, encuentroId),
+          eq(jugadoresParticipantes.equipo_tipo, equipoTipo)
+        )
+      )
+
+    // Luego, designar al nuevo capitán
+    const result = await db.update(jugadoresParticipantes)
+      .set({ es_capitan: true })
+      .where(
+        and(
+          eq(jugadoresParticipantes.encuentro_id, encuentroId),
+          eq(jugadoresParticipantes.jugador_id, jugadorId),
+          eq(jugadoresParticipantes.equipo_tipo, equipoTipo)
+        )
+      )
+      .returning()
+
+    return { success: true, data: result[0] }
+  } catch (error) {
+    console.error('Error al designar capitán:', error)
+    return { success: false, error: 'Error al designar capitán' }
   }
 }

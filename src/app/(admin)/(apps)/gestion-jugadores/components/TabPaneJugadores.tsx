@@ -20,6 +20,7 @@ import { useGestionJugadores } from './GestionJugadoresContext';
 import type { JugadorWithEquipo } from '@/db/types';
 import InlineNotification from '@/components/InlineNotification';
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal';
+import './TabPaneJugadores.css';
 
 // CustomToggle component for the dropdown
 const CustomToggle = React.forwardRef<HTMLAnchorElement, { children: React.ReactNode; onClick: (e: React.MouseEvent<HTMLAnchorElement>) => void }>(({ 
@@ -73,6 +74,7 @@ const TabPaneJugadores = () => {
         handleSelectAllPlayers,
         handleClearAllPlayers,
         handleQuickSanction,
+        handleDesignarCapitan,
         handleQuickGoal,
         goles,
         tarjetas,
@@ -89,9 +91,15 @@ const TabPaneJugadores = () => {
         equipoLocalId,
         equipoVisitanteId,
         jornada,
+        estadoEncuentro,
+        isAdmin,
         cambiosJugadores,
-        setCambiosJugadores
+        setCambiosJugadores,
+        jugadoresParticipantes
     } = useGestionJugadores();
+
+    const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
+    const shouldDisableActions = isEncuentroFinalizado && !isAdmin;
 
     const handleImageClick = (imageUrl: string) => {
         setSelectedImage(imageUrl);
@@ -100,6 +108,37 @@ const TabPaneJugadores = () => {
 
     const isPlayerSubstituted = (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
         return cambiosJugadores.some(change => change.sale.id === jugador.id && change.equipo === equipo);
+    };
+
+    const isPlayerWithRedCard = (jugador: JugadorWithEquipo) => {
+        const jugadorIdStr = jugador.id.toString();
+        const tarjetasJugador = tarjetas.filter(t => t.jugador === jugadorIdStr);
+        const rojas = tarjetasJugador.filter(t => t.tipo === 'roja').length;
+        return rojas > 0;
+    };
+
+    const isPlayerCaptain = (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
+        // Buscar si el jugador está en jugadoresParticipantes y es capitán
+        const jugadorParticipante = jugadoresParticipantes.find(jp => 
+            jp.jugador_id === jugador.id && 
+            jp.es_capitan === true &&
+            ((equipo === 'A' && jp.equipo_tipo === 'local') || 
+             (equipo === 'B' && jp.equipo_tipo === 'visitante'))
+        );
+        return !!jugadorParticipante;
+    };
+
+    const handleDesignarCapitanClick = async (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
+        try {
+            const result = await handleDesignarCapitan(jugador, equipo);
+            if (result.success) {
+                setSaveMessage({ type: 'success', text: `${jugador.apellido_nombre} ha sido designado como capitán` });
+            } else {
+                setSaveMessage({ type: 'error', text: result.error || 'Error al designar capitán' });
+            }
+        } catch (error) {
+            setSaveMessage({ type: 'error', text: 'Error al designar capitán' });
+        }
     };
 
     const handleOpenChangeModal = (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
@@ -261,7 +300,7 @@ const TabPaneJugadores = () => {
                                     const rojas = tarjetasJugador.filter(t => t.tipo === 'roja').length;
                                     const expulsado = rojas > 0 || amarillas >= 2;
                                     const sustituido = isPlayerSubstituted(jugador, 'A');
-                                    const deshabilitado = expulsado || sustituido;
+                                    const deshabilitado = expulsado || sustituido || shouldDisableActions;
 
                                     return (
                                         <div key={jugador.id} className={`d-flex align-items-center p-2 border rounded shadow-sm ${deshabilitado ? 'bg-light' : 'bg-white'}`}>
@@ -283,7 +322,14 @@ const TabPaneJugadores = () => {
                                                 </div>
                                             )}
                                             <div className="flex-grow-1">
-                                                <div className={`fw-bold ${deshabilitado ? 'text-muted' : ''}`}>{jugador.apellido_nombre}</div>
+                                                <div className={`fw-bold ${deshabilitado ? 'text-muted' : ''} d-flex align-items-center`}>
+                                                    {isPlayerCaptain(jugador, 'A') && (
+                                                        <span className="me-1 capitan-icon" title="Capitán">
+                                                            C
+                                                        </span>
+                                                    )}
+                                                    {jugador.apellido_nombre}
+                                                </div>
                                                 <div className={`text-muted small ${deshabilitado ? 'text-decoration-line-through' : ''}`}>
                                                     {jugador.cedula}
                                                     {sustituido && <span className="ms-2 badge bg-warning">SUSTITUIDO</span>}
@@ -343,9 +389,20 @@ const TabPaneJugadores = () => {
                                                         </DropdownItem>
                                                         <Dropdown.Divider />
                                                         <DropdownItem 
+                                                            onClick={() => handleDesignarCapitanClick(jugador, 'A')}
+                                                            className="d-flex align-items-center"
+                                                            disabled={deshabilitado}
+                                                        >
+                                                            <span className="me-2 capitan-icon-small">
+                                                                C
+                                                            </span>
+                                                            Designar Capitán
+                                                        </DropdownItem>
+                                                        <Dropdown.Divider />
+                                                        <DropdownItem 
                                                             onClick={() => handleOpenChangeModal(jugador, 'A')}
                                                             className="d-flex align-items-center"
-                                                            disabled={sustituido}
+                                                            disabled={sustituido || shouldDisableActions || isPlayerWithRedCard(jugador)}
                                                         >
                                                             <TbExchange className="me-2" />
                                                             Cambiar Jugador
@@ -503,7 +560,7 @@ const TabPaneJugadores = () => {
                                     const rojas = tarjetasJugador.filter(t => t.tipo === 'roja').length;
                                     const expulsado = rojas > 0 || amarillas >= 2;
                                     const sustituido = isPlayerSubstituted(jugador, 'B');
-                                    const deshabilitado = expulsado || sustituido;
+                                    const deshabilitado = expulsado || sustituido || shouldDisableActions;
 
                                     return (
                                         <div key={jugador.id} className={`d-flex align-items-center p-2 border rounded shadow-sm ${deshabilitado ? 'bg-light' : 'bg-white'}`}>
@@ -525,7 +582,14 @@ const TabPaneJugadores = () => {
                                                 </div>
                                             )}
                                             <div className="flex-grow-1">
-                                                <div className={`fw-bold ${deshabilitado ? 'text-muted' : ''}`}>{jugador.apellido_nombre}</div>
+                                                <div className={`fw-bold ${deshabilitado ? 'text-muted' : ''} d-flex align-items-center`}>
+                                                    {isPlayerCaptain(jugador, 'B') && (
+                                                        <span className="me-1 capitan-icon" title="Capitán">
+                                                            C
+                                                        </span>
+                                                    )}
+                                                    {jugador.apellido_nombre}
+                                                </div>
                                                 <div className={`text-muted small ${deshabilitado ? 'text-decoration-line-through' : ''}`}>
                                                     {jugador.cedula}
                                                     {sustituido && <span className="ms-2 badge bg-warning">SUSTITUIDO</span>}
@@ -585,9 +649,20 @@ const TabPaneJugadores = () => {
                                                         </DropdownItem>
                                                         <Dropdown.Divider />
                                                         <DropdownItem 
+                                                            onClick={() => handleDesignarCapitanClick(jugador, 'B')}
+                                                            className="d-flex align-items-center"
+                                                            disabled={expulsado}
+                                                        >
+                                                            <span className="me-2 capitan-icon-small">
+                                                                C
+                                                            </span>
+                                                            Designar Capitán
+                                                        </DropdownItem>
+                                                        <Dropdown.Divider />
+                                                        <DropdownItem 
                                                             onClick={() => handleOpenChangeModal(jugador, 'B')}
                                                             className="d-flex align-items-center"
-                                                            disabled={sustituido}
+                                                            disabled={sustituido || shouldDisableActions || isPlayerWithRedCard(jugador)}
                                                         >
                                                             <TbExchange className="me-2" />
                                                             Cambiar Jugador
@@ -680,6 +755,7 @@ const TabPaneJugadores = () => {
                                                     size="sm"
                                                     onClick={() => change.id && handleDeshacerCambio(change.id, change.entra.id, change.sale.apellido_nombre, change.entra.apellido_nombre)}
                                                     title="Deshacer cambio"
+                                                    disabled={shouldDisableActions}
                                                 >
                                                     <TbTrash size={14} />
                                                 </Button>
@@ -700,10 +776,10 @@ const TabPaneJugadores = () => {
                 </ModalHeader>
                 <ModalBody>
                     <div className="d-flex justify-content-end mb-3">
-                        <Button variant="outline-primary" size="sm" onClick={() => handleSelectAllPlayers('A')} className="me-2">
+                        <Button variant="outline-primary" size="sm" onClick={() => handleSelectAllPlayers('A')} className="me-2" disabled={shouldDisableActions}>
                             Seleccionar Todos
                         </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleClearAllPlayers('A')}>
+                        <Button variant="outline-danger" size="sm" onClick={() => handleClearAllPlayers('A')} disabled={shouldDisableActions}>
                             Limpiar Selección
                         </Button>
                     </div>
@@ -716,6 +792,7 @@ const TabPaneJugadores = () => {
                                     label={`${jugador.apellido_nombre} (${jugador.cedula})`}
                                     checked={jugadoresParticipantesA.some(p => p.id === jugador.id)}
                                     onChange={() => handleTogglePlayerSelection(jugador, 'A')}
+                                    disabled={shouldDisableActions}
                                 />
                             </Col>
                         ))}
@@ -739,7 +816,7 @@ const TabPaneJugadores = () => {
                     <Button 
                         variant="primary" 
                         onClick={() => handleConfirmSave('A')}
-                        disabled={isSaving}
+                        disabled={isSaving || shouldDisableActions}
                     >
                         <TbCheck /> {isSaving ? 'Guardando...' : 'Confirmar Selección'}
                     </Button>
@@ -753,10 +830,10 @@ const TabPaneJugadores = () => {
                 </ModalHeader>
                 <ModalBody>
                     <div className="d-flex justify-content-end mb-3">
-                        <Button variant="outline-primary" size="sm" onClick={() => handleSelectAllPlayers('B')} className="me-2">
+                        <Button variant="outline-primary" size="sm" onClick={() => handleSelectAllPlayers('B')} className="me-2" disabled={isEncuentroFinalizado}>
                             Seleccionar Todos
                         </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleClearAllPlayers('B')}>
+                        <Button variant="outline-danger" size="sm" onClick={() => handleClearAllPlayers('B')} disabled={isEncuentroFinalizado}>
                             Limpiar Selección
                         </Button>
                     </div>
@@ -769,6 +846,7 @@ const TabPaneJugadores = () => {
                                     label={`${jugador.apellido_nombre} (${jugador.cedula})`}
                                     checked={jugadoresParticipantesB.some(p => p.id === jugador.id)}
                                     onChange={() => handleTogglePlayerSelection(jugador, 'B')}
+                                    disabled={shouldDisableActions}
                                 />
                             </Col>
                         ))}
@@ -792,7 +870,7 @@ const TabPaneJugadores = () => {
                     <Button 
                         variant="primary" 
                         onClick={() => handleConfirmSave('B')}
-                        disabled={isSaving}
+                        disabled={isSaving || shouldDisableActions}
                     >
                         <TbCheck /> {isSaving ? 'Guardando...' : 'Confirmar Selección'}
                     </Button>
@@ -836,9 +914,9 @@ const TabPaneJugadores = () => {
                                     .map(jugador => (
                                         <div key={jugador.id} className="col-md-6 mb-3">
                                             <div 
-                                                className="card h-100 cursor-pointer border-2 border-transparent hover-border-primary"
-                                                style={{ cursor: 'pointer' }}
-                                                onClick={() => handlePlayerChangeLocal(selectedPlayerForChange, jugador, changeTeam)}
+                                                className={`card h-100 cursor-pointer border-2 border-transparent hover-border-primary ${shouldDisableActions ? 'opacity-50' : ''}`}
+                                                style={{ cursor: shouldDisableActions ? 'not-allowed' : 'pointer' }}
+                                                onClick={() => !shouldDisableActions && handlePlayerChangeLocal(selectedPlayerForChange, jugador, changeTeam)}
                                             >
                                                 <div className="card-body d-flex align-items-center">
                                                     {jugador.foto ? (

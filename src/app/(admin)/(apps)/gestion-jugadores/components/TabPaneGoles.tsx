@@ -4,7 +4,10 @@ import { TbSoccerField, TbPlus, TbTrash } from 'react-icons/tb'
 import { useGestionJugadores } from './GestionJugadoresContext'
 
 const TabPaneGoles = () => {
-    const { goles, setShowGolModal, handleDeleteGol } = useGestionJugadores()
+    const { goles, setShowGolModal, handleDeleteGol, estadoEncuentro, isAdmin } = useGestionJugadores()
+    
+    const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
+    const shouldDisableActions = isEncuentroFinalizado && !isAdmin;
 
     return (
         <Card>
@@ -12,7 +15,7 @@ const TabPaneGoles = () => {
                 <h5 className="mb-0 d-flex align-items-center">
                     <TbSoccerField className="me-2" /> Goles
                 </h5>
-                <Button variant="success" onClick={() => setShowGolModal(true)}>
+                <Button variant="success" onClick={() => setShowGolModal(true)} disabled={shouldDisableActions}>
                     <TbPlus className="me-1" /> Añadir Gol
                 </Button>
             </Card.Header>
@@ -46,7 +49,7 @@ const TabPaneGoles = () => {
                                         </Badge>
                                     </td>
                                     <td>
-                                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteGol(g.id)}>
+                                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteGol(g.id)} disabled={shouldDisableActions}>
                                             <TbTrash />
                                         </Button>
                                     </td>

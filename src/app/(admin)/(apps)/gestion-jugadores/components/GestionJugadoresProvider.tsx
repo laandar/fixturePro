@@ -6,7 +6,7 @@ import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJu
 import { getJugadores } from '../../jugadores/actions'
 import { getEquipos } from '../../equipos/actions'
 import { getCategorias } from '../../categorias/actions'
-import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction } from '../actions'
+import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction, designarCapitan } from '../actions'
 import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante, NewCambioJugador } from '@/db/types'
 
 export const GestionJugadoresProvider = ({ children }: { children: React.ReactNode }) => {
@@ -48,8 +48,6 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
     const [showSelectionModalB, setShowSelectionModalB] = useState(false)
 
     const [cambios, setCambios] = useState<PlayerChange[]>([])
-    const [showCambioModal, setShowCambioModal] = useState(false)
-    const [nuevoCambio, setNuevoCambio] = useState<Partial<PlayerChange>>({})
 
     const [tarjetas, setTarjetas] = useState<CardType[]>([])
     const [showTarjetaModal, setShowTarjetaModal] = useState(false)
@@ -59,11 +57,27 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
     const [showGolModal, setShowGolModal] = useState(false)
     const [nuevoGol, setNuevoGol] = useState<Partial<Goal>>({})
 
-    const [firmas, setFirmas] = useState<Signature>({ vocal: '', arbitro: '', capitanA: '', capitanB: '', fechaFirma: '' })
+    const [firmas, setFirmas] = useState<Signature>({ 
+        vocalNombre: '', 
+        vocalFirma: '', 
+        vocalInforme: '',
+        arbitroNombre: '', 
+        arbitroFirma: '', 
+        arbitroInforme: '',
+        capitanLocalNombre: '', 
+        capitanLocalFirma: '', 
+        capitanVisitanteNombre: '', 
+        capitanVisitanteFirma: '', 
+        fechaFirma: '' 
+    })
 
     const [jugadoresParticipantes, setJugadoresParticipantes] = useState<JugadorParticipante[]>([])
     const [isSaving, setIsSaving] = useState(false)
-    const [cambiosJugadores, setCambiosJugadores] = useState<Array<{sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>([])
+    const [cambiosJugadores, setCambiosJugadores] = useState<Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>([])
+    const [estadoEncuentro, setEstadoEncuentro] = useState<string | null>(null)
+    
+    // Verificar si el usuario es administrador (por ahora hardcodeado)
+    const isAdmin = false; // TODO: Implementar sistema de roles y usuarios
 
     const loadData = useCallback(async () => {
         try {
@@ -82,6 +96,29 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             setLoading(false)
         }
     }, [])
+
+    const loadEstadoEncuentro = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (encuentro) {
+                setEstadoEncuentro(encuentro.estado)
+            }
+        } catch (err) {
+            console.error('Error al cargar estado del encuentro:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
 
     const loadGolesExistentes = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -156,10 +193,10 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
                     id: tarjeta.id.toString(),
                     jugador: tarjeta.jugador_id.toString(),
                     equipo: tarjeta.equipo_id === equipoLocalIdNum ? nombreEquipoLocal : nombreEquipoVisitante,
-                    minuto: tarjeta.minuto || 0,
-                    tiempo: tarjeta.tiempo || 'primer',
-                    tipo: tarjeta.tipo || 'amarilla',
-                    motivo: tarjeta.motivo || ''
+                    minuto: 0, // Ya no se almacena en BD
+                    tiempo: 'primer', // Ya no se almacena en BD
+                    tipo: tarjeta.tipo,
+                    motivo: '' // Ya no se almacena en BD
                 }))
                 
                 setTarjetas(tarjetasFormateadas)
@@ -169,6 +206,46 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             console.error('Error al cargar tarjetas existentes:', err)
         }
     }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, equipos])
+
+    const loadFirmasExistentes = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const { getFirmasEncuentro } = await import('../actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (encuentro) {
+                const firmasExistentes = await getFirmasEncuentro(encuentro.id)
+                
+                if (firmasExistentes) {
+                    setFirmas({
+                        vocalNombre: firmasExistentes.vocal_nombre || '',
+                        vocalFirma: firmasExistentes.vocal_firma || '',
+                        vocalInforme: firmasExistentes.vocal_informe || '',
+                        arbitroNombre: firmasExistentes.arbitro_nombre || '',
+                        arbitroFirma: firmasExistentes.arbitro_firma || '',
+                        arbitroInforme: firmasExistentes.arbitro_informe || '',
+                        capitanLocalNombre: firmasExistentes.capitan_local_nombre || '',
+                        capitanLocalFirma: firmasExistentes.capitan_local_firma || '',
+                        capitanVisitanteNombre: firmasExistentes.capitan_visitante_nombre || '',
+                        capitanVisitanteFirma: firmasExistentes.capitan_visitante_firma || '',
+                        fechaFirma: firmasExistentes.fecha_firma ? new Date(firmasExistentes.fecha_firma).toISOString().split('T')[0] : ''
+                    })
+                }
+            }
+        } catch (err) {
+            // Error silencioso
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
 
     const loadCambiosJugadores = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -223,7 +300,7 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             }).filter(Boolean) // Filtrar cambios nulos
 
             console.log('Cambios formateados para contexto:', cambiosFormateados)
-            setCambiosJugadores(cambiosFormateados)
+            setCambiosJugadores(cambiosFormateados.filter((cambio): cambio is NonNullable<typeof cambio> => cambio !== null))
         } catch (err) {
             console.error('❌ Error al cargar cambios de jugadores:', err)
         }
@@ -406,8 +483,24 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             loadGolesExistentes()
             loadTarjetasExistentes()
             loadCambiosJugadores()
+            loadEstadoEncuentro()
+            loadFirmasExistentes()
         }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores])
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores, loadEstadoEncuentro, loadFirmasExistentes])
+
+    // Polling para verificar cambios en el estado del encuentro cada 5 segundos
+    // useEffect para polling del estado del encuentro - DESHABILITADO temporalmente
+    // useEffect(() => {
+    //     if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+    //         return
+    //     }
+
+    //     const interval = setInterval(() => {
+    //         loadEstadoEncuentro()
+    //     }, 5000) // Verificar cada 5 segundos
+
+    //     return () => clearInterval(interval)
+    // }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, loadEstadoEncuentro])
 
     // Determinar jugadores de los equipos según la URL o valores por defecto
     const jugadoresEquipoA = jugadores.filter(j => {
@@ -451,13 +544,6 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         setter([])
     }
 
-    const handleAddCambio = () => {
-        if (nuevoCambio.jugadorEntra && nuevoCambio.jugadorSale && nuevoCambio.minuto) {
-            setCambios([...cambios, { ...nuevoCambio, id: Date.now().toString() } as PlayerChange])
-            setNuevoCambio({})
-            setShowCambioModal(false)
-        }
-    }
 
     const handleDeleteCambio = (id: string) => {
         setCambios(cambios.filter(c => c.id !== id))
@@ -604,27 +690,17 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             equipo
         });
 
-        if (equipo === 'A') {
-            // NO remover jugador que sale - se mantiene en jugadores participantes
-            // Solo agregar jugador que entra al equipo A
-            setJugadoresParticipantesA(prev => [...prev, jugadorEntra]);
-        } else {
-            // NO remover jugador que sale - se mantiene en jugadores participantes  
-            // Solo agregar jugador que entra al equipo B
-            setJugadoresParticipantesB(prev => [...prev, jugadorEntra]);
-        }
-
         // Registrar el cambio con ID si está disponible
         addCambioJugador({ sale: jugadorSale, entra: jugadorEntra, equipo, id: cambioId });
 
-        // Actualizar jugadores participantes en la base de datos de forma síncrona
+        // Recargar jugadores participantes desde la base de datos para reflejar el cambio
         try {
-            await saveJugadoresParticipantes();
-            console.log('✅ Jugadores participantes actualizados correctamente después del cambio');
+            await loadJugadoresParticipantes();
+            console.log('✅ Jugadores participantes recargados correctamente después del cambio');
         } catch (err) {
-            console.error('❌ Error al actualizar jugadores participantes después del cambio:', err);
+            console.error('❌ Error al recargar jugadores participantes después del cambio:', err);
         }
-    }, [addCambioJugador, saveJugadoresParticipantes])
+    }, [addCambioJugador, loadJugadoresParticipantes])
 
     const realizarCambioJugadorCompleto = useCallback(async (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -703,6 +779,94 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         }
     }, [])
 
+    const handleSaveFirmas = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return { success: false, error: 'Faltan parámetros del encuentro' }
+        }
+
+        try {
+            setIsSaving(true)
+            
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const { saveFirmasEncuentro } = await import('../actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (!encuentro) {
+                return { success: false, error: 'No se encontró el encuentro' }
+            }
+
+            // Preparar datos de firmas para guardar
+            const firmasData = {
+                encuentro_id: encuentro.id,
+                vocal_nombre: firmas.vocalNombre,
+                vocal_firma: firmas.vocalFirma,
+                vocal_informe: firmas.vocalInforme,
+                arbitro_nombre: firmas.arbitroNombre,
+                arbitro_firma: firmas.arbitroFirma,
+                arbitro_informe: firmas.arbitroInforme,
+                capitan_local_nombre: firmas.capitanLocalNombre,
+                capitan_local_firma: firmas.capitanLocalFirma,
+                capitan_visitante_nombre: firmas.capitanVisitanteNombre,
+                capitan_visitante_firma: firmas.capitanVisitanteFirma,
+                fecha_firma: new Date() // Fecha actual del sistema
+            }
+
+            const result = await saveFirmasEncuentro(firmasData)
+            
+            if (result.success) {
+                return { success: true }
+            } else {
+                return { success: false, error: 'Error al guardar firmas' }
+            }
+        } catch (err) {
+            return { success: false, error: 'Error al guardar firmas' }
+        } finally {
+            setIsSaving(false)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, firmas])
+
+    const handleDesignarCapitan = useCallback(async (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return { success: false, error: 'Faltan parámetros del encuentro' }
+        }
+
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
+
+            if (!encuentro) {
+                return { success: false, error: 'No se encontró el encuentro' }
+            }
+
+            // Determinar el tipo de equipo
+            const equipoTipo: 'local' | 'visitante' = equipo === 'A' ? 'local' : 'visitante'
+
+            const result = await designarCapitan(encuentro.id, jugador.id, equipoTipo)
+            
+            if (result.success) {
+                // Recargar los jugadores participantes para actualizar la UI
+                await loadJugadoresParticipantes()
+                return { success: true }
+            } else {
+                return { success: false, error: result.error || 'Error al designar capitán' }
+            }
+        } catch (err) {
+            return { success: false, error: 'Error al designar capitán' }
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, loadJugadoresParticipantes])
+
     const saveCambioJugador = useCallback(async (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
             console.error('Faltan parámetros para guardar cambio:', {
@@ -769,15 +933,13 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         equipoLocalId: equipoLocalIdNum,
         equipoVisitanteId: equipoVisitanteIdNum,
         jornada: jornadaNum,
+        estadoEncuentro,
+        isAdmin,
         showSelectionModalA,
         setShowSelectionModalA,
         showSelectionModalB,
         setShowSelectionModalB,
         cambios,
-        showCambioModal,
-        setShowCambioModal,
-        nuevoCambio,
-        setNuevoCambio,
         tarjetas,
         showTarjetaModal,
         setShowTarjetaModal,
@@ -790,6 +952,7 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         setNuevoGol,
         firmas,
         setFirmas,
+        handleSaveFirmas,
         jugadoresParticipantes,
         setJugadoresParticipantes,
         isSaving,
@@ -798,14 +961,15 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         saveJugadoresParticipantes,
         loadGolesExistentes,
         loadTarjetasExistentes,
+        loadEstadoEncuentro,
         handleTogglePlayerSelection,
         handleSelectAllPlayers,
         handleClearAllPlayers,
-        handleAddCambio,
         handleDeleteCambio,
         handleAddTarjeta,
         handleDeleteTarjeta,
         handleQuickSanction,
+        handleDesignarCapitan,
         handleAddGol,
         handleDeleteGol,
         handleQuickGoal,
@@ -820,91 +984,10 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         setCambiosJugadores,
     }
 
-    const jugadoresDisponiblesSale = nuevoCambio.equipoA === equipos[0]?.id.toString()
-        ? jugadoresParticipantesA
-        : jugadoresParticipantesB
-
-    const jugadoresDisponiblesEntra = (nuevoCambio.equipoA === equipos[0]?.id.toString() ? jugadoresEquipoA : jugadoresEquipoB).filter(
-        (j) => !(nuevoCambio.equipoA === equipos[0]?.id.toString() ? jugadoresParticipantesA : jugadoresParticipantesB).some(p => p.id === j.id)
-    )
 
     return (
         <GestionJugadoresContext.Provider value={value}>
             {children}
-            <Modal show={showCambioModal} onHide={() => setShowCambioModal(false)} centered>
-                <Modal.Header closeButton>
-                    <Modal.Title>Añadir Cambio</Modal.Title>
-                </Modal.Header>
-                <Modal.Body>
-                    <Form>
-                        <Form.Group as={Row} className="mb-3">
-                            <Form.Label column sm={3}>Equipo</Form.Label>
-                            <Col sm={9}>
-                                <Form.Select
-                                    value={nuevoCambio.equipoA || ''}
-                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, equipoA: e.target.value, jugadorSale: undefined, jugadorEntra: undefined })}
-                                >
-                                    <option value="">Seleccione un equipo</option>
-                                    {equipos.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                                </Form.Select>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={Row} className="mb-3">
-                            <Form.Label column sm={3}>Sale</Form.Label>
-                            <Col sm={9}>
-                                <Form.Select
-                                    value={nuevoCambio.jugadorSale || ''}
-                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, jugadorSale: e.target.value })}
-                                    disabled={!nuevoCambio.equipoA}
-                                >
-                                    <option value="">Seleccione jugador que sale</option>
-                                    {jugadoresDisponiblesSale.map(j => <option key={j.id} value={j.id}>{j.apellido_nombre}</option>)}
-                                </Form.Select>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={Row} className="mb-3">
-                            <Form.Label column sm={3}>Entra</Form.Label>
-                            <Col sm={9}>
-                                <Form.Select
-                                    value={nuevoCambio.jugadorEntra || ''}
-                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, jugadorEntra: e.target.value })}
-                                    disabled={!nuevoCambio.equipoA}
-                                >
-                                    <option value="">Seleccione jugador que entra</option>
-                                    {jugadoresDisponiblesEntra.map(j => <option key={j.id} value={j.id}>{j.apellido_nombre}</option>)}
-                                </Form.Select>
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={Row} className="mb-3">
-                            <Form.Label column sm={3}>Minuto</Form.Label>
-                            <Col sm={9}>
-                                <Form.Control
-                                    type="number"
-                                    placeholder="Minuto del cambio"
-                                    value={nuevoCambio.minuto || ''}
-                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, minuto: parseInt(e.target.value) })}
-                                />
-                            </Col>
-                        </Form.Group>
-                        <Form.Group as={Row} className="mb-3">
-                            <Form.Label column sm={3}>Tiempo</Form.Label>
-                            <Col sm={9}>
-                                <Form.Select
-                                    value={nuevoCambio.tiempo || 'primer'}
-                                    onChange={(e) => setNuevoCambio({ ...nuevoCambio, tiempo: e.target.value as 'primer' | 'segundo' })}
-                                >
-                                    <option value="primer">1er Tiempo</option>
-                                    <option value="segundo">2do Tiempo</option>
-                                </Form.Select>
-                            </Col>
-                        </Form.Group>
-                    </Form>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="secondary" onClick={() => setShowCambioModal(false)}>Cancelar</Button>
-                    <Button variant="primary" onClick={handleAddCambio}>Guardar Cambio</Button>
-                </Modal.Footer>
-            </Modal>
         </GestionJugadoresContext.Provider>
     )
 }

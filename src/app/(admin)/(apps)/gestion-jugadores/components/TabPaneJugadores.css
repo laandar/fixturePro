@@ -1,0 +1,30 @@
+/* TabPaneJugadores Styles */
+
+/* Icono de Capitán */
+.capitan-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    color: white;
+    font-weight: bold;
+    font-size: 0.8em;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.capitan-icon-small {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    color: white;
+    font-weight: bold;
+    font-size: 0.7em;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

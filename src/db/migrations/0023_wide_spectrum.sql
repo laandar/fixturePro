@@ -1,0 +1,1 @@
+ALTER TABLE "jugadores_participantes" ADD COLUMN "es_capitan" boolean DEFAULT false;

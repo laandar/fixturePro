@@ -283,10 +283,7 @@ export const tarjetas = pgTable('tarjetas', {
   encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
   jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
   equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
-  minuto: integer('minuto').notNull(),
-  tiempo: text('tiempo', { enum: ['primer', 'segundo'] }).notNull(),
   tipo: text('tipo', { enum: ['amarilla', 'roja'] }).notNull(),
-  motivo: text('motivo'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -313,6 +310,7 @@ export const jugadoresParticipantes = pgTable('jugadores_participantes', {
   encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
   jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
   equipo_tipo: text('equipo_tipo', { enum: ['local', 'visitante'] }).notNull(),
+  es_capitan: boolean('es_capitan').default(false), // Indica si el jugador es capitán del equipo
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -377,5 +375,32 @@ export const cambiosJugadoresRelations = relations(cambiosJugadores, ({ one }) =
   equipo: one(equipos, {
     fields: [cambiosJugadores.equipo_id],
     references: [equipos.id],
+  }),
+}));
+
+// Tabla de firmas de encuentros
+export const firmasEncuentros = pgTable('firmas_encuentros', {
+  id: serial('id').primaryKey(),
+  encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull().unique(),
+  vocal_nombre: text('vocal_nombre'),
+  vocal_firma: text('vocal_firma'), // Base64 de la imagen de la firma
+  vocal_informe: text('vocal_informe'), // Informe del vocal
+  arbitro_nombre: text('arbitro_nombre'),
+  arbitro_firma: text('arbitro_firma'), // Base64 de la imagen de la firma
+  arbitro_informe: text('arbitro_informe'), // Informe del árbitro
+  capitan_local_nombre: text('capitan_local_nombre'),
+  capitan_local_firma: text('capitan_local_firma'), // Base64 de la imagen de la firma
+  capitan_visitante_nombre: text('capitan_visitante_nombre'),
+  capitan_visitante_firma: text('capitan_visitante_firma'), // Base64 de la imagen de la firma
+  fecha_firma: timestamp('fecha_firma'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Relaciones para firmas de encuentros
+export const firmasEncuentrosRelations = relations(firmasEncuentros, ({ one }) => ({
+  encuentro: one(encuentros, {
+    fields: [firmasEncuentros.encuentro_id],
+    references: [encuentros.id],
   }),
 }));
