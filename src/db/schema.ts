@@ -438,3 +438,85 @@ export const configuraciones = pgTable('configuraciones', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
+
+// ==================== TABLAS DE AUTENTICACIÓN (Auth.js) ====================
+
+// Tabla de usuarios
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  name: text('name'),
+  email: text('email').notNull().unique(),
+  emailVerified: timestamp('email_verified', { mode: 'date' }),
+  password: text('password'), // Para autenticación con credenciales (hasheada con bcrypt)
+  image: text('image'),
+  role: text('role', { enum: ['admin', 'arbitro', 'jugador', 'visitante'] }).default('visitante').notNull(),
+  equipoId: integer('equipo_id').references(() => equipos.id), // Relación opcional con un equipo
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Tabla de cuentas (para OAuth providers como Google, GitHub, etc.)
+export const accounts = pgTable('accounts', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  provider: text('provider').notNull(),
+  providerAccountId: text('provider_account_id').notNull(),
+  refresh_token: text('refresh_token'),
+  access_token: text('access_token'),
+  expires_at: integer('expires_at'),
+  token_type: text('token_type'),
+  scope: text('scope'),
+  id_token: text('id_token'),
+  session_state: text('session_state'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  uniqueProviderAccount: uniqueIndex('unique_provider_account').on(table.provider, table.providerAccountId),
+}));
+
+// Tabla de sesiones
+export const sessions = pgTable('sessions', {
+  id: serial('id').primaryKey(),
+  sessionToken: text('session_token').notNull().unique(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expires: timestamp('expires', { mode: 'date' }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Tabla de tokens de verificación (para reset password, verificación de email, etc.)
+export const verificationTokens = pgTable('verification_tokens', {
+  identifier: text('identifier').notNull(),
+  token: text('token').notNull().unique(),
+  expires: timestamp('expires', { mode: 'date' }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  uniqueIdentifierToken: uniqueIndex('unique_identifier_token').on(table.identifier, table.token),
+}));
+
+// Relaciones para usuarios
+export const usersRelations = relations(users, ({ one, many }) => ({
+  equipo: one(equipos, {
+    fields: [users.equipoId],
+    references: [equipos.id],
+  }),
+  accounts: many(accounts),
+  sessions: many(sessions),
+}));
+
+// Relaciones para cuentas
+export const accountsRelations = relations(accounts, ({ one }) => ({
+  user: one(users, {
+    fields: [accounts.userId],
+    references: [users.id],
+  }),
+}));
+
+// Relaciones para sesiones
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));

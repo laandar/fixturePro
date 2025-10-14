@@ -190,6 +190,13 @@
       "when": 1760111887459,
       "tag": "0026_little_the_watchers",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1760470089728,
+      "tag": "0027_bored_vulture",
+      "breakpoints": true
     }
   ]
 }

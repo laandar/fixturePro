@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import AppWrapper from '@/components/AppWrapper'
+import { SessionProvider } from '@/components/SessionProvider'
 
 import favicon from '@/assets/images/favicon.ico'
 import { appDescription, appTitle } from '@/helpers'
@@ -41,7 +42,9 @@ const RootLayout = ({ children }: ChildrenType) => {
   return (
     <html lang="en" className={`${roboto.variable} ${openSans.variable}`}>
       <body>
-        <AppWrapper>{children}</AppWrapper>
+        <SessionProvider>
+          <AppWrapper>{children}</AppWrapper>
+        </SessionProvider>
       </body>
     </html>
   )
