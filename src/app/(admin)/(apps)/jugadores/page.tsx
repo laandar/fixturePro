@@ -28,6 +28,7 @@ import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
 import { getTempPlayerImage } from '@/components/TempPlayerImages'
+import HistorialJugadorModal from '@/components/HistorialJugadorModal'
 import { Swiper, SwiperSlide } from 'swiper/react'
 import { Navigation, Pagination as SwiperPagination, Autoplay } from 'swiper/modules'
 import 'swiper/css'
@@ -78,6 +79,10 @@ const Page = () => {
   const [editingJugador, setEditingJugador] = useState<JugadorWithEquipo | null>(null)
   const [editFormError, setEditFormError] = useState<string | null>(null)
   const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
+  
+  // Estados para el modal de historial
+  const [showHistorialModal, setShowHistorialModal] = useState(false)
+  const [selectedJugadorForHistorial, setSelectedJugadorForHistorial] = useState<JugadorWithEquipo | null>(null)
   
   // Estados para la vista (cards o tabla)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -298,6 +303,11 @@ const Page = () => {
     setEditCapturedPhoto(null)
     setEditCapturedPhotoUrl(null)
     toggleEditOffcanvas()
+  }
+
+  const handleVerPerfilClick = (jugador: JugadorWithEquipo) => {
+    setSelectedJugadorForHistorial(jugador)
+    setShowHistorialModal(true)
   }
 
   // Funciones para manejar la captura de fotos
@@ -719,7 +729,7 @@ const Page = () => {
                               showUserInfo={true}
                               enableTilt={true}
                               enableMobileTilt={false}
-                              onContactClick={() => window.location.href = `/jugadores/${jugador.id}`}
+                              onContactClick={() => handleVerPerfilClick(jugador)}
                               contactText="Ver Perfil"
                               className="h-100"
                             />
@@ -794,7 +804,7 @@ const Page = () => {
                                   showUserInfo={true}
                                   enableTilt={false}
                                   enableMobileTilt={false}
-                                  onContactClick={() => window.location.href = `/jugadores/${jugador.id}`}
+                                  onContactClick={() => handleVerPerfilClick(jugador)}
                                   contactText="Ver Perfil"
                                   className="h-100"
                                 />
@@ -1240,6 +1250,19 @@ const Page = () => {
         onCapture={handleEditPhotoCapture}
         title="Tomar Foto del Jugador"
       />
+
+      {/* Modal de historial del jugador */}
+      {selectedJugadorForHistorial && (
+        <HistorialJugadorModal
+          show={showHistorialModal}
+          onHide={() => {
+            setShowHistorialModal(false)
+            setSelectedJugadorForHistorial(null)
+          }}
+          jugadorId={selectedJugadorForHistorial.id}
+          jugadorNombre={selectedJugadorForHistorial.apellido_nombre}
+        />
+      )}
     </Container>
   )
 }

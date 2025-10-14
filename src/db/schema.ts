@@ -404,3 +404,37 @@ export const firmasEncuentrosRelations = relations(firmasEncuentros, ({ one }) =
     references: [encuentros.id],
   }),
 }));
+
+// Tabla de historial de jugadores
+export const historialJugadores = pgTable('historial_jugadores', {
+  id: serial('id').primaryKey(),
+  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  liga: text('liga').notNull(),
+  equipo: text('equipo'), // Nombre del equipo como texto
+  numero: integer('numero'), // Número de camiseta
+  nombre_calificacion: text('nombre_calificacion'),
+  disciplina: text('disciplina'),
+  fecha_calificacion: date('fecha_calificacion'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Relaciones para historial de jugadores
+export const historialJugadoresRelations = relations(historialJugadores, ({ one }) => ({
+  jugador: one(jugadores, {
+    fields: [historialJugadores.jugador_id],
+    references: [jugadores.id],
+  }),
+}));
+
+// Tabla de configuraciones del sistema
+export const configuraciones = pgTable('configuraciones', {
+  id: serial('id').primaryKey(),
+  clave: text('clave').notNull().unique(), // Identificador único de la configuración
+  valor: text('valor').notNull(), // Valor de la configuración (se guardará como texto y se parseará según sea necesario)
+  tipo: text('tipo').notNull(), // 'number', 'text', 'boolean', 'json'
+  categoria: text('categoria').notNull(), // 'sanciones', 'valores_economicos', 'general', etc.
+  descripcion: text('descripcion'), // Descripción de la configuración
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});

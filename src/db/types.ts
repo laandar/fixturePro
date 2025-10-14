@@ -1,5 +1,5 @@
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, horarios, goles, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros } from './schema';
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, horarios, goles, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, historialJugadores, configuraciones } from './schema';
 
 // Tipos para selección (lectura)
 export type Equipo = InferSelectModel<typeof equipos>;
@@ -17,6 +17,8 @@ export type Tarjeta = InferSelectModel<typeof tarjetas>;
 export type JugadorParticipante = InferSelectModel<typeof jugadoresParticipantes>;
 export type CambioJugador = InferSelectModel<typeof cambiosJugadores>;
 export type FirmaEncuentro = InferSelectModel<typeof firmasEncuentros>;
+export type HistorialJugador = InferSelectModel<typeof historialJugadores>;
+export type Configuracion = InferSelectModel<typeof configuraciones>;
 
 // Tipos para inserción
 export type NewEquipo = InferInsertModel<typeof equipos>;
@@ -34,6 +36,8 @@ export type NewTarjeta = InferInsertModel<typeof tarjetas>;
 export type NewJugadorParticipante = InferInsertModel<typeof jugadoresParticipantes>;
 export type NewCambioJugador = InferInsertModel<typeof cambiosJugadores>;
 export type NewFirmaEncuentro = InferInsertModel<typeof firmasEncuentros>;
+export type NewHistorialJugador = InferInsertModel<typeof historialJugadores>;
+export type NewConfiguracion = InferInsertModel<typeof configuraciones>;
 
 // Tipos para equipos con relaciones
 export interface EquipoWithRelations extends Equipo {
@@ -159,4 +163,9 @@ export interface CanchaWithCategorias extends Cancha {
 
 export interface CategoriaWithCanchas extends Categoria {
   canchas?: Cancha[];
+}
+
+// Tipos para historial de jugadores con relaciones
+export interface HistorialJugadorWithRelations extends HistorialJugador {
+  jugador?: Jugador;
 }

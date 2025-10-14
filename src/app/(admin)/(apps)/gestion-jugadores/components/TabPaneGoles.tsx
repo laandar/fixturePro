@@ -15,9 +15,7 @@ const TabPaneGoles = () => {
                 <h5 className="mb-0 d-flex align-items-center">
                     <TbSoccerField className="me-2" /> Goles
                 </h5>
-                <Button variant="success" onClick={() => setShowGolModal(true)} disabled={shouldDisableActions}>
-                    <TbPlus className="me-1" /> Añadir Gol
-                </Button>
+               
             </Card.Header>
             <Card.Body>
                 {goles.length > 0 ? (

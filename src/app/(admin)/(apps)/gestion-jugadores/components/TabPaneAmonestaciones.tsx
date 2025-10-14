@@ -34,9 +34,7 @@ const TabPaneAmonestaciones = () => {
                 <h5 className="mb-0 d-flex align-items-center">
                     <TbSquare className="me-2" /> Amonestaciones
                 </h5>
-                <Button variant="warning" onClick={() => setShowTarjetaModal(true)} disabled={shouldDisableActions}>
-                    <TbPlus className="me-1" /> Añadir Tarjeta
-                </Button>
+                
             </Card.Header>
             <Card.Body>
                 {tarjetas.length > 0 ? (

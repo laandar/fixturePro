@@ -24,6 +24,7 @@ import {
   TbTrophy,
   TbUserCircle,
   TbUserHexagon,
+  TbAdjustments,
 } from 'react-icons/tb'
 
 type UserDropdownItemType = {
@@ -102,6 +103,7 @@ export const menuItems: MenuItemType[] = [
       { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores' },
       { key: 'torneos', label: 'Torneos', url: '/torneos' },
       { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores' },
+      { key: 'configuraciones', label: 'Configuraciones', url: '/configuraciones', icon: TbAdjustments },
     ],
   },
   { key: 'custom', label: 'Custom Pages', isTitle: true },

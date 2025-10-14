@@ -3,10 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { jugadorQueries, equipoQueries, categoriaQueries } from '@/db/queries'
-import type { NewJugador } from '@/db/types'
+import type { NewJugador, NewHistorialJugador } from '@/db/types'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { db } from '@/db'
+import { historialJugadores } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 
 // ===== FUNCIONES AUXILIARES =====
 
@@ -240,5 +243,68 @@ export async function getCategorias() {
   } catch (error) {
     console.error('Error al obtener categorías:', error)
     throw new Error('Error al obtener categorías')
+  }
+}
+
+// ===== HISTORIAL DE JUGADORES =====
+
+export async function getHistorialJugador(jugadorId: number) {
+  try {
+    const historial = await db.query.historialJugadores.findMany({
+      where: eq(historialJugadores.jugador_id, jugadorId),
+      orderBy: (historialJugadores, { desc }) => [desc(historialJugadores.fecha_calificacion)],
+    })
+    return historial
+  } catch (error) {
+    console.error('Error al obtener historial del jugador:', error)
+    throw new Error('Error al obtener historial del jugador')
+  }
+}
+
+export async function createHistorialJugador(data: NewHistorialJugador) {
+  try {
+    if (!data.jugador_id || !data.liga) {
+      throw new Error('Jugador y Liga son campos obligatorios')
+    }
+
+    const nuevoHistorial = await db.insert(historialJugadores).values(data).returning()
+    revalidatePath('/jugadores')
+    return nuevoHistorial[0]
+  } catch (error) {
+    console.error('Error al crear historial:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al crear historial')
+  }
+}
+
+export async function updateHistorialJugador(id: number, data: Partial<NewHistorialJugador>) {
+  try {
+    const historialActualizado = await db.update(historialJugadores)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(historialJugadores.id, id))
+      .returning()
+    
+    if (historialActualizado.length === 0) {
+      throw new Error('Registro de historial no encontrado')
+    }
+    
+    revalidatePath('/jugadores')
+    return historialActualizado[0]
+  } catch (error) {
+    console.error('Error al actualizar historial:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al actualizar historial')
+  }
+}
+
+export async function deleteHistorialJugador(id: number) {
+  try {
+    if (isNaN(id) || id <= 0) {
+      throw new Error('ID de historial inválido')
+    }
+    
+    await db.delete(historialJugadores).where(eq(historialJugadores.id, id))
+    revalidatePath('/jugadores')
+  } catch (error) {
+    console.error('Error al eliminar historial:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al eliminar historial')
   }
 }
