@@ -7,6 +7,11 @@ export const categorias = pgTable('categorias', {
   nombre: text('nombre').notNull(),
   estado: boolean('estado').default(true),
   usuario_id: integer('usuario_id'),
+  // Rangos de edad para la categoría
+  edad_minima_anos: integer('edad_minima_anos'), // Edad mínima en años
+  edad_minima_meses: integer('edad_minima_meses').default(0), // Meses adicionales para edad mínima
+  edad_maxima_anos: integer('edad_maxima_anos'), // Edad máxima en años
+  edad_maxima_meses: integer('edad_maxima_meses').default(0), // Meses adicionales para edad máxima
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -23,7 +28,6 @@ export const entrenadores = pgTable('entrenadores', {
 export const equipos = pgTable('equipos', {
   id: serial('id').primaryKey(),
   nombre: text('nombre').notNull(),
-  categoria_id: integer('categoria_id').references(() => categorias.id),
   entrenador_id: integer('entrenador_id').references(() => entrenadores.id),
   imagen_equipo: text('imagen_equipo'),
   estado: boolean('estado').default(true),
@@ -38,13 +42,41 @@ export const jugadores = pgTable('jugadores', {
   apellido_nombre: text('apellido_nombre').notNull(),
   nacionalidad: text('nacionalidad').notNull(),
   liga: text('liga').notNull(),
-  categoria_id: integer('categoria_id').references(() => categorias.id),
-  equipo_id: integer('equipo_id').references(() => equipos.id),
+  fecha_nacimiento: date('fecha_nacimiento'), // Fecha de nacimiento del jugador
   foto: text('foto'), // Campo para almacenar la URL o ruta de la foto
+  sexo: text('sexo', { enum: ['masculino', 'femenino', 'otro'] }), // Sexo del jugador
+  numero_jugador: integer('numero_jugador'), // Número de camiseta del jugador
+  telefono: text('telefono'), // Teléfono de contacto
+  provincia: text('provincia'), // Provincia de residencia
+  direccion: text('direccion'), // Dirección de residencia
+  observacion: text('observacion'), // Observaciones del jugador
+  foraneo: boolean('foraneo').default(false), // Indica si es jugador foráneo
   estado: boolean('estado').default(true),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
+
+// Tabla intermedia para relación muchos a muchos entre equipos y categorías
+export const equipoCategoria = pgTable('equipo_categoria', {
+  id: serial('id').primaryKey(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  categoria_id: integer('categoria_id').references(() => categorias.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  uniqueEquipoCategoria: uniqueIndex('unique_equipo_categoria').on(table.equipo_id, table.categoria_id),
+}));
+
+// Tabla intermedia para relación muchos a muchos entre jugadores y equipo-categoría
+export const jugadorEquipoCategoria = pgTable('jugador_equipo_categoria', {
+  id: serial('id').primaryKey(),
+  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  equipo_categoria_id: integer('equipo_categoria_id').references(() => equipoCategoria.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  uniqueJugadorEquipoCategoria: uniqueIndex('unique_jugador_equipo_categoria').on(table.jugador_id, table.equipo_categoria_id),
+}));
 
 // Tabla de torneos
 export const torneos = pgTable('torneos', {
@@ -150,8 +182,7 @@ export const canchasCategorias = pgTable('canchas_categorias', {
 
 // Relaciones
 export const categoriasRelations = relations(categorias, ({ many }) => ({
-  equipos: many(equipos),
-  jugadores: many(jugadores),
+  equiposCategoria: many(equipoCategoria),
   canchasCategorias: many(canchasCategorias),
 }));
 
@@ -159,15 +190,8 @@ export const entrenadoresRelations = relations(entrenadores, ({ many }) => ({
   equipos: many(equipos),
 }));
 
-export const jugadoresRelations = relations(jugadores, ({ one }) => ({
-  categoria: one(categorias, {
-    fields: [jugadores.categoria_id],
-    references: [categorias.id],
-  }),
-  equipo: one(equipos, {
-    fields: [jugadores.equipo_id],
-    references: [equipos.id],
-  }),
+export const jugadoresRelations = relations(jugadores, ({ many }) => ({
+  jugadoresEquipoCategoria: many(jugadorEquipoCategoria),
 }));
 
 // Relaciones para torneos
@@ -228,15 +252,11 @@ export const equiposDescansanRelations = relations(equiposDescansan, ({ one }) =
 
 // Relaciones adicionales para equipos
 export const equiposRelations = relations(equipos, ({ one, many }) => ({
-  categoria: one(categorias, {
-    fields: [equipos.categoria_id],
-    references: [categorias.id],
-  }),
   entrenador: one(entrenadores, {
     fields: [equipos.entrenador_id],
     references: [entrenadores.id],
   }),
-  jugadores: many(jugadores),
+  equiposCategoria: many(equipoCategoria),
   equiposTorneo: many(equiposTorneo),
   encuentrosLocal: many(encuentros, { relationName: 'equipoLocal' }),
   encuentrosVisitante: many(encuentros, { relationName: 'equipoVisitante' }),
@@ -256,6 +276,31 @@ export const canchasCategoriasRelations = relations(canchasCategorias, ({ one })
   categoria: one(categorias, {
     fields: [canchasCategorias.categoria_id],
     references: [categorias.id],
+  }),
+}));
+
+// Relaciones para equipo_categoria
+export const equipoCategoriaRelations = relations(equipoCategoria, ({ one, many }) => ({
+  equipo: one(equipos, {
+    fields: [equipoCategoria.equipo_id],
+    references: [equipos.id],
+  }),
+  categoria: one(categorias, {
+    fields: [equipoCategoria.categoria_id],
+    references: [categorias.id],
+  }),
+  jugadoresEquipoCategoria: many(jugadorEquipoCategoria),
+}));
+
+// Relaciones para jugador_equipo_categoria
+export const jugadorEquipoCategoriaRelations = relations(jugadorEquipoCategoria, ({ one }) => ({
+  jugador: one(jugadores, {
+    fields: [jugadorEquipoCategoria.jugador_id],
+    references: [jugadores.id],
+  }),
+  equipoCategoria: one(equipoCategoria, {
+    fields: [jugadorEquipoCategoria.equipo_categoria_id],
+    references: [equipoCategoria.id],
   }),
 }));
 
@@ -519,4 +564,111 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
     fields: [sessions.userId],
     references: [users.id],
   }),
+}));
+
+// ==================== SISTEMA DINÁMICO DE ROLES Y PERMISOS ====================
+
+// Tabla de Roles (Catálogo de roles del sistema)
+export const roles = pgTable('roles', {
+  id: serial('id').primaryKey(),
+  nombre: text('nombre').notNull().unique(), // 'admin', 'arbitro', 'jugador', 'visitante'
+  descripcion: text('descripcion'), // Descripción del rol
+  nivel: integer('nivel').notNull(), // Jerarquía: 1=admin (mayor poder), 4=visitante (menor poder)
+  activo: boolean('activo').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Tabla de Menús (Todos los ítems del menú del sistema)
+export const menus = pgTable('menus', {
+  id: serial('id').primaryKey(),
+  key: text('key').notNull().unique(), // Identificador único: 'equipos', 'categorias'
+  label: text('label').notNull(), // Texto visible: 'Equipos', 'Categorías'
+  url: text('url'), // Ruta: '/equipos', null si es menú padre
+  icon: text('icon'), // Nombre del icono (TbTrophy, etc.)
+  parentId: integer('parent_id'), // ID del menú padre (NULL si es raíz)
+  orden: integer('orden').default(0), // Orden de aparición en el menú
+  esTitle: boolean('es_title').default(false), // Si es un título separador
+  activo: boolean('activo').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Tabla de Roles-Menús (Permisos: qué roles pueden ver qué menús)
+export const rolesMenus = pgTable('roles_menus', {
+  id: serial('id').primaryKey(),
+  rolId: integer('rol_id').references(() => roles.id, { onDelete: 'cascade' }).notNull(),
+  menuId: integer('menu_id').references(() => menus.id, { onDelete: 'cascade' }).notNull(),
+  puedeVer: boolean('puede_ver').default(true),
+  puedeCrear: boolean('puede_crear').default(false),
+  puedeEditar: boolean('puede_editar').default(false),
+  puedeEliminar: boolean('puede_eliminar').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  uniqueRolMenu: uniqueIndex('unique_rol_menu').on(table.rolId, table.menuId),
+}));
+
+// Tabla de Roles-Usuarios (Asignación de roles a usuarios - soporta múltiples roles)
+export const rolesUsuarios = pgTable('roles_usuarios', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  rolId: integer('rol_id').references(() => roles.id, { onDelete: 'cascade' }).notNull(),
+  esRolPrincipal: boolean('es_rol_principal').default(false), // Rol principal que se muestra
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  uniqueUserRol: uniqueIndex('unique_user_rol').on(table.userId, table.rolId),
+}));
+
+// Relaciones para roles
+export const rolesRelations = relations(roles, ({ many }) => ({
+  rolesMenus: many(rolesMenus),
+  rolesUsuarios: many(rolesUsuarios),
+}));
+
+// Relaciones para menús
+export const menusRelations = relations(menus, ({ one, many }) => ({
+  menuPadre: one(menus, {
+    fields: [menus.parentId],
+    references: [menus.id],
+    relationName: 'menusHijos',
+  }),
+  menusHijos: many(menus, { relationName: 'menusHijos' }),
+  rolesMenus: many(rolesMenus),
+}));
+
+// Relaciones para roles_menus
+export const rolesMenusRelations = relations(rolesMenus, ({ one }) => ({
+  rol: one(roles, {
+    fields: [rolesMenus.rolId],
+    references: [roles.id],
+  }),
+  menu: one(menus, {
+    fields: [rolesMenus.menuId],
+    references: [menus.id],
+  }),
+}));
+
+// Relaciones para roles_usuarios
+export const rolesUsuariosRelations = relations(rolesUsuarios, ({ one }) => ({
+  user: one(users, {
+    fields: [rolesUsuarios.userId],
+    references: [users.id],
+  }),
+  rol: one(roles, {
+    fields: [rolesUsuarios.rolId],
+    references: [roles.id],
+  }),
+}));
+
+// Actualizar relaciones de users para incluir roles_usuarios
+export const usersRelationsUpdated = relations(users, ({ one, many }) => ({
+  equipo: one(equipos, {
+    fields: [users.equipoId],
+    references: [equipos.id],
+  }),
+  accounts: many(accounts),
+  sessions: many(sessions),
+  rolesUsuarios: many(rolesUsuarios),
 }));

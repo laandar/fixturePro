@@ -20,7 +20,7 @@ const TabPaneFirmas = () => {
     const equipoVisitante = equipos.find(e => e.id === 2)
     
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado'
-    const shouldDisableActions = isEncuentroFinalizado && !isAdmin
+    const shouldDisableActions = isEncuentroFinalizado && !isAdmin()
 
     const openSignaturePad = (field: SignatureField) => {
         setCurrentSignatureField(field)

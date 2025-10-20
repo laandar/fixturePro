@@ -73,4 +73,5 @@ export type MenuItemType = {
   isDisabled?: boolean
   isSpecial?: boolean
   children?: MenuItemType[]
+  roles?: ('admin' | 'arbitro' | 'jugador' | 'visitante')[] // Roles permitidos
 }

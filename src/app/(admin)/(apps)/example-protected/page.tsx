@@ -17,7 +17,7 @@ export default async function ProtectedPage() {
     <>
       <PageBreadcrumb 
         title="Página Protegida" 
-        subName="Ejemplo" 
+        subtitle="Ejemplo" 
       />
 
       <div className="row">

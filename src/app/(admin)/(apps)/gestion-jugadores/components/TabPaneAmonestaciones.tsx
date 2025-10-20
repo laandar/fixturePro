@@ -7,7 +7,7 @@ const TabPaneAmonestaciones = () => {
     const { tarjetas, setShowTarjetaModal, handleDeleteTarjeta, jugadoresEquipoA, jugadoresEquipoB, jugadoresParticipantesA, jugadoresParticipantesB, estadoEncuentro, isAdmin } = useGestionJugadores()
 
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
-    const shouldDisableActions = isEncuentroFinalizado && !isAdmin;
+    const shouldDisableActions = isEncuentroFinalizado && !isAdmin();
 
     // Función para obtener el nombre del jugador por ID
     const getJugadorNombre = (jugadorId: string) => {

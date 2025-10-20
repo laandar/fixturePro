@@ -31,7 +31,7 @@ export default function ExampleClientAuthPage() {
     <>
       <PageBreadcrumb 
         title="Autenticación en Cliente" 
-        subName="Ejemplo" 
+        subtitle="Ejemplo" 
       />
 
       <div className="row">

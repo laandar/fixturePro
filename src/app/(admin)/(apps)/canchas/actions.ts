@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { canchaQueries } from '@/db/queries'
 import type { NewCancha } from '@/db/types'
+import { requirePermiso } from '@/lib/auth-helpers'
 
 export async function getCanchas() {
+  // No requiere permiso - función auxiliar usada por otros módulos
   try {
     return await canchaQueries.getAll()
   } catch (error) {
@@ -38,6 +40,7 @@ export async function getCanchaByIdWithCategorias(id: number) {
 }
 
 export async function createCancha(formData: FormData) {
+  await requirePermiso('canchas', 'crear')
   try {
     const nombre = formData.get('nombre') as string
     const ubicacion = formData.get('ubicacion') as string
@@ -74,6 +77,7 @@ export async function createCancha(formData: FormData) {
 }
 
 export async function updateCancha(id: number, formData: FormData) {
+  await requirePermiso('canchas', 'editar')
   try {
     const nombre = formData.get('nombre') as string
     const ubicacion = formData.get('ubicacion') as string
@@ -109,6 +113,7 @@ export async function updateCancha(id: number, formData: FormData) {
 }
 
 export async function deleteCancha(id: number) {
+  await requirePermiso('canchas', 'eliminar')
   try {
     await canchaQueries.delete(id)
     revalidatePath('/canchas')

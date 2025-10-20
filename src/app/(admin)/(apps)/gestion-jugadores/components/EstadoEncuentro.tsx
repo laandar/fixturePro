@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import './EstadoEncuentro.css'
 import { Button, Card, CardBody, Badge, Dropdown, DropdownButton } from 'react-bootstrap'
-import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings, LuRefreshCw } from 'react-icons/lu'
+import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings, LuHourglass } from 'react-icons/lu'
 import NotificationCard from '@/components/NotificationCard'
 import { updateEstadoEncuentro, getEncuentrosByTorneo } from '../../torneos/actions'
 import { saveGolesEncuentro, saveTarjetasEncuentro } from '../actions'
+import { aplicarWO, revertirWO, esEncuentroWO } from '../wo-actions'
 import { useGestionJugadores } from './GestionJugadoresContext'
 import type { EncuentroWithRelations, NewGol, NewTarjeta } from '@/db/types'
 
@@ -18,25 +19,16 @@ interface EstadoEncuentroProps {
 }
 
 const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }: EstadoEncuentroProps) => {
-  const { goles, tarjetas, nombreEquipoA, loadEstadoEncuentro } = useGestionJugadores()
+  const { goles, tarjetas, nombreEquipoA, loadEstadoEncuentro, estadoEncuentro, isAdmin, refreshAllData } = useGestionJugadores()
   const [encuentro, setEncuentro] = useState<EncuentroWithRelations | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
+  const [lastKnownState, setLastKnownState] = useState<string | null>(null)
+  const [isWO, setIsWO] = useState(false)
+  const [showWOOptions, setShowWOOptions] = useState(false)
 
-  const handleRefresh = async () => {
-    try {
-      setRefreshing(true)
-      await loadEncuentro()
-      await loadEstadoEncuentro() // También actualizar el contexto
-    } catch (err) {
-      console.error('Error al refrescar:', err)
-    } finally {
-      setRefreshing(false)
-    }
-  }
 
   const loadEncuentro = async () => {
     try {
@@ -58,6 +50,15 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
         console.log('Encuentro encontrado:', encuentroEncontrado)
         console.log('Estado actual:', encuentroEncontrado.estado)
         setEncuentro(encuentroEncontrado as EncuentroWithRelations)
+        
+        // Verificar si es WO
+        const esWO = await esEncuentroWO(encuentroEncontrado.id)
+        setIsWO(esWO)
+        
+        // Sincronizar el último estado conocido
+        if (encuentroEncontrado.estado) {
+          setLastKnownState(encuentroEncontrado.estado)
+        }
       } else {
         console.log('Encuentro no encontrado. Encuentros disponibles:', encuentros.map(e => ({
           id: e.id,
@@ -80,6 +81,29 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
     loadEncuentro()
   }, [torneoId, equipoLocalId, equipoVisitanteId, jornada])
 
+  // Detectar cambios en el estado del encuentro desde el contexto y ejecutar refresh automáticamente
+  useEffect(() => {
+    if (estadoEncuentro && estadoEncuentro !== lastKnownState && encuentro) {
+      console.log(`🔄 Estado cambió en contexto: ${lastKnownState} → ${estadoEncuentro}`)
+      
+      // Ejecutar refresh automáticamente
+      const ejecutarRefresh = async () => {
+        try {
+          await loadEncuentro()
+          await loadEstadoEncuentro()
+          console.log('🔄 Estado del encuentro refrescado automáticamente')
+        } catch (err) {
+          console.error('Error al refrescar automáticamente:', err)
+        }
+      }
+      
+      ejecutarRefresh()
+      
+      // Actualizar el último estado conocido
+      setLastKnownState(estadoEncuentro)
+    }
+  }, [estadoEncuentro, lastKnownState, encuentro, loadEncuentro, loadEstadoEncuentro])
+
   const handleCambiarEstado = async (nuevoEstado: string) => {
     if (!encuentro) return
 
@@ -87,9 +111,9 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       setUpdating(true)
       setError(null)
       
-      // Si se está finalizando el encuentro, guardar los goles y tarjetas primero
-      if (nuevoEstado === 'finalizado') {
-        console.log('Finalizando encuentro, guardando goles y tarjetas...')
+      // Si se está finalizando el encuentro o poniendo en pendiente, guardar los goles y tarjetas primero
+      if (nuevoEstado === 'finalizado' || nuevoEstado === 'pendiente') {
+        console.log(`${nuevoEstado === 'finalizado' ? 'Finalizando' : 'Poniendo en pendiente'} encuentro, guardando goles y tarjetas...`)
         
         // Guardar goles si hay alguno
         if (goles.length > 0) {
@@ -109,24 +133,29 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           await saveGolesEncuentro(encuentro.id, golesParaGuardar)
           console.log('Goles guardados exitosamente')
           
-          // Calcular totales de goles por equipo
-          const golesLocal = golesParaGuardar.filter(gol => gol.equipo_id === equipoLocalId).length
-          const golesVisitante = golesParaGuardar.filter(gol => gol.equipo_id === equipoVisitanteId).length
-          
-          // Actualizar goles del encuentro
-          const formData = new FormData()
-          formData.append('goles_local', golesLocal.toString())
-          formData.append('goles_visitante', golesVisitante.toString())
-          formData.append('estado', 'finalizado')
-          
-          // Usar la función existente para actualizar el encuentro
-          const { updateEncuentro } = await import('../../torneos/actions')
-          await updateEncuentro(encuentro.id, formData)
-          console.log(`Goles del encuentro actualizados: ${golesLocal} - ${golesVisitante}`)
+          // Solo actualizar estadísticas del encuentro si se está finalizando
+          if (nuevoEstado === 'finalizado') {
+            // Calcular totales de goles por equipo
+            const golesLocal = golesParaGuardar.filter(gol => gol.equipo_id === equipoLocalId).length
+            const golesVisitante = golesParaGuardar.filter(gol => gol.equipo_id === equipoVisitanteId).length
+            
+            // Actualizar goles del encuentro
+            const formData = new FormData()
+            formData.append('goles_local', golesLocal.toString())
+            formData.append('goles_visitante', golesVisitante.toString())
+            formData.append('estado', 'finalizado')
+            
+            // Usar la función existente para actualizar el encuentro
+            const { updateEncuentro } = await import('../../torneos/actions')
+            await updateEncuentro(encuentro.id, formData)
+            console.log(`Goles del encuentro actualizados: ${golesLocal} - ${golesVisitante}`)
+          } else {
+            console.log('Estado pendiente: goles guardados pero no aplicados a estadísticas')
+          }
         } else {
           // Si no hay goles, solo actualizar el estado
           const formData = new FormData()
-          formData.append('estado', 'finalizado')
+          formData.append('estado', nuevoEstado)
           
           const { updateEncuentro } = await import('../../torneos/actions')
           await updateEncuentro(encuentro.id, formData)
@@ -178,7 +207,8 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       en_curso: 'En Curso',
       finalizado: 'Finalizado',
       cancelado: 'Cancelado',
-      aplazado: 'Aplazado'
+      aplazado: 'Aplazado',
+      pendiente: 'Pendiente'
     }
     return estados[estado] || estado
   }
@@ -207,6 +237,10 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       aplazado: { 
         variant: 'info', 
         icon: <LuPause size={16} />
+      },
+      pendiente: { 
+        variant: 'warning', 
+        icon: <LuHourglass size={16} />
       }
     }
     
@@ -225,15 +259,64 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
 
   const getEstadosDisponibles = (estadoActual: string) => {
     const estados: Record<string, string[]> = {
-      programado: ['en_curso', 'cancelado', 'aplazado'],
-      en_curso: ['finalizado', 'aplazado'],
-      finalizado: ['en_curso'], // Solo para corregir errores
-      cancelado: ['programado', 'en_curso'],
-      aplazado: ['programado', 'en_curso']
+      programado: ['en_curso', 'cancelado', 'aplazado', 'pendiente'],
+      en_curso: ['finalizado', 'aplazado', 'pendiente'],
+      finalizado: isAdmin() ? ['en_curso', 'pendiente'] : [], // Solo admins pueden cambiar de finalizado
+      cancelado: ['programado', 'en_curso', 'pendiente'],
+      aplazado: ['programado', 'en_curso', 'pendiente'],
+      pendiente: ['en_curso', 'finalizado', 'cancelado', 'aplazado']
     }
     const estadosDisponibles = estados[estadoActual] || []
-    console.log(`Estados disponibles para "${estadoActual}":`, estadosDisponibles)
+    console.log(`Estados disponibles para "${estadoActual}" (Admin: ${isAdmin()}):`, estadosDisponibles)
     return estadosDisponibles
+  }
+
+  // Funciones para manejar WO
+  const handleAplicarWO = async (equipoGanadorId: number) => {
+    if (!encuentro) return
+
+    try {
+      setUpdating(true)
+      setError(null)
+      
+      const resultado = await aplicarWO(encuentro.id, equipoGanadorId)
+      
+      setSuccess(resultado.mensaje)
+      setShowWOOptions(false)
+      
+      // Recargar todos los datos
+      await loadEncuentro()
+      await refreshAllData()
+      
+    } catch (err) {
+      console.error('Error al aplicar WO:', err)
+      setError(err instanceof Error ? err.message : 'Error al aplicar WO')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleRevertirWO = async () => {
+    if (!encuentro) return
+
+    try {
+      setUpdating(true)
+      setError(null)
+      
+      const resultado = await revertirWO(encuentro.id)
+      
+      setSuccess(resultado.mensaje)
+      
+      // Recargar todos los datos
+      await loadEncuentro()
+      await refreshAllData()
+      
+    } catch (err) {
+      console.error('Error al revertir WO:', err)
+      setError(err instanceof Error ? err.message : 'Error al revertir WO')
+    } finally {
+      setUpdating(false)
+    }
   }
 
   if (loading) {
@@ -306,15 +389,6 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
               />
             )}
             
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Actualizar estado del encuentro"
-            >
-              <LuRefreshCw size={16} className={refreshing ? 'spinning' : ''} />
-            </Button>
             
             {estadosDisponibles.length > 0 && (
               <DropdownButton
@@ -333,6 +407,93 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
                   </Dropdown.Item>
                 ))}
               </DropdownButton>
+            )}
+
+            {/* Botones WO - Solo para administradores */}
+            {isAdmin() && encuentro && (
+              <div className="d-flex gap-2">
+                {!isWO && encuentro.estado !== 'finalizado' && (
+                  <Button
+                    variant="outline-warning"
+                    size="sm"
+                    onClick={() => setShowWOOptions(!showWOOptions)}
+                    disabled={updating}
+                  >
+                    <LuX size={16} className="me-1" />
+                    WO
+                  </Button>
+                )}
+                
+                {isWO && (
+                  <Button
+                    variant="outline-danger"
+                    size="sm"
+                    onClick={handleRevertirWO}
+                    disabled={updating}
+                  >
+                    <LuClock size={16} className="me-1" />
+                    Revertir WO
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Opciones WO */}
+            {showWOOptions && encuentro && (
+              <div className="mt-3 p-3 border rounded bg-light">
+                <h6 className="mb-2">Aplicar WO (Walkover)</h6>
+                <p className="text-muted small mb-3">
+                  Esto eliminará todos los goles y tarjetas, y asignará el resultado configurado.
+                </p>
+                <div className="d-flex gap-2">
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={() => handleAplicarWO(encuentro.equipo_local_id)}
+                    disabled={updating}
+                  >
+                    {encuentro.equipoLocal?.nombre} gana por WO
+                  </Button>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={() => handleAplicarWO(encuentro.equipo_visitante_id)}
+                    disabled={updating}
+                  >
+                    {encuentro.equipoVisitante?.nombre} gana por WO
+                  </Button>
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={() => setShowWOOptions(false)}
+                    disabled={updating}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {encuentro?.estado === 'finalizado' && !isAdmin() && (
+              <small className="text-muted d-block mt-2">
+                <i className="bi bi-info-circle me-1"></i>
+                Solo los administradores pueden reabrir encuentros finalizados
+              </small>
+            )}
+            
+            {encuentro?.estado === 'pendiente' && (
+              <small className="text-info d-block mt-2">
+                <i className="bi bi-clock me-1"></i>
+                Goles y tarjetas se guardan pero no afectan estadísticas hasta finalizar
+              </small>
+            )}
+
+            {isWO && (
+              <div className="alert alert-warning mt-2 mb-0">
+                <i className="bi bi-exclamation-triangle me-1"></i>
+                <strong>Resultado por WO:</strong> Este encuentro fue decidido por walkover. 
+                Los goles y tarjetas fueron eliminados y se aplicaron los puntos configurados.
+              </div>
             )}
           </div>
         </div>

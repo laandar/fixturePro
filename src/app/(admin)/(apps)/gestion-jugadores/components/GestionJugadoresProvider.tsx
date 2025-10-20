@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap'
 import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJugadoresContext'
@@ -8,8 +8,9 @@ import { getEquipos } from '../../equipos/actions'
 import { getCategorias } from '../../categorias/actions'
 import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction, designarCapitan } from '../actions'
 import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante, NewCambioJugador } from '@/db/types'
+import { useAuth } from '@/hooks/useAuth'
 
-export const GestionJugadoresProvider = ({ children }: { children: React.ReactNode }) => {
+const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode }) => {
     const isInitialLoad = useRef(true)
     const searchParams = useSearchParams()
     
@@ -76,8 +77,8 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
     const [cambiosJugadores, setCambiosJugadores] = useState<Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>([])
     const [estadoEncuentro, setEstadoEncuentro] = useState<string | null>(null)
     
-    // Verificar si el usuario es administrador (por ahora hardcodeado)
-    const isAdmin = false; // TODO: Implementar sistema de roles y usuarios
+    // Usar el hook useAuth para obtener información del usuario actual
+    const { isAdmin } = useAuth()
 
     const loadData = useCallback(async () => {
         try {
@@ -97,28 +98,6 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         }
     }, [])
 
-    const loadEstadoEncuentro = useCallback(async () => {
-        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
-            return
-        }
-
-        try {
-            // Obtener el encuentro actual
-            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
-            const encuentros = await getEncuentrosByTorneo(torneoId)
-            const encuentro = encuentros.find(e => 
-                e.equipo_local_id === equipoLocalIdNum && 
-                e.equipo_visitante_id === equipoVisitanteIdNum && 
-                e.jornada === jornadaNum
-            )
-
-            if (encuentro) {
-                setEstadoEncuentro(encuentro.estado)
-            }
-        } catch (err) {
-            console.error('Error al cargar estado del encuentro:', err)
-        }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
 
     const loadGolesExistentes = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -486,21 +465,71 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
             loadEstadoEncuentro()
             loadFirmasExistentes()
         }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores, loadEstadoEncuentro, loadFirmasExistentes])
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadores.length, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores, loadFirmasExistentes])
 
-    // Polling para verificar cambios en el estado del encuentro cada 5 segundos
-    // useEffect para polling del estado del encuentro - DESHABILITADO temporalmente
-    // useEffect(() => {
-    //     if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
-    //         return
-    //     }
+    const loadEstadoEncuentro = useCallback(async () => {
+        if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
+            return
+        }
 
-    //     const interval = setInterval(() => {
-    //         loadEstadoEncuentro()
-    //     }, 5000) // Verificar cada 5 segundos
+        try {
+            // Obtener el encuentro actual
+            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
+            const encuentros = await getEncuentrosByTorneo(torneoId)
+            const encuentro = encuentros.find(e => 
+                e.equipo_local_id === equipoLocalIdNum && 
+                e.equipo_visitante_id === equipoVisitanteIdNum && 
+                e.jornada === jornadaNum
+            )
 
-    //     return () => clearInterval(interval)
-    // }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, loadEstadoEncuentro])
+            if (encuentro) {
+                const nuevoEstado = encuentro.estado
+                const estadoAnterior = estadoEncuentro
+                
+                // Actualizar el estado
+                setEstadoEncuentro(nuevoEstado)
+                
+                // Si el estado cambió, logear el cambio
+                if (nuevoEstado !== estadoAnterior) {
+                    console.log(`🔄 Estado del encuentro cambió: ${estadoAnterior} → ${nuevoEstado}`)
+                    
+                    // Si se cambió de pendiente a finalizado, procesar estadísticas pendientes
+                    if (estadoAnterior === 'pendiente' && nuevoEstado === 'finalizado') {
+                        console.log('🏁 Cambio de pendiente a finalizado: procesando estadísticas pendientes...')
+                        // Recargar todos los datos para asegurar que las estadísticas se actualicen
+                        await Promise.all([
+                            loadGolesExistentes(),
+                            loadTarjetasExistentes(),
+                            loadCambiosJugadores(),
+                            loadFirmasExistentes()
+                        ])
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error al cargar estado del encuentro:', err)
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, estadoEncuentro, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores, loadFirmasExistentes])
+
+    // Función para forzar la actualización del estado del encuentro
+    const refreshEstadoEncuentro = useCallback(async () => {
+        console.log('🔄 Forzando actualización del estado del encuentro...')
+        await loadEstadoEncuentro()
+    }, [loadEstadoEncuentro])
+
+    const refreshAllData = useCallback(async () => {
+        console.log('🔄 Refrescando todos los datos después de WO...')
+        await Promise.all([
+            loadData(),
+            loadGolesExistentes(),
+            loadTarjetasExistentes(),
+            loadEstadoEncuentro(),
+            loadJugadoresParticipantes(),
+            loadCambiosJugadores()
+        ])
+        console.log('✅ Todos los datos refrescados')
+    }, [loadData, loadGolesExistentes, loadTarjetasExistentes, loadEstadoEncuentro, loadJugadoresParticipantes, loadCambiosJugadores])
+
 
     // Determinar jugadores de los equipos según la URL o valores por defecto
     const jugadoresEquipoA = jugadores.filter(j => {
@@ -962,6 +991,8 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         loadGolesExistentes,
         loadTarjetasExistentes,
         loadEstadoEncuentro,
+        refreshEstadoEncuentro,
+        refreshAllData,
         handleTogglePlayerSelection,
         handleSelectAllPlayers,
         handleClearAllPlayers,
@@ -982,6 +1013,7 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         deshacerCambioJugador,
         cambiosJugadores,
         setCambiosJugadores,
+        refreshAllData,
     }
 
 
@@ -989,5 +1021,13 @@ export const GestionJugadoresProvider = ({ children }: { children: React.ReactNo
         <GestionJugadoresContext.Provider value={value}>
             {children}
         </GestionJugadoresContext.Provider>
+    )
+}
+
+export const GestionJugadoresProvider = ({ children }: { children: React.ReactNode }) => {
+    return (
+        <Suspense fallback={<div>Cargando...</div>}>
+            <GestionJugadoresProviderInner>{children}</GestionJugadoresProviderInner>
+        </Suspense>
     )
 }

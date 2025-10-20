@@ -1,0 +1,1 @@
+ALTER TABLE "jugadores" ALTER COLUMN "id" SET DATA TYPE integer;

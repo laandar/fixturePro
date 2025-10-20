@@ -1,0 +1,1 @@
+ALTER TABLE "jugadores" RENAME COLUMN "historia" TO "observacion";

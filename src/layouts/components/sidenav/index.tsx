@@ -4,7 +4,7 @@ import logoSm from '@/assets/images/logo-sm.png'
 import logo from '@/assets/images/logo.png'
 import SimplebarClient from '@/components/client-wrapper/SimplebarClient'
 import { useLayoutContext } from '@/context/useLayoutContext'
-import AppMenu from '@/layouts/components/sidenav/components/AppMenu'
+import DynamicAppMenu from '@/layouts/components/sidenav/components/DynamicAppMenu'
 import UserProfile from '@/layouts/components/sidenav/components/UserProfile'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -55,7 +55,7 @@ const Sidenav = () => {
 
       <SimplebarClient id="sidenav" className="scrollbar">
         {sidenav.user && <UserProfile />}
-        <AppMenu />
+        <DynamicAppMenu />
       </SimplebarClient>
     </div>
   )

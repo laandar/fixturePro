@@ -5,8 +5,13 @@ import { redirect } from 'next/navigation'
 import { torneoQueries, equipoTorneoQueries, encuentroQueries, equiposDescansanQueries } from '@/db/queries'
 import { generateFixture } from '@/lib/fixture-generator'
 import type { NewTorneo, NewEquipoTorneo, EquipoWithRelations } from '@/db/types'
+import { requirePermiso } from '@/lib/auth-helpers'
+import { db } from '@/db'
+import { tarjetas, goles, equiposTorneo, jugadoresParticipantes, cambiosJugadores, firmasEncuentros } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 
 export async function getTorneos() {
+  // No requiere permiso - función auxiliar usada por otros módulos
   try {
     return await torneoQueries.getAllWithRelations()
   } catch (error) {
@@ -51,6 +56,7 @@ export async function limpiarDescansos(torneoId: number) {
 }
 
 export async function createTorneo(formData: FormData) {
+  await requirePermiso('torneos', 'crear')
   try {
     const nombre = formData.get('nombre') as string
     const descripcion = formData.get('descripcion') as string
@@ -92,6 +98,7 @@ export async function createTorneo(formData: FormData) {
 }
 
 export async function updateTorneo(id: number, formData: FormData) {
+  await requirePermiso('torneos', 'editar')
   try {
     const nombre = formData.get('nombre') as string
     const descripcion = formData.get('descripcion') as string
@@ -131,15 +138,40 @@ export async function updateTorneo(id: number, formData: FormData) {
 }
 
 export async function deleteTorneo(id: number) {
+  await requirePermiso('torneos', 'eliminar')
   try {
-    // Primero eliminar todos los encuentros del torneo
+    // 1. Obtener todos los encuentros del torneo
+    const encuentros = await encuentroQueries.getByTorneoId(id)
+    
+    // 2. Eliminar datos relacionados de cada encuentro
+    for (const encuentro of encuentros) {
+      // Eliminar tarjetas del encuentro
+      await db.delete(tarjetas).where(eq(tarjetas.encuentro_id, encuentro.id))
+      // Eliminar goles del encuentro
+      await db.delete(goles).where(eq(goles.encuentro_id, encuentro.id))
+      // Eliminar jugadores participantes del encuentro
+      await db.delete(jugadoresParticipantes).where(eq(jugadoresParticipantes.encuentro_id, encuentro.id))
+      // Eliminar cambios de jugadores del encuentro
+      await db.delete(cambiosJugadores).where(eq(cambiosJugadores.encuentro_id, encuentro.id))
+      // Eliminar firmas del encuentro
+      await db.delete(firmasEncuentros).where(eq(firmasEncuentros.encuentro_id, encuentro.id))
+    }
+    
+    // 3. Eliminar todos los encuentros del torneo
     await encuentroQueries.deleteByTorneoId(id)
     
-    // Luego eliminar el torneo
+    // 4. Eliminar equipos del torneo
+    await db.delete(equiposTorneo).where(eq(equiposTorneo.torneo_id, id))
+    
+    // 5. Eliminar descansos del torneo
+    await equiposDescansanQueries.deleteByTorneoId(id)
+    
+    // 6. Finalmente eliminar el torneo
     await torneoQueries.delete(id)
     revalidatePath('/torneos')
   } catch (error) {
-    throw new Error('Error al eliminar torneo')
+    console.error('Error al eliminar torneo:', error)
+    throw new Error(`Error al eliminar torneo: ${error instanceof Error ? error.message : 'Error desconocido'}`)
   }
 }
 

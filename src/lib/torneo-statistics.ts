@@ -422,18 +422,22 @@ export const getEstadisticasEquipos = (
       estadisticasEquipos[equipoLocalId].partidosJugados++
       estadisticasEquipos[equipoVisitanteId].partidosJugados++
       
-      // Calcular goles reales desde la tabla goles
-      const golesLocal = goles.filter(g => 
+      // Calcular goles reales - usar goles del encuentro si no hay goles individuales (WO)
+      const golesIndividualesLocal = goles.filter(g => 
         g.encuentro_id === encuentro.id && 
         g.equipo_id === equipoLocalId && 
         (g.tipo === 'gol' || g.tipo === 'penal')
       ).length
       
-      const golesVisitante = goles.filter(g => 
+      const golesIndividualesVisitante = goles.filter(g => 
         g.encuentro_id === encuentro.id && 
         g.equipo_id === equipoVisitanteId && 
         (g.tipo === 'gol' || g.tipo === 'penal')
       ).length
+      
+      // Si no hay goles individuales, usar los goles del encuentro (caso WO)
+      const golesLocal = golesIndividualesLocal > 0 ? golesIndividualesLocal : (encuentro.goles_local || 0)
+      const golesVisitante = golesIndividualesVisitante > 0 ? golesIndividualesVisitante : (encuentro.goles_visitante || 0)
       
       // Actualizar goles a favor y en contra
       estadisticasEquipos[equipoLocalId].golesFavor += golesLocal

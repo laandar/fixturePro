@@ -6,6 +6,7 @@ import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
+import { usePermisos } from '@/hooks/usePermisos'
 import {
   ColumnFiltersState,
   createColumnHelper,
@@ -20,10 +21,10 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination } from 'react-bootstrap'
+import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash, TbCamera } from 'react-icons/tb'
-import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquipos, getCategorias } from './actions'
+import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, searchJugadores, searchJugadoresByCedula, searchJugadoresByNombre } from './actions'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
@@ -39,21 +40,23 @@ import '@/styles/mobile-carousel.css'
 const columnHelper = createColumnHelper<JugadorWithEquipo>()
 
 // Función de filtro personalizada para equipos
-const equipoFilterFn = (row: any, columnId: string, filterValue: string | string[]) => {
+  const equipoFilterFn = (row: any, columnId: string, filterValue: string | string[]) => {
   const jugador = row.original as JugadorWithEquipo
+  const equipoNombre = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || ''
   if (Array.isArray(filterValue)) {
-    return filterValue.includes(jugador.equipo?.nombre || '')
+    return filterValue.includes(equipoNombre)
   }
-  return jugador.equipo?.nombre === filterValue
+  return equipoNombre === filterValue
 }
 
 // Función de filtro personalizada para categorías
 const categoriaFilterFn = (row: any, columnId: string, filterValue: string | string[]) => {
   const jugador = row.original as JugadorWithEquipo
+  const categoriaNombre = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre || ''
   if (Array.isArray(filterValue)) {
-    return filterValue.includes(jugador.categoria?.nombre || '')
+    return filterValue.includes(categoriaNombre)
   }
-  return jugador.categoria?.nombre === filterValue
+  return categoriaNombre === filterValue
 }
 
 // Función de filtro personalizada para estado
@@ -64,13 +67,15 @@ const estadoFilterFn = (row: any, columnId: string, filterValue: string) => {
 }
 
 const Page = () => {
-  const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
-  const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
+  const { isTrue: showCreateModal, toggle: toggleCreateModal } = useToggle()
+  const { isTrue: showEditModal, toggle: toggleEditModal } = useToggle()
   const { isTrue: showFilterOffcanvas, toggle: toggleFilterOffcanvas } = useToggle()
   
+  // 🔐 Sistema de permisos dinámicos
+  const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('jugadores')
+  
   const [data, setData] = useState<JugadorWithEquipo[]>([])
-  const [equipos, setEquipos] = useState<Equipo[]>([])
-  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [equiposCategorias, setEquiposCategorias] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
@@ -97,18 +102,19 @@ const Page = () => {
   // Función para obtener equipos filtrados por categorías seleccionadas
   const getFilteredEquipos = () => {
     if (selectedCategorias.length === 0) {
-      return equipos
+      return equiposCategorias
     }
     
-    // Obtener equipos que tienen jugadores en las categorías seleccionadas
-    const equiposEnCategorias = new Set<string>()
+    // Obtener equipos-categorías que tienen jugadores en las categorías seleccionadas
+    const equiposCategoriasEnCategorias = new Set<string>()
     data.forEach(jugador => {
-      if (jugador.categoria && selectedCategorias.includes(jugador.categoria.nombre) && jugador.equipo) {
-        equiposEnCategorias.add(jugador.equipo.nombre)
+      const equipoCategoria = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria
+      if (equipoCategoria && selectedCategorias.includes(equipoCategoria.categoria.nombre)) {
+        equiposCategoriasEnCategorias.add(equipoCategoria.equipo.nombre)
       }
     })
     
-    return equipos.filter(equipo => equiposEnCategorias.has(equipo.nombre))
+    return equiposCategorias.filter(equipoCategoria => equiposCategoriasEnCategorias.has(equipoCategoria.equipo.nombre))
   }
   
   // Estados para la funcionalidad de cámara
@@ -167,27 +173,56 @@ const Page = () => {
       header: 'Liga',
       cell: ({ row }) => row.original.liga,
     }),
-    {
-      id: 'categoria',
-      header: 'Categoría',
-      filterFn: categoriaFilterFn,
-      enableColumnFilter: true,
-      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
-        <span className="badge p-1 text-bg-warning fs-sm">
-          <LuTrophy className="me-1" /> {row.original.categoria?.nombre || 'Sin categoría'}
+    columnHelper.accessor('sexo', {
+      header: 'Sexo',
+      cell: ({ row }) => (
+        <span className="badge bg-info-subtle text-info badge-label">
+          {row.original.sexo || 'No especificado'}
         </span>
       ),
-    },
+    }),
+    columnHelper.accessor('numero_jugador', {
+      header: 'Número',
+      cell: ({ row }) => (
+        <span className="badge bg-primary-subtle text-primary badge-label">
+          {row.original.numero_jugador || 'Sin número'}
+        </span>
+      ),
+    }),
+    columnHelper.accessor('telefono', {
+      header: 'Teléfono',
+      cell: ({ row }) => row.original.telefono || 'Sin teléfono',
+    }),
+    columnHelper.accessor('provincia', {
+      header: 'Provincia',
+      cell: ({ row }) => row.original.provincia || 'Sin provincia',
+    }),
+    columnHelper.accessor('foraneo', {
+      header: 'Foráneo',
+      cell: ({ row }) => (
+        <span className={`badge ${row.original.foraneo ? 'bg-warning-subtle text-warning' : 'bg-secondary-subtle text-secondary'} badge-label`}>
+          {row.original.foraneo ? 'Sí' : 'No'}
+        </span>
+      ),
+    }),
     {
-      id: 'equipo',
-      header: 'Equipo',
+      id: 'equipo_categoria',
+      header: 'Equipo-Categoría',
       filterFn: equipoFilterFn,
       enableColumnFilter: true,
-      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
-        <span className="badge p-1 text-bg-light fs-sm">
-          {row.original.equipo?.nombre || 'Sin equipo'}
-        </span>
-      ),
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        const equipoCategoria = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria
+        return (
+          <div className="d-flex flex-column gap-1">
+            <span className="badge p-1 text-bg-light fs-sm">
+              {equipoCategoria?.equipo?.nombre || 'Sin equipo'}
+            </span>
+            <span className="badge p-1 text-bg-warning fs-sm">
+              <LuTrophy className="me-1" /> {equipoCategoria?.categoria?.nombre || 'Sin categoría'}
+            </span>
+          </div>
+        )
+      },
     },
     {
       id: 'estado',
@@ -208,26 +243,37 @@ const Page = () => {
       header: 'Acciones',
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
         <div className="d-flex gap-1">
-          <Button 
-            variant="light" 
-            size="sm" 
-            className="btn-icon rounded-circle"
-            onClick={() => handleEditClick(row.original)}>
-            <TbEdit className="fs-lg" />
-          </Button>
-          <Button
-            variant="light"
-            size="sm"
-            className="btn-icon rounded-circle"
-            onClick={() => handleDeleteSingle(row.original)}>
-            <TbTrash className="fs-lg" />
-          </Button>
+          {puedeEditar && (
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="btn-icon rounded-circle"
+              onClick={() => handleEditClick(row.original)}
+              title="Editar jugador">
+              <TbEdit className="fs-lg" />
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button
+              variant="light"
+              size="sm"
+              className="btn-icon rounded-circle"
+              onClick={() => handleDeleteSingle(row.original)}
+              title="Eliminar jugador">
+              <TbTrash className="fs-lg" />
+            </Button>
+          )}
+          {!puedeEditar && !puedeEliminar && (
+            <small className="text-muted">Sin acciones</small>
+          )}
         </div>
       ),
     },
   ]
 
   const [globalFilter, setGlobalFilter] = useState('')
+  const [searchType, setSearchType] = useState<'all' | 'nombre' | 'cedula'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
@@ -277,6 +323,12 @@ const Page = () => {
   const handleDelete = async () => {
     if (loading) return
     
+    if (!puedeEliminar) {
+      setError('No tienes permiso para eliminar jugadores')
+      setShowDeleteModal(false)
+      return
+    }
+    
     try {
       setLoading(true)
       
@@ -297,12 +349,23 @@ const Page = () => {
   }
 
   const handleEditClick = (jugador: JugadorWithEquipo) => {
-    setEditingJugador(jugador)
+    if (!puedeEditar) {
+      setError('No tienes permiso para editar jugadores')
+      return
+    }
+    
+    // Establecer el equipo_categoria_id del primer equipo-categoría del jugador
+    const jugadorConEquipoCategoria = {
+      ...jugador,
+      equipo_categoria_id: jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.id || null
+    }
+    
+    setEditingJugador(jugadorConEquipoCategoria)
     setEditFormError(null)
     setEditFormSuccess(null)
     setEditCapturedPhoto(null)
     setEditCapturedPhotoUrl(null)
-    toggleEditOffcanvas()
+    toggleEditModal()
   }
 
   const handleVerPerfilClick = (jugador: JugadorWithEquipo) => {
@@ -342,6 +405,11 @@ const Page = () => {
   const handleUpdateJugador = async (formData: FormData) => {
     if (!editingJugador) return
     
+    if (!puedeEditar) {
+      setEditFormError('No tienes permiso para editar jugadores')
+      return
+    }
+    
     try {
       setLoading(true)
       setEditFormError(null)
@@ -362,7 +430,7 @@ const Page = () => {
       // Recargar datos después de un breve delay
       setTimeout(async () => {
         await loadData()
-        toggleEditOffcanvas()
+        toggleEditModal()
         setEditingJugador(null)
       }, 1000)
     } catch (error) {
@@ -376,14 +444,12 @@ const Page = () => {
     try {
       setLoading(true)
       setError(null)
-      const [jugadoresData, equiposData, categoriasData] = await Promise.all([
+      const [jugadoresData, equiposCategoriasData] = await Promise.all([
         getJugadores(),
-        getEquipos(),
-        getCategorias()
+        getEquiposCategorias()
       ])
       setData(jugadoresData)
-      setEquipos(equiposData)
-      setCategorias(categoriasData)
+      setEquiposCategorias(equiposCategoriasData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar jugadores')
     } finally {
@@ -391,7 +457,51 @@ const Page = () => {
     }
   }
 
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      await loadData()
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+      
+      let searchResults: JugadorWithEquipo[] = []
+      
+      switch (searchType) {
+        case 'nombre':
+          searchResults = await searchJugadoresByNombre(searchQuery)
+          break
+        case 'cedula':
+          searchResults = await searchJugadoresByCedula(searchQuery)
+          break
+        default:
+          searchResults = await searchJugadores(searchQuery)
+          break
+      }
+      
+      setData(searchResults)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al buscar jugadores')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleClearSearch = async () => {
+    setSearchQuery('')
+    setSearchType('all')
+    setGlobalFilter('')
+    await loadData()
+  }
+
   const handleCreateJugador = async (formData: FormData) => {
+    if (!puedeCrear) {
+      setFormError('No tienes permiso para crear jugadores')
+      return
+    }
+    
     try {
       setLoading(true)
       setFormError(null)
@@ -412,7 +522,7 @@ const Page = () => {
       // Recargar datos después de un breve delay
       setTimeout(async () => {
         await loadData()
-        toggleOffcanvas()
+        toggleCreateModal()
       }, 1000)
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Error al crear jugador')
@@ -436,6 +546,40 @@ const Page = () => {
     
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
+
+  if (cargandoPermisos) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Jugadores" subtitle="Apps" />
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Verificando permisos...</span>
+          </div>
+          <p className="text-muted mt-2">Verificando permisos de acceso...</p>
+        </div>
+      </Container>
+    )
+  }
+
+  if (!puedeVer) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Jugadores" subtitle="Apps" />
+        <Row className="justify-content-center">
+          <Col xxl={8}>
+            <Alert variant="danger" className="mt-4">
+              <Alert.Heading>❌ Acceso Denegado</Alert.Heading>
+              <p className="mb-0">
+                No tienes permisos para acceder a esta página.
+                <br />
+                <small className="text-muted">Contacta al administrador para solicitar acceso al módulo de Jugadores.</small>
+              </p>
+            </Alert>
+          </Col>
+        </Row>
+      </Container>
+    )
+  }
 
   if (loading) {
     return (
@@ -492,29 +636,55 @@ const Page = () => {
                 >
                   <LuList className="fs-lg" />
                 </Button>
-                <Button variant="danger" className="ms-1" onClick={toggleOffcanvas}>
-                  <TbPlus className="fs-sm me-2" /> Agregar Jugador
-                </Button>
+                {puedeCrear ? (
+                  <Button variant="danger" className="ms-1" onClick={toggleCreateModal}>
+                    <TbPlus className="fs-sm me-2" /> Agregar Jugador
+                  </Button>
+                ) : (
+                  <Button variant="secondary" className="ms-1" disabled title="No tienes permiso para crear jugadores">
+                    <TbPlus className="fs-sm me-2" /> Agregar Jugador
+                  </Button>
+                )}
               </div>
             </div>
 
             {/* Filtros superiores - Solo visible en escritorio */}
             <div className="d-none d-lg-block">
               <Row className="g-2 align-items-end">
-                <Col lg={3}>
+                <Col lg={4}>
                   <label className="form-label fw-semibold mb-1">Buscar Jugador</label>
-                  <div className="position-relative">
-                    <FormControl
-                      type="text"
-                      placeholder="Buscar por nombre..."
-                      value={globalFilter ?? ''}
-                      onChange={(e) => setGlobalFilter(e.target.value)}
-                      className="ps-5"
-                    />
-                    <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
+                  <div className="d-flex gap-2">
+                    <div className="flex-grow-1 position-relative">
+                      <FormControl
+                        type="text"
+                        placeholder={searchType === 'cedula' ? 'Buscar por cédula...' : searchType === 'nombre' ? 'Buscar por nombre...' : 'Buscar por nombre o cédula...'}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        className="ps-5"
+                      />
+                      <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
+                    </div>
+                    <Button variant="primary" onClick={handleSearch} disabled={loading}>
+                      <LuSearch className="fs-sm" />
+                    </Button>
+                    <Button variant="outline-secondary" onClick={handleClearSearch} disabled={loading}>
+                      Limpiar
+                    </Button>
                   </div>
                 </Col>
-                <Col lg={3}>
+                <Col lg={2}>
+                  <label className="form-label fw-semibold mb-1">Tipo de Búsqueda</label>
+                  <FormSelect
+                    value={searchType}
+                    onChange={(e) => setSearchType(e.target.value as 'all' | 'nombre' | 'cedula')}
+                  >
+                    <option value="all">Todo</option>
+                    <option value="nombre">Solo Nombre</option>
+                    <option value="cedula">Solo Cédula</option>
+                  </FormSelect>
+                </Col>
+                <Col lg={2}>
                   <label className="form-label fw-semibold mb-1">Categoría</label>
                   <FormSelect
                     value={selectedCategorias.length === 1 ? selectedCategorias[0] : 'Todas'}
@@ -533,14 +703,14 @@ const Page = () => {
                     }}
                   >
                     <option value="Todas">Todas las categorías</option>
-                    {categorias.map((categoria) => (
-                      <option key={categoria.id} value={categoria.nombre}>
-                        {categoria.nombre}
+                    {equiposCategorias.map((equipoCategoria) => (
+                      <option key={equipoCategoria.id} value={equipoCategoria.categoria.nombre}>
+                        {equipoCategoria.categoria.nombre}
                       </option>
                     ))}
                   </FormSelect>
                 </Col>
-                <Col lg={3}>
+                <Col lg={2}>
                   <label className="form-label fw-semibold mb-1">Equipo</label>
                   <FormSelect
                     value={selectedEquipos.length === 1 ? selectedEquipos[0] : 'Todos'}
@@ -563,7 +733,7 @@ const Page = () => {
                     ))}
                   </FormSelect>
                 </Col>
-                <Col lg={3}>
+                <Col lg={2}>
                   <label className="form-label fw-semibold mb-1">Elementos por página</label>
                   <FormSelect
                     value={table.getState().pagination.pageSize}
@@ -579,7 +749,7 @@ const Page = () => {
               </Row>
               
               {/* Botón para limpiar todos los filtros */}
-              {(selectedCategorias.length > 0 || selectedEquipos.length > 0 || globalFilter) && (
+              {(selectedCategorias.length > 0 || selectedEquipos.length > 0 || globalFilter || searchQuery) && (
                 <div className="mt-2">
                   <Button 
                     variant="link" 
@@ -589,8 +759,11 @@ const Page = () => {
                       setSelectedCategorias([])
                       setSelectedEquipos([])
                       setGlobalFilter('')
+                      setSearchQuery('')
+                      setSearchType('all')
                       table.getColumn('categoria')?.setFilterValue(undefined)
                       table.getColumn('equipo')?.setFilterValue(undefined)
+                      loadData()
                     }}
                   >
                     Limpiar todos los filtros
@@ -613,16 +786,31 @@ const Page = () => {
           <OffcanvasBody>
             <div className="mb-3">
               <label className="form-label fw-semibold">Buscar Jugador</label>
-              <div className="position-relative">
-                <FormControl
-                  type="text"
-                  placeholder="Buscar por nombre..."
-                  value={globalFilter ?? ''}
-                  onChange={(e) => setGlobalFilter(e.target.value)}
-                  className="ps-5"
-                />
-                <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
+              <div className="d-flex gap-2 mb-2">
+                <div className="flex-grow-1 position-relative">
+                  <FormControl
+                    type="text"
+                    placeholder={searchType === 'cedula' ? 'Buscar por cédula...' : searchType === 'nombre' ? 'Buscar por nombre...' : 'Buscar por nombre o cédula...'}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    className="ps-5"
+                  />
+                  <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
+                </div>
+                <Button variant="primary" onClick={handleSearch} disabled={loading} size="sm">
+                  <LuSearch className="fs-sm" />
+                </Button>
               </div>
+              <FormSelect
+                value={searchType}
+                onChange={(e) => setSearchType(e.target.value as 'all' | 'nombre' | 'cedula')}
+                size="sm"
+              >
+                <option value="all">Buscar en todo</option>
+                <option value="nombre">Solo por nombre</option>
+                <option value="cedula">Solo por cédula</option>
+              </FormSelect>
             </div>
 
             <div className="mb-3">
@@ -644,9 +832,9 @@ const Page = () => {
                 }}
               >
                 <option value="Todas">Todas las categorías</option>
-                {categorias.map((categoria) => (
-                  <option key={categoria.id} value={categoria.nombre}>
-                    {categoria.nombre}
+                {equiposCategorias.map((equipoCategoria) => (
+                  <option key={equipoCategoria.id} value={equipoCategoria.categoria.nombre}>
+                    {equipoCategoria.categoria.nombre}
                   </option>
                 ))}
               </FormSelect>
@@ -677,7 +865,7 @@ const Page = () => {
             </div>
             
             {/* Botón para limpiar filtros en móvil */}
-            {(selectedCategorias.length > 0 || selectedEquipos.length > 0 || globalFilter) && (
+            {(selectedCategorias.length > 0 || selectedEquipos.length > 0 || globalFilter || searchQuery) && (
               <div className="mt-3">
                 <Button 
                   variant="outline-secondary" 
@@ -687,8 +875,11 @@ const Page = () => {
                     setSelectedCategorias([])
                     setSelectedEquipos([])
                     setGlobalFilter('')
+                    setSearchQuery('')
+                    setSearchType('all')
                     table.getColumn('categoria')?.setFilterValue(undefined)
                     table.getColumn('equipo')?.setFilterValue(undefined)
+                    loadData()
                   }}
                 >
                   Limpiar todos los filtros
@@ -722,8 +913,8 @@ const Page = () => {
                           <div className="position-relative">
                             <ProfileCard
                               name={jugador.apellido_nombre}
-                              title={jugador.categoria?.nombre || 'Sin categoría'}
-                              handle={jugador.equipo?.nombre || 'Sin equipo'}
+                              title={jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre || 'Sin categoría'}
+                              handle={jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || 'Sin equipo'}
                               status={jugador.estado ? 'Activo' : 'Inactivo'}
                               avatarUrl={jugador.foto || getTempPlayerImage(jugador.id)}
                               showUserInfo={true}
@@ -797,8 +988,8 @@ const Page = () => {
                               <div className="position-relative">
                                 <ProfileCard
                                   name={jugador.apellido_nombre}
-                                  title={jugador.categoria?.nombre || 'Sin categoría'}
-                                  handle={jugador.equipo?.nombre || 'Sin equipo'}
+                                  title={jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre || 'Sin categoría'}
+                                  handle={jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || 'Sin equipo'}
                                   status={jugador.estado ? 'Activo' : 'Inactivo'}
                                   avatarUrl={jugador.foto || getTempPlayerImage(jugador.id)}
                                   showUserInfo={true}
@@ -921,14 +1112,12 @@ const Page = () => {
         itemToDelete={jugadorToDelete?.apellido_nombre}
       />
 
-      {/* Offcanvas Right con Formulario de Floating Labels para Crear */}
-      <Offcanvas show={showOffcanvas} onHide={toggleOffcanvas} placement="end" className="offcanvas-end">
-        <OffcanvasHeader closeButton>
-          <OffcanvasTitle as="h5" className="mt-0">
-            Agregar Nuevo Jugador
-          </OffcanvasTitle>
-        </OffcanvasHeader>
-        <OffcanvasBody>
+      {/* Modal para Crear Jugador */}
+      <Modal show={showCreateModal} onHide={toggleCreateModal} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>Agregar Nuevo Jugador</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
           {formError && (
             <Alert variant="danger" dismissible onClose={() => setFormError(null)}>
               {formError}
@@ -942,63 +1131,124 @@ const Page = () => {
           
           <Form action={handleCreateJugador}>
             <Row className="g-3">
-              <Col lg={12}>
+              <Col lg={4}>
                 <FloatingLabel label="Cédula">
                   <FormControl type="text" name="cedula" placeholder="Ingrese la cédula" required />
                 </FloatingLabel>
               </Col>
 
-              <Col lg={12}>
+              <Col lg={4}>
                 <FloatingLabel label="Apellido y Nombre">
                   <FormControl type="text" name="apellido_nombre" placeholder="Ingrese apellido y nombre" required />
                 </FloatingLabel>
               </Col>
 
-              <Col lg={6}>
+              <Col lg={4}>
                 <FloatingLabel label="Nacionalidad">
-                  <FormControl type="text" name="nacionalidad" placeholder="Ingrese nacionalidad" required />
+                  <FormSelect name="nacionalidad" required>
+                    <option value="">Seleccionar...</option>
+                    <option value="Ecuatoriana">Ecuatoriana</option>
+                    <option value="Colombiana">Colombiana</option>
+                    <option value="Venezolana">Venezolana</option>
+                    <option value="Peruana">Peruana</option>
+                    <option value="Boliviana">Boliviana</option>
+                    <option value="Chilena">Chilena</option>
+                    <option value="Argentina">Argentina</option>
+                    <option value="Otros">Otros</option>
+                  </FormSelect>
                 </FloatingLabel>
               </Col>
 
-              <Col lg={6}>
+              <Col lg={4}>
                 <FloatingLabel label="Liga">
                   <FormControl type="text" name="liga" placeholder="Ingrese liga" required />
                 </FloatingLabel>
               </Col>
 
-              <Col lg={6}>
-                <FloatingLabel label="Categoría">
-                  <FormSelect name="categoria_id" required>
+              <Col lg={4}>
+                <FloatingLabel label="Fecha de Nacimiento">
+                  <FormControl type="date" name="fecha_nacimiento" placeholder="Seleccione la fecha de nacimiento" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={4}>
+                <FloatingLabel label="Sexo">
+                  <FormSelect name="sexo">
                     <option value="">Seleccionar...</option>
-                    {categorias.map((categoria) => (
-                      <option key={categoria.id} value={categoria.id}>
-                        {categoria.nombre}
-                      </option>
-                    ))}
+                    <option value="masculino">Masculino</option>
+                    <option value="femenino">Femenino</option>
+                    <option value="otro">Otro</option>
                   </FormSelect>
                 </FloatingLabel>
               </Col>
 
-              <Col lg={6}>
-                <FloatingLabel label="Equipo">
-                  <FormSelect name="equipo_id" required>
-                    <option value="">Seleccionar...</option>
-                    {equipos.map((equipo) => (
-                      <option key={equipo.id} value={equipo.id}>
-                        {equipo.nombre}
-                      </option>
-                    ))}
-                  </FormSelect>
+              <Col lg={4}>
+                <FloatingLabel label="Número de Jugador">
+                  <FormControl type="number" name="numero_jugador" placeholder="Número de camiseta" min="1" max="99" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={4}>
+                <FloatingLabel label="Teléfono">
+                  <FormControl type="tel" name="telefono" placeholder="Número de teléfono" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={4}>
+                <FloatingLabel label="Provincia">
+                  <FormControl type="text" name="provincia" placeholder="Provincia de residencia" />
                 </FloatingLabel>
               </Col>
 
               <Col lg={12}>
+                <FloatingLabel label="Dirección">
+                  <FormControl type="text" name="direccion" placeholder="Dirección de residencia" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={12}>
+                <FloatingLabel label="Observaciones">
+                  <FormControl 
+                    as="textarea" 
+                    name="observacion" 
+                    placeholder="Observaciones del jugador" 
+                    style={{ height: '100px' }}
+                  />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={6}>
+                <FloatingLabel label="Equipo-Categoría">
+                  <FormSelect name="equipo_categoria_id" required>
+                    <option value="">Seleccionar...</option>
+                    {equiposCategorias.map((equipoCategoria) => (
+                      <option key={equipoCategoria.id} value={equipoCategoria.id}>
+                        {equipoCategoria.equipo.nombre} - {equipoCategoria.categoria.nombre}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={3}>
                 <FloatingLabel label="Estado">
                   <FormSelect name="estado">
                     <option value="true">Activo</option>
                     <option value="false">Inactivo</option>
                   </FormSelect>
                 </FloatingLabel>
+              </Col>
+
+              <Col lg={3}>
+                <div className="form-check">
+                  <FormCheck
+                    type="checkbox"
+                    name="foraneo"
+                    value="true"
+                    id="foraneo"
+                    label="Jugador Foráneo"
+                  />
+                </div>
               </Col>
 
               <Col lg={12}>
@@ -1041,7 +1291,7 @@ const Page = () => {
 
               <Col lg={12}>
                 <div className="d-flex gap-2 justify-content-end">
-                  <Button variant="light" onClick={toggleOffcanvas}>
+                  <Button variant="light" onClick={toggleCreateModal}>
                     Cancelar
                   </Button>
                   <Button variant="success" type="submit">
@@ -1051,17 +1301,15 @@ const Page = () => {
               </Col>
             </Row>
           </Form>
-        </OffcanvasBody>
-      </Offcanvas>
+        </ModalBody>
+      </Modal>
 
-      {/* Offcanvas Right con Formulario de Floating Labels para Editar */}
-      <Offcanvas show={showEditOffcanvas} onHide={toggleEditOffcanvas} placement="end" className="offcanvas-end">
-        <OffcanvasHeader closeButton>
-          <OffcanvasTitle as="h5" className="mt-0">
-            Editar Jugador
-          </OffcanvasTitle>
-        </OffcanvasHeader>
-        <OffcanvasBody>
+      {/* Modal para Editar Jugador */}
+      <Modal show={showEditModal} onHide={toggleEditModal} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>Editar Jugador</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
           {editFormError && (
             <Alert variant="danger" dismissible onClose={() => setEditFormError(null)}>
               {editFormError}
@@ -1076,7 +1324,7 @@ const Page = () => {
           {editingJugador && (
             <Form action={handleUpdateJugador}>
               <Row className="g-3">
-                <Col lg={12}>
+                <Col lg={4}>
                   <FloatingLabel label="Cédula">
                     <FormControl 
                       type="text" 
@@ -1088,7 +1336,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={12}>
+                <Col lg={4}>
                   <FloatingLabel label="Apellido y Nombre">
                     <FormControl 
                       type="text" 
@@ -1100,19 +1348,23 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={6}>
+                <Col lg={4}>
                   <FloatingLabel label="Nacionalidad">
-                    <FormControl 
-                      type="text" 
-                      name="nacionalidad" 
-                      placeholder="Ingrese nacionalidad" 
-                      defaultValue={editingJugador.nacionalidad}
-                      required 
-                    />
+                    <FormSelect name="nacionalidad" defaultValue={editingJugador.nacionalidad || ''} required>
+                      <option value="">Seleccionar...</option>
+                      <option value="Ecuatoriana">Ecuatoriana</option>
+                      <option value="Colombiana">Colombiana</option>
+                      <option value="Venezolana">Venezolana</option>
+                      <option value="Peruana">Peruana</option>
+                      <option value="Boliviana">Boliviana</option>
+                      <option value="Chilena">Chilena</option>
+                      <option value="Argentina">Argentina</option>
+                      <option value="Otros">Otros</option>
+                    </FormSelect>
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={6}>
+                <Col lg={4}>
                   <FloatingLabel label="Liga">
                     <FormControl 
                       type="text" 
@@ -1124,39 +1376,119 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={6}>
-                  <FloatingLabel label="Categoría">
-                    <FormSelect name="categoria_id" defaultValue={editingJugador.categoria_id?.toString()} required>
+                <Col lg={4}>
+                  <FloatingLabel label="Fecha de Nacimiento">
+                    <FormControl 
+                      type="date" 
+                      name="fecha_nacimiento" 
+                      placeholder="Seleccione la fecha de nacimiento"
+                      defaultValue={editingJugador.fecha_nacimiento ? new Date(editingJugador.fecha_nacimiento).toISOString().split('T')[0] : ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={4}>
+                  <FloatingLabel label="Sexo">
+                    <FormSelect name="sexo" defaultValue={editingJugador.sexo || ''}>
                       <option value="">Seleccionar...</option>
-                      {categorias.map((categoria) => (
-                        <option key={categoria.id} value={categoria.id}>
-                          {categoria.nombre}
-                        </option>
-                      ))}
+                      <option value="masculino">Masculino</option>
+                      <option value="femenino">Femenino</option>
+                      <option value="otro">Otro</option>
                     </FormSelect>
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={6}>
-                  <FloatingLabel label="Equipo">
-                    <FormSelect name="equipo_id" defaultValue={editingJugador.equipo_id?.toString()} required>
-                      <option value="">Seleccionar...</option>
-                      {equipos.map((equipo) => (
-                        <option key={equipo.id} value={equipo.id}>
-                          {equipo.nombre}
-                        </option>
-                      ))}
-                    </FormSelect>
+                <Col lg={4}>
+                  <FloatingLabel label="Número de Jugador">
+                    <FormControl 
+                      type="number" 
+                      name="numero_jugador" 
+                      placeholder="Número de camiseta" 
+                      min="1" 
+                      max="99"
+                      defaultValue={editingJugador.numero_jugador || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={4}>
+                  <FloatingLabel label="Teléfono">
+                    <FormControl 
+                      type="tel" 
+                      name="telefono" 
+                      placeholder="Número de teléfono"
+                      defaultValue={editingJugador.telefono || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={4}>
+                  <FloatingLabel label="Provincia">
+                    <FormControl 
+                      type="text" 
+                      name="provincia" 
+                      placeholder="Provincia de residencia"
+                      defaultValue={editingJugador.provincia || ''}
+                    />
                   </FloatingLabel>
                 </Col>
 
                 <Col lg={12}>
+                  <FloatingLabel label="Dirección">
+                    <FormControl 
+                      type="text" 
+                      name="direccion" 
+                      placeholder="Dirección de residencia"
+                      defaultValue={editingJugador.direccion || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={12}>
+                  <FloatingLabel label="Observaciones">
+                    <FormControl 
+                      as="textarea" 
+                      name="observacion" 
+                      placeholder="Observaciones del jugador" 
+                      style={{ height: '100px' }}
+                      defaultValue={editingJugador.observacion || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={6}>
+                  <FloatingLabel label="Equipo-Categoría">
+                    <FormSelect name="equipo_categoria_id" defaultValue={editingJugador.equipo_categoria_id?.toString()} required>
+                      <option value="">Seleccionar...</option>
+                      {equiposCategorias.map((equipoCategoria) => (
+                        <option key={equipoCategoria.id} value={equipoCategoria.id}>
+                          {equipoCategoria.equipo.nombre} - {equipoCategoria.categoria.nombre}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={3}>
                   <FloatingLabel label="Estado">
                     <FormSelect name="estado" defaultValue={(editingJugador.estado ?? true).toString()}>
                       <option value="true">Activo</option>
                       <option value="false">Inactivo</option>
                     </FormSelect>
                   </FloatingLabel>
+                </Col>
+
+                <Col lg={3}>
+                  <div className="form-check">
+                    <FormCheck
+                      type="checkbox"
+                      name="foraneo"
+                      value="true"
+                      id="foraneo_edit"
+                      label="Jugador Foráneo"
+                      defaultChecked={editingJugador.foraneo || false}
+                    />
+                  </div>
                 </Col>
 
                 <Col lg={12}>
@@ -1218,7 +1550,7 @@ const Page = () => {
 
                 <Col lg={12}>
                   <div className="d-flex gap-2 justify-content-end">
-                    <Button variant="light" onClick={toggleEditOffcanvas}>
+                    <Button variant="light" onClick={toggleEditModal}>
                       Cancelar
                     </Button>
                     <Button variant="primary" type="submit">
@@ -1229,8 +1561,8 @@ const Page = () => {
               </Row>
             </Form>
           )}
-        </OffcanvasBody>
-      </Offcanvas>
+        </ModalBody>
+      </Modal>
 
       {/* Canvas oculto para procesamiento de imágenes */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />

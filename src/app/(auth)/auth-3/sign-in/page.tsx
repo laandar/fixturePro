@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { Suspense, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { loginAction } from '../../actions';
 import AppLogo from '@/components/AppLogo';
@@ -21,7 +21,7 @@ function SubmitButton() {
   );
 }
 
-export default function SignInPage() {
+function SignInForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
   
@@ -124,5 +124,13 @@ export default function SignInPage() {
         </Col>
       </Row>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <SignInForm />
+    </Suspense>
   );
 }

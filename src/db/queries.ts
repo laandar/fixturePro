@@ -1,6 +1,6 @@
 import { db } from './index'
 import { eq, asc, count, and, desc, inArray, or } from 'drizzle-orm'
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles } from './schema'
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles, equipoCategoria, jugadorEquipoCategoria } from './schema'
 import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha } from './types'
 
 // ===== EQUIPOS =====
@@ -10,11 +10,15 @@ export const equipoQueries = {
     return await db.select().from(equipos).orderBy(asc(equipos.nombre));
   },
 
-  // Obtener equipos con relaciones (categoría y entrenador)
+  // Obtener equipos con relaciones (categorías y entrenador)
   getAllWithRelations: async () => {
     return await db.query.equipos.findMany({
       with: {
-        categoria: true,
+        equiposCategoria: {
+          with: {
+            categoria: true,
+          },
+        },
         entrenador: true,
       },
       orderBy: [asc(equipos.nombre)],
@@ -32,7 +36,11 @@ export const equipoQueries = {
     return await db.query.equipos.findFirst({
       where: eq(equipos.id, id),
       with: {
-        categoria: true,
+        equiposCategoria: {
+          with: {
+            categoria: true,
+          },
+        },
         entrenador: true,
       },
     });
@@ -41,9 +49,20 @@ export const equipoQueries = {
   // Obtener equipos por categoría con relaciones
   getByCategoriaWithRelations: async (categoriaId: number) => {
     return await db.query.equipos.findMany({
-      where: eq(equipos.categoria_id, categoriaId),
+      where: (equipos, { exists }) => exists(
+        db.select().from(equipoCategoria).where(
+          and(
+            eq(equipoCategoria.equipo_id, equipos.id),
+            eq(equipoCategoria.categoria_id, categoriaId)
+          )
+        )
+      ),
       with: {
-        categoria: true,
+        equiposCategoria: {
+          with: {
+            categoria: true,
+          },
+        },
         entrenador: true,
       },
       orderBy: [asc(equipos.nombre)],
@@ -66,10 +85,105 @@ export const equipoQueries = {
     return result[0];
   },
 
+  // Actualizar equipo con categorías
+  updateWithCategorias: async (id: number, equipoData: Partial<NewEquipo>, categoriaIds?: number[]) => {
+    // Actualizar datos del equipo
+    const result = await db
+      .update(equipos)
+      .set({ ...equipoData, updatedAt: new Date() })
+      .where(eq(equipos.id, id))
+      .returning();
+
+    // Si se proporcionan categorías, actualizar las relaciones
+    if (categoriaIds !== undefined) {
+      await equipoCategoriaQueries.actualizarCategoriasDeEquipo(id, categoriaIds);
+    }
+
+    return result[0];
+  },
+
   // Eliminar equipo
   delete: async (id: number) => {
     return await db.delete(equipos).where(eq(equipos.id, id));
   },
+};
+
+// ===== EQUIPO_CATEGORIA =====
+export const equipoCategoriaQueries = {
+  // Asignar equipo a categoría
+  asignarEquipoACategoria: async (equipoId: number, categoriaId: number) => {
+    return await db.insert(equipoCategoria).values({
+      equipo_id: equipoId,
+      categoria_id: categoriaId
+    }).returning();
+  },
+
+  // Remover equipo de categoría
+  removerEquipoDeCategoria: async (equipoId: number, categoriaId: number) => {
+    return await db.delete(equipoCategoria)
+      .where(and(
+        eq(equipoCategoria.equipo_id, equipoId),
+        eq(equipoCategoria.categoria_id, categoriaId)
+      ));
+  },
+
+  // Obtener categorías de un equipo
+  getCategoriasDeEquipo: async (equipoId: number) => {
+    return await db.query.equipoCategoria.findMany({
+      where: eq(equipoCategoria.equipo_id, equipoId),
+      with: {
+        categoria: true
+      }
+    });
+  },
+
+  // Obtener equipos de una categoría
+  getEquiposDeCategoria: async (categoriaId: number) => {
+    return await db.query.equipoCategoria.findMany({
+      where: eq(equipoCategoria.categoria_id, categoriaId),
+      with: {
+        equipo: {
+          with: {
+            entrenador: true
+          }
+        }
+      }
+    });
+  },
+
+  // Crear equipo con categorías
+  crearEquipoConCategorias: async (equipoData: NewEquipo, categoriaIds: number[]) => {
+    // Crear el equipo
+    const nuevoEquipo = await db.insert(equipos).values(equipoData).returning();
+    
+    // Asignar categorías si se proporcionan
+    if (categoriaIds.length > 0) {
+      const relacionesData = categoriaIds.map(categoriaId => ({
+        equipo_id: nuevoEquipo[0].id,
+        categoria_id: categoriaId
+      }));
+      
+      await db.insert(equipoCategoria).values(relacionesData);
+    }
+    
+    return nuevoEquipo[0];
+  },
+
+  // Actualizar categorías de un equipo
+  actualizarCategoriasDeEquipo: async (equipoId: number, categoriaIds: number[]) => {
+    // Eliminar todas las categorías actuales
+    await db.delete(equipoCategoria).where(eq(equipoCategoria.equipo_id, equipoId));
+    
+    // Agregar las nuevas categorías
+    if (categoriaIds.length > 0) {
+      const relacionesData = categoriaIds.map(categoriaId => ({
+        equipo_id: equipoId,
+        categoria_id: categoriaId
+      }));
+      
+      await db.insert(equipoCategoria).values(relacionesData);
+    }
+  }
 };
 
 // ===== CATEGORÍAS =====
@@ -153,8 +267,16 @@ export const jugadorQueries = {
   getAllWithRelations: async () => {
     return await db.query.jugadores.findMany({
       with: {
-        categoria: true,
-        equipo: true,
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: true,
+                categoria: true,
+              },
+            },
+          },
+        },
       },
       orderBy: [asc(jugadores.apellido_nombre)],
     });
@@ -171,8 +293,16 @@ export const jugadorQueries = {
     return await db.query.jugadores.findFirst({
       where: eq(jugadores.id, id),
       with: {
-        categoria: true,
-        equipo: true,
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: true,
+                categoria: true,
+              },
+            },
+          },
+        },
       },
     });
   },
@@ -188,25 +318,98 @@ export const jugadorQueries = {
     return await db.query.jugadores.findFirst({
       where: eq(jugadores.cedula, cedula),
       with: {
-        categoria: true,
-        equipo: true,
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: true,
+                categoria: true,
+              },
+            },
+          },
+        },
       },
     });
   },
 
   // Crear jugador
   create: async (jugadorData: NewJugador) => {
-    const result = await db.insert(jugadores).values(jugadorData).returning();
+    // Limpiar datos antes de insertar
+    const cleanedData = { ...jugadorData };
+    
+    // Limpiar strings vacíos y convertir a null
+    Object.keys(cleanedData).forEach(key => {
+      const value = (cleanedData as any)[key];
+      if (typeof value === 'string' && (value.trim() === '' || value === 'NULL')) {
+        (cleanedData as any)[key] = null;
+      }
+    });
+
+    // Convertir fecha a string ISO si es un objeto Date
+    if ((cleanedData as any).fecha_nacimiento instanceof Date) {
+      (cleanedData as any).fecha_nacimiento = (cleanedData as any).fecha_nacimiento.toISOString().split('T')[0];
+    }
+
+    const result = await db.insert(jugadores).values(cleanedData).returning();
     return result[0];
   },
 
   // Actualizar jugador
   update: async (id: number, jugadorData: Partial<NewJugador>) => {
+    // Limpiar datos antes de actualizar
+    const cleanedData = { ...jugadorData };
+    
+    // Limpiar strings vacíos y convertir a null
+    Object.keys(cleanedData).forEach(key => {
+      const value = (cleanedData as any)[key];
+      if (typeof value === 'string' && (value.trim() === '' || value === 'NULL')) {
+        (cleanedData as any)[key] = null;
+      }
+    });
+
+    // Convertir fecha a string ISO si es un objeto Date
+    if ((cleanedData as any).fecha_nacimiento instanceof Date) {
+      (cleanedData as any).fecha_nacimiento = (cleanedData as any).fecha_nacimiento.toISOString().split('T')[0];
+    }
+
     const result = await db
       .update(jugadores)
-      .set({ ...jugadorData, updatedAt: new Date() })
+      .set({ ...cleanedData, updatedAt: new Date() })
       .where(eq(jugadores.id, id))
       .returning();
+    return result[0];
+  },
+
+  // Actualizar jugador con equipos-categorías
+  updateWithEquiposCategorias: async (id: number, jugadorData: Partial<NewJugador>, equipoCategoriaIds?: number[]) => {
+    // Limpiar datos antes de actualizar
+    const cleanedData = { ...jugadorData };
+    
+    // Limpiar strings vacíos y convertir a null
+    Object.keys(cleanedData).forEach(key => {
+      const value = (cleanedData as any)[key];
+      if (typeof value === 'string' && (value.trim() === '' || value === 'NULL')) {
+        (cleanedData as any)[key] = null;
+      }
+    });
+
+    // Convertir fecha a string ISO si es un objeto Date
+    if ((cleanedData as any).fecha_nacimiento instanceof Date) {
+      (cleanedData as any).fecha_nacimiento = (cleanedData as any).fecha_nacimiento.toISOString().split('T')[0];
+    }
+
+    // Actualizar datos del jugador
+    const result = await db
+      .update(jugadores)
+      .set({ ...cleanedData, updatedAt: new Date() })
+      .where(eq(jugadores.id, id))
+      .returning();
+
+    // Si se proporcionan equipos-categorías, actualizar las relaciones
+    if (equipoCategoriaIds !== undefined) {
+      await jugadorEquipoCategoriaQueries.actualizarEquiposCategoriasDeJugador(id, equipoCategoriaIds);
+    }
+
     return result[0];
   },
 
@@ -214,6 +417,85 @@ export const jugadorQueries = {
   delete: async (id: number) => {
     return await db.delete(jugadores).where(eq(jugadores.id, id));
   },
+};
+
+// ===== JUGADOR_EQUIPO_CATEGORIA =====
+export const jugadorEquipoCategoriaQueries = {
+  // Asignar jugador a equipo-categoría
+  asignarJugadorAEquipoCategoria: async (jugadorId: number, equipoCategoriaId: number) => {
+    return await db.insert(jugadorEquipoCategoria).values({
+      jugador_id: jugadorId,
+      equipo_categoria_id: equipoCategoriaId
+    }).returning();
+  },
+
+  // Remover jugador de equipo-categoría
+  removerJugadorDeEquipoCategoria: async (jugadorId: number, equipoCategoriaId: number) => {
+    return await db.delete(jugadorEquipoCategoria)
+      .where(and(
+        eq(jugadorEquipoCategoria.jugador_id, jugadorId),
+        eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId)
+      ));
+  },
+
+  // Obtener equipos-categorías de un jugador
+  getEquiposCategoriasDeJugador: async (jugadorId: number) => {
+    return await db.query.jugadorEquipoCategoria.findMany({
+      where: eq(jugadorEquipoCategoria.jugador_id, jugadorId),
+      with: {
+        equipoCategoria: {
+          with: {
+            equipo: true,
+            categoria: true
+          }
+        }
+      }
+    });
+  },
+
+  // Obtener jugadores de un equipo-categoría
+  getJugadoresDeEquipoCategoria: async (equipoCategoriaId: number) => {
+    return await db.query.jugadorEquipoCategoria.findMany({
+      where: eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId),
+      with: {
+        jugador: true
+      }
+    });
+  },
+
+  // Crear jugador con equipos-categorías
+  crearJugadorConEquiposCategorias: async (jugadorData: NewJugador, equipoCategoriaIds: number[]) => {
+    // Crear el jugador
+    const nuevoJugador = await db.insert(jugadores).values(jugadorData).returning();
+    
+    // Asignar equipos-categorías si se proporcionan
+    if (equipoCategoriaIds.length > 0) {
+      const relacionesData = equipoCategoriaIds.map(equipoCategoriaId => ({
+        jugador_id: nuevoJugador[0].id,
+        equipo_categoria_id: equipoCategoriaId
+      }));
+      
+      await db.insert(jugadorEquipoCategoria).values(relacionesData);
+    }
+    
+    return nuevoJugador[0];
+  },
+
+  // Actualizar equipos-categorías de un jugador
+  actualizarEquiposCategoriasDeJugador: async (jugadorId: number, equipoCategoriaIds: number[]) => {
+    // Eliminar todas las relaciones actuales
+    await db.delete(jugadorEquipoCategoria).where(eq(jugadorEquipoCategoria.jugador_id, jugadorId));
+    
+    // Agregar las nuevas relaciones
+    if (equipoCategoriaIds.length > 0) {
+      const relacionesData = equipoCategoriaIds.map(equipoCategoriaId => ({
+        jugador_id: jugadorId,
+        equipo_categoria_id: equipoCategoriaId
+      }));
+      
+      await db.insert(jugadorEquipoCategoria).values(relacionesData);
+    }
+  }
 };
 
 // ===== TORNEOS =====
@@ -232,7 +514,11 @@ export const torneoQueries = {
           with: {
             equipo: {
               with: {
-                categoria: true,
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
                 entrenador: true,
               },
             },
@@ -242,13 +528,21 @@ export const torneoQueries = {
           with: {
             equipoLocal: {
               with: {
-                categoria: true,
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
                 entrenador: true,
               },
             },
             equipoVisitante: {
               with: {
-                categoria: true,
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
                 entrenador: true,
               },
             },
@@ -275,7 +569,11 @@ export const torneoQueries = {
           with: {
             equipo: {
               with: {
-                categoria: true,
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
                 entrenador: true,
               },
             },
@@ -285,13 +583,21 @@ export const torneoQueries = {
           with: {
             equipoLocal: {
               with: {
-                categoria: true,
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
                 entrenador: true,
               },
             },
             equipoVisitante: {
               with: {
-                categoria: true,
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
                 entrenador: true,
               },
             },
@@ -332,7 +638,11 @@ export const equipoTorneoQueries = {
       with: {
         equipo: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },
@@ -374,13 +684,21 @@ export const encuentroQueries = {
       with: {
         equipoLocal: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },
         equipoVisitante: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },
@@ -397,13 +715,21 @@ export const encuentroQueries = {
       with: {
         equipoLocal: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },
         equipoVisitante: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },
@@ -729,7 +1055,11 @@ export const estadisticasQueries = {
       with: {
         equipo: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },
@@ -771,17 +1101,21 @@ export const estadisticasQueries = {
         partidosJugados++;
         
         // Calcular goles reales desde la tabla goles
-        const golesLocal = golesData.filter(g => 
+        const golesIndividualesLocal = golesData.filter(g => 
           g.encuentro_id === encuentro.id && 
           g.equipo_id === encuentro.equipo_local_id && 
           (g.tipo === 'gol' || g.tipo === 'penal')
         ).length;
         
-        const golesVisitante = golesData.filter(g => 
+        const golesIndividualesVisitante = golesData.filter(g => 
           g.encuentro_id === encuentro.id && 
           g.equipo_id === encuentro.equipo_visitante_id && 
           (g.tipo === 'gol' || g.tipo === 'penal')
         ).length;
+
+        // Si no hay goles individuales, usar los goles del encuentro (caso WO)
+        const golesLocal = golesIndividualesLocal > 0 ? golesIndividualesLocal : (encuentro.goles_local || 0);
+        const golesVisitante = golesIndividualesVisitante > 0 ? golesIndividualesVisitante : (encuentro.goles_visitante || 0);
 
         // Determinar resultado según el equipo
         if (equipoId === encuentro.equipo_local_id) {
@@ -865,10 +1199,18 @@ export const estadisticasQueries = {
     const jugadoresData = await db.query.jugadores.findMany({
       where: inArray(jugadores.id, jugadoresIds),
       with: {
-        equipo: {
+        jugadoresEquipoCategoria: {
           with: {
-            categoria: true,
-            entrenador: true,
+            equipoCategoria: {
+              with: {
+                equipo: {
+                  with: {
+                    entrenador: true,
+                  },
+                },
+                categoria: true,
+              },
+            },
           },
         },
       },
@@ -966,7 +1308,11 @@ export const estadisticasQueries = {
       with: {
         equipo: {
           with: {
-            categoria: true,
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
             entrenador: true,
           },
         },

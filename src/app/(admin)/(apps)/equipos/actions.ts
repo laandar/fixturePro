@@ -2,12 +2,14 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { equipoQueries, categoriaQueries, entrenadorQueries } from '@/db/queries'
+import { equipoQueries, categoriaQueries, entrenadorQueries, equipoCategoriaQueries } from '@/db/queries'
 import type { NewEquipo, NewCategoria, NewEntrenador } from '@/db/types'
+import { requirePermiso } from '@/lib/auth-helpers'
 
 // ===== EQUIPOS =====
 
 export async function getEquipos() {
+  // No requiere permiso - función auxiliar usada por otros módulos
   try {
     const equipos = await equipoQueries.getAllWithRelations()
     //console.log("Equipos con relaciones:", equipos)
@@ -37,27 +39,54 @@ export async function getEquipoById(id: number) {
   }
 }
 
+export async function getEquipoByIdWithRelations(id: number) {
+  try {
+    return await equipoQueries.getByIdWithRelations(id)
+  } catch (error) {
+    console.error('Error al obtener equipo con relaciones:', error)
+    throw new Error('Error al obtener equipo con relaciones')
+  }
+}
+
 export async function createEquipo(formData: FormData) {
+  // 🔐 Verificar permiso de crear
+  await requirePermiso('equipos', 'crear')
+  
   try {
     const nombre = formData.get('nombre') as string
-    const categoria_id = parseInt(formData.get('categoria_id') as string)
+    const categoria_ids = formData.getAll('categoria_ids') as string[]
     const entrenador_id = parseInt(formData.get('entrenador_id') as string)
     const imagen_equipo = formData.get('imagen_equipo') as string
     const estado = formData.get('estado') === 'true'
 
-    if (!nombre || !categoria_id || !entrenador_id) {
-      throw new Error('Todos los campos obligatorios deben estar completos')
+    console.log('Datos recibidos en createEquipo:', {
+      nombre,
+      categoria_ids,
+      entrenador_id,
+      imagen_equipo,
+      estado
+    })
+
+    if (!nombre || !entrenador_id) {
+      throw new Error('Nombre y entrenador son obligatorios')
+    }
+
+    if (categoria_ids.length === 0) {
+      throw new Error('Debe seleccionar al menos una categoría')
     }
 
     const equipoData: NewEquipo = {
       nombre,
-      categoria_id,
       entrenador_id,
       imagen_equipo: imagen_equipo || null,
       estado,
     }
 
-    await equipoQueries.create(equipoData)
+    // Convertir string IDs a números
+    const categoriaIds = categoria_ids.map(id => parseInt(id))
+
+    // Crear equipo con múltiples categorías
+    await equipoCategoriaQueries.crearEquipoConCategorias(equipoData, categoriaIds)
     revalidatePath('/equipos')
   } catch (error) {
     console.error('Error al crear equipo:', error)
@@ -66,26 +95,45 @@ export async function createEquipo(formData: FormData) {
 }
 
 export async function updateEquipo(id: number, formData: FormData) {
+  // 🔐 Verificar permiso de editar
+  await requirePermiso('equipos', 'editar')
+  
   try {
     const nombre = formData.get('nombre') as string
-    const categoria_id = parseInt(formData.get('categoria_id') as string)
+    const categoria_ids = formData.getAll('categoria_ids') as string[]
     const entrenador_id = parseInt(formData.get('entrenador_id') as string)
     const imagen_equipo = formData.get('imagen_equipo') as string
     const estado = formData.get('estado') === 'true'
 
-    if (!nombre || !categoria_id || !entrenador_id) {
-      throw new Error('Todos los campos obligatorios deben estar completos')
+    console.log('Datos recibidos en updateEquipo:', {
+      id,
+      nombre,
+      categoria_ids,
+      entrenador_id,
+      imagen_equipo,
+      estado
+    })
+
+    if (!nombre || !entrenador_id) {
+      throw new Error('Nombre y entrenador son obligatorios')
+    }
+
+    if (categoria_ids.length === 0) {
+      throw new Error('Debe seleccionar al menos una categoría')
     }
 
     const equipoData: Partial<NewEquipo> = {
       nombre,
-      categoria_id,
       entrenador_id,
       imagen_equipo: imagen_equipo || null,
       estado,
     }
 
-    await equipoQueries.update(id, equipoData)
+    // Convertir string IDs a números
+    const categoriaIds = categoria_ids.map(id => parseInt(id))
+
+    // Actualizar equipo con múltiples categorías
+    await equipoQueries.updateWithCategorias(id, equipoData, categoriaIds)
     revalidatePath('/equipos')
   } catch (error) {
     console.error('Error al actualizar equipo:', error)
@@ -94,6 +142,9 @@ export async function updateEquipo(id: number, formData: FormData) {
 }
 
 export async function deleteEquipo(id: number) {
+  // 🔐 Verificar permiso de eliminar
+  await requirePermiso('equipos', 'eliminar')
+  
   try {
     // Validar que el ID sea un número válido
     if (isNaN(id) || id <= 0) {
@@ -115,6 +166,9 @@ export async function deleteEquipo(id: number) {
 }
 
 export async function deleteMultipleEquipos(ids: number[]) {
+  // 🔐 Verificar permiso de eliminar
+  await requirePermiso('equipos', 'eliminar')
+  
   try {
     if (ids.length === 0) {
       throw new Error('No se proporcionaron IDs para eliminar')

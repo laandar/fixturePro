@@ -4,10 +4,13 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { categoriaQueries } from '@/db/queries'
 import type { NewCategoria } from '@/db/types'
+import { requirePermiso } from '@/lib/auth-helpers'
+import { validarRangoEdad, crearRangoCategoriaComun } from '@/lib/age-helpers'
 
 // ===== CATEGORÍAS =====
 
 export async function getCategorias() {
+  // No requiere permiso - función auxiliar usada por otros módulos
   try {
     return await categoriaQueries.getAll()
   } catch (error) {
@@ -26,19 +29,45 @@ export async function getCategoriaById(id: number) {
 }
 
 export async function createCategoria(formData: FormData) {
+  await requirePermiso('categorias', 'crear')
   try {
     const nombre = formData.get('nombre') as string
     const estado = formData.get('estado') === 'true'
     const usuario_id = parseInt(formData.get('usuario_id') as string) || null
+    
+    // Campos de edad
+    const edadMinimaAnos = parseInt(formData.get('edad_minima_anos') as string) || null
+    const edadMinimaMeses = parseInt(formData.get('edad_minima_meses') as string) || 0
+    const edadMaximaAnos = parseInt(formData.get('edad_maxima_anos') as string) || null
+    const edadMaximaMeses = parseInt(formData.get('edad_maxima_meses') as string) || 0
 
     if (!nombre) {
       throw new Error('El nombre de la categoría es obligatorio')
+    }
+
+    // Validar rango de edad si se proporciona
+    if (edadMinimaAnos !== null && edadMaximaAnos !== null) {
+      const rango = {
+        edadMinimaAnos,
+        edadMinimaMeses,
+        edadMaximaAnos,
+        edadMaximaMeses
+      }
+      
+      const validacion = validarRangoEdad(rango)
+      if (!validacion.valido) {
+        throw new Error(validacion.error)
+      }
     }
 
     const categoriaData: NewCategoria = {
       nombre,
       estado,
       usuario_id,
+      edad_minima_anos: edadMinimaAnos,
+      edad_minima_meses: edadMinimaMeses,
+      edad_maxima_anos: edadMaximaAnos,
+      edad_maxima_meses: edadMaximaMeses,
     }
 
     await categoriaQueries.create(categoriaData)
@@ -50,19 +79,45 @@ export async function createCategoria(formData: FormData) {
 }
 
 export async function updateCategoria(id: number, formData: FormData) {
+  await requirePermiso('categorias', 'editar')
   try {
     const nombre = formData.get('nombre') as string
     const estado = formData.get('estado') === 'true'
     const usuario_id = parseInt(formData.get('usuario_id') as string) || null
+    
+    // Campos de edad
+    const edadMinimaAnos = parseInt(formData.get('edad_minima_anos') as string) || null
+    const edadMinimaMeses = parseInt(formData.get('edad_minima_meses') as string) || 0
+    const edadMaximaAnos = parseInt(formData.get('edad_maxima_anos') as string) || null
+    const edadMaximaMeses = parseInt(formData.get('edad_maxima_meses') as string) || 0
 
     if (!nombre) {
       throw new Error('El nombre de la categoría es obligatorio')
+    }
+
+    // Validar rango de edad si se proporciona
+    if (edadMinimaAnos !== null && edadMaximaAnos !== null) {
+      const rango = {
+        edadMinimaAnos,
+        edadMinimaMeses,
+        edadMaximaAnos,
+        edadMaximaMeses
+      }
+      
+      const validacion = validarRangoEdad(rango)
+      if (!validacion.valido) {
+        throw new Error(validacion.error)
+      }
     }
 
     const categoriaData: Partial<NewCategoria> = {
       nombre,
       estado,
       usuario_id,
+      edad_minima_anos: edadMinimaAnos,
+      edad_minima_meses: edadMinimaMeses,
+      edad_maxima_anos: edadMaximaAnos,
+      edad_maxima_meses: edadMaximaMeses,
     }
 
     await categoriaQueries.update(id, categoriaData)
@@ -74,6 +129,7 @@ export async function updateCategoria(id: number, formData: FormData) {
 }
 
 export async function deleteCategoria(id: number) {
+  await requirePermiso('categorias', 'eliminar')
   try {
     // Validar que el ID sea un número válido
     if (isNaN(id) || id <= 0) {

@@ -41,7 +41,9 @@ export type NewConfiguracion = InferInsertModel<typeof configuraciones>;
 
 // Tipos para equipos con relaciones
 export interface EquipoWithRelations extends Equipo {
-  categoria: Categoria | null;
+  equiposCategoria?: {
+    categoria: Categoria;
+  }[];
   entrenador: Entrenador | null;
   jugadores?: Jugador[];
 }
@@ -56,8 +58,14 @@ export interface EntrenadorWithEquipos extends Entrenador {
 }
 
 export interface JugadorWithEquipo extends Jugador {
-  categoria: Categoria | null;
-  equipo: Equipo | null;
+  jugadoresEquipoCategoria?: {
+    equipoCategoria: {
+      id: number;
+      equipo: Equipo;
+      categoria: Categoria;
+    };
+  }[];
+  equipo_categoria_id?: number | null;
   amarillas?: number;
   rojas?: number;
   goles?: number;

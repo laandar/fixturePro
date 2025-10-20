@@ -99,7 +99,7 @@ const TabPaneJugadores = () => {
     } = useGestionJugadores();
 
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
-    const shouldDisableActions = isEncuentroFinalizado && !isAdmin;
+    const shouldDisableActions = isEncuentroFinalizado && !isAdmin();
 
     const handleImageClick = (imageUrl: string) => {
         setSelectedImage(imageUrl);

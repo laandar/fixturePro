@@ -6,6 +6,7 @@ import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
+import { usePermisos } from '@/hooks/usePermisos'
 import {
   ColumnFiltersState,
   createColumnHelper,
@@ -25,12 +26,15 @@ import { LuSearch, LuTrophy } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash } from 'react-icons/tb'
 import { getCategorias, createCategoria, updateCategoria, deleteCategoria, deleteMultipleCategorias } from './actions'
 import type { Categoria } from '@/db/types'
+import { formatearRangoEdad } from '@/lib/age-helpers'
 
 const columnHelper = createColumnHelper<Categoria>()
 
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
+  
+  const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('categorias')
   
   const [data, setData] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,6 +77,26 @@ const Page = () => {
         </span>
       ),
     }),
+    {
+      header: 'Rango de Edad',
+      cell: ({ row }) => {
+        const categoria = row.original
+        if (categoria.edad_minima_anos !== null && categoria.edad_maxima_anos !== null) {
+          const rango = {
+            edadMinimaAnos: categoria.edad_minima_anos,
+            edadMinimaMeses: categoria.edad_minima_meses || 0,
+            edadMaximaAnos: categoria.edad_maxima_anos,
+            edadMaximaMeses: categoria.edad_maxima_meses || 0
+          }
+          return (
+            <span className="badge bg-info-subtle text-info">
+              {formatearRangoEdad(rango)}
+            </span>
+          )
+        }
+        return <span className="text-muted">Sin rango definido</span>
+      },
+    },
     columnHelper.accessor('createdAt', { 
       header: 'Fecha Creación',
       cell: ({ row }) => row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString('es-ES') : 'N/A'
@@ -81,20 +105,29 @@ const Page = () => {
       header: 'Acciones',
       cell: ({ row }: { row: TableRow<Categoria> }) => (
         <div className="d-flex gap-1">
-          <Button 
-            variant="light" 
-            size="sm" 
-            className="btn-icon rounded-circle"
-            onClick={() => handleEditClick(row.original)}>
-            <TbEdit className="fs-lg" />
-          </Button>
-          <Button
-            variant="light"
-            size="sm"
-            className="btn-icon rounded-circle"
-            onClick={() => handleDeleteSingle(row.original)}>
-            <TbTrash className="fs-lg" />
-          </Button>
+          {puedeEditar && (
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="btn-icon rounded-circle"
+              onClick={() => handleEditClick(row.original)}
+              title="Editar categoría">
+              <TbEdit className="fs-lg" />
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button
+              variant="light"
+              size="sm"
+              className="btn-icon rounded-circle"
+              onClick={() => handleDeleteSingle(row.original)}
+              title="Eliminar categoría">
+              <TbTrash className="fs-lg" />
+            </Button>
+          )}
+          {!puedeEditar && !puedeEliminar && (
+            <small className="text-muted">Sin acciones</small>
+          )}
         </div>
       ),
     },
@@ -150,6 +183,12 @@ const Page = () => {
   const handleDelete = async () => {
     if (loading) return
     
+    if (!puedeEliminar) {
+      setError('No tienes permiso para eliminar categorías')
+      setShowDeleteModal(false)
+      return
+    }
+    
     try {
       setLoading(true)
       
@@ -170,6 +209,11 @@ const Page = () => {
   }
 
   const handleEditClick = (categoria: Categoria) => {
+    if (!puedeEditar) {
+      setError('No tienes permiso para editar categorías')
+      return
+    }
+    
     setEditingCategoria(categoria)
     setEditFormError(null)
     setEditFormSuccess(null)
@@ -178,6 +222,11 @@ const Page = () => {
 
   const handleUpdateCategoria = async (formData: FormData) => {
     if (!editingCategoria) return
+    
+    if (!puedeEditar) {
+      setEditFormError('No tienes permiso para editar categorías')
+      return
+    }
     
     try {
       setLoading(true)
@@ -214,6 +263,11 @@ const Page = () => {
   }
 
   const handleCreateCategoria = async (formData: FormData) => {
+    if (!puedeCrear) {
+      setFormError('No tienes permiso para crear categorías')
+      return
+    }
+    
     try {
       setLoading(true)
       setFormError(null)
@@ -237,6 +291,40 @@ const Page = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  if (cargandoPermisos) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Categorías" subtitle="Apps" />
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Verificando permisos...</span>
+          </div>
+          <p className="text-muted mt-2">Verificando permisos de acceso...</p>
+        </div>
+      </Container>
+    )
+  }
+
+  if (!puedeVer) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Categorías" subtitle="Apps" />
+        <Row className="justify-content-center">
+          <Col xxl={8}>
+            <Alert variant="danger" className="mt-4">
+              <Alert.Heading>❌ Acceso Denegado</Alert.Heading>
+              <p className="mb-0">
+                No tienes permisos para acceder a esta página.
+                <br />
+                <small className="text-muted">Contacta al administrador para solicitar acceso al módulo de Categorías.</small>
+              </p>
+            </Alert>
+          </Col>
+        </Row>
+      </Container>
+    )
+  }
 
   if (loading) {
     return (
@@ -283,9 +371,23 @@ const Page = () => {
                   <LuSearch className="app-search-icon text-muted" />
                 </div>
 
-                <Button type="submit" className="btn-purple rounded-circle btn-icon" onClick={toggleOffcanvas}>
-                  <TbPlus className="fs-lg" />
-                </Button>
+                {puedeCrear ? (
+                  <Button 
+                    type="button" 
+                    className="btn-purple rounded-circle btn-icon" 
+                    onClick={toggleOffcanvas}
+                    title="Agregar nueva categoría">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button" 
+                    className="btn-secondary rounded-circle btn-icon" 
+                    disabled
+                    title="No tienes permiso para crear categorías">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                )}
               </div>
 
               <div className="d-flex align-items-center gap-2">
@@ -381,6 +483,30 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
+              <Col lg={6}>
+                <FloatingLabel label="Edad Mínima (Años)">
+                  <FormControl type="number" name="edad_minima_anos" placeholder="0" min="0" max="100" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={6}>
+                <FloatingLabel label="Edad Mínima (Meses)">
+                  <FormControl type="number" name="edad_minima_meses" placeholder="0" min="0" max="11" defaultValue="0" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={6}>
+                <FloatingLabel label="Edad Máxima (Años)">
+                  <FormControl type="number" name="edad_maxima_anos" placeholder="0" min="0" max="100" />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={6}>
+                <FloatingLabel label="Edad Máxima (Meses)">
+                  <FormControl type="number" name="edad_maxima_meses" placeholder="0" min="0" max="11" defaultValue="0" />
+                </FloatingLabel>
+              </Col>
+
               <Col lg={12}>
                 <FloatingLabel label="Estado">
                   <FormSelect name="estado">
@@ -435,6 +561,58 @@ const Page = () => {
                       placeholder="Ingrese el nombre de la categoría" 
                       defaultValue={editingCategoria.nombre}
                       required 
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={6}>
+                  <FloatingLabel label="Edad Mínima (Años)">
+                    <FormControl 
+                      type="number" 
+                      name="edad_minima_anos" 
+                      placeholder="0" 
+                      min="0" 
+                      max="100" 
+                      defaultValue={editingCategoria.edad_minima_anos || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={6}>
+                  <FloatingLabel label="Edad Mínima (Meses)">
+                    <FormControl 
+                      type="number" 
+                      name="edad_minima_meses" 
+                      placeholder="0" 
+                      min="0" 
+                      max="11" 
+                      defaultValue={editingCategoria.edad_minima_meses || 0}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={6}>
+                  <FloatingLabel label="Edad Máxima (Años)">
+                    <FormControl 
+                      type="number" 
+                      name="edad_maxima_anos" 
+                      placeholder="0" 
+                      min="0" 
+                      max="100" 
+                      defaultValue={editingCategoria.edad_maxima_anos || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={6}>
+                  <FloatingLabel label="Edad Máxima (Meses)">
+                    <FormControl 
+                      type="number" 
+                      name="edad_maxima_meses" 
+                      placeholder="0" 
+                      min="0" 
+                      max="11" 
+                      defaultValue={editingCategoria.edad_maxima_meses || 0}
                     />
                   </FloatingLabel>
                 </Col>

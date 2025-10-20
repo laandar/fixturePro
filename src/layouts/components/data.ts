@@ -89,28 +89,58 @@ export const menuItems: MenuItemType[] = [
     label: 'Dashboard',
     icon: TbLayoutDashboard,
     url: '/dashboard',
+    roles: ['admin', 'arbitro', 'jugador', 'visitante'], // Todos
   },
-  { key: 'landing', label: 'Landing Page', icon: TbStackFront, url: '/landing' },
+  { 
+    key: 'landing', 
+    label: 'Landing Page', 
+    icon: TbStackFront, 
+    url: '/landing',
+    roles: ['admin', 'arbitro', 'jugador', 'visitante'], // Todos
+  },
   { key: 'apps', label: 'Aplicaciones', isTitle: true },
   {
     key: 'sports',
     label: 'Gestión Deportiva',
     icon: TbTrophy,
+    roles: ['admin', 'arbitro'], // Solo admin y árbitro ven el menú
     children: [
-      { key: 'equipos', label: 'Equipos', url: '/equipos' },
-      { key: 'categorias', label: 'Categorías', url: '/categorias' },
-      { key: 'jugadores', label: 'Jugadores', url: '/jugadores' },
-      { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores' },
-      { key: 'torneos', label: 'Torneos', url: '/torneos' },
-      { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores' },
-      { key: 'configuraciones', label: 'Configuraciones', url: '/configuraciones', icon: TbAdjustments },
+      { key: 'equipos', label: 'Equipos', url: '/equipos', roles: ['admin'] },
+      { key: 'categorias', label: 'Categorías', url: '/categorias', roles: ['admin'] },
+      { key: 'jugadores', label: 'Jugadores', url: '/jugadores', roles: ['admin'] },
+      { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores', roles: ['admin'] },
+      { key: 'torneos', label: 'Torneos', url: '/torneos', roles: ['admin'] },
+      { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores', roles: ['admin', 'arbitro'] },
     ],
   },
-  { key: 'custom', label: 'Custom Pages', isTitle: true },
+  { key: 'administracion', label: 'Administración', isTitle: true, roles: ['admin'] },
+  {
+    key: 'usuarios',
+    label: 'Usuarios',
+    icon: TbUserCircle,
+    url: '/usuarios',
+    roles: ['admin'],
+  },
+  {
+    key: 'configuraciones',
+    label: 'Configuraciones',
+    icon: TbAdjustments,
+    url: '/configuraciones',
+    roles: ['admin'],
+  },
+  {
+    key: 'estadisticas',
+    label: 'Estadísticas',
+    icon: TbStar,
+    url: '/estadisticas',
+    roles: ['admin', 'arbitro', 'jugador', 'visitante'], // Todos pueden ver
+  },
+  { key: 'dev-tools', label: 'Herramientas Dev', isTitle: true, roles: ['admin'] },
   {
     key: 'auth',
     label: 'Authentication',
     icon: TbLock,
+    roles: ['admin'], // Solo admin ve las páginas de auth para desarrollo
     children: [
       {
         key: 'version-1',
@@ -178,123 +208,6 @@ export const menuItems: MenuItemType[] = [
       },
     ],
   },
-  {
-    key: 'error',
-    label: 'Error Pages',
-    icon: TbAlertHexagon,
-    children: [
-      { key: 'error-400', label: '400', url: '/error/400' },
-      { key: 'error-401', label: '401', url: '/error/401' },
-      { key: 'error-403', label: '403', url: '/error/403' },
-      { key: 'error-404', label: '404', url: '/error/404' },
-      { key: 'error-408', label: '408', url: '/error/408' },
-      { key: 'error-500', label: '500', url: '/error/500' },
-      { key: 'maintenance', label: 'Maintenance', url: '/maintenance' },
-    ],
-  },
-  { key: 'layouts', label: 'Layouts', isTitle: true },
-  {
-    key: 'layout-options',
-    label: 'Layout Options',
-    icon: TbLayout,
-    children: [
-      { key: 'scrollable', label: 'Scrollable', url: '/layouts/scrollable' },
-      { key: 'compact', label: 'Compact', url: '/layouts/compact' },
-      { key: 'boxed', label: 'Boxed', url: '/layouts/boxed' },
-      { key: 'horizontal', label: 'Horizontal', url: '/layouts/horizontal' },
-    ],
-  },
-  {
-    key: 'sidebars',
-    label: 'Sidebars',
-    icon: TbLayoutSidebar,
-    children: [
-      { key: 'compact-menu', label: 'Compact Menu', url: '/layouts/sidebars/compact' },
-      { key: 'icon-view-menu', label: 'Icon View Menu', url: '/layouts/sidebars/icon-view' },
-      { key: 'on-hover-menu', label: 'On Hover Menu', url: '/layouts/sidebars/on-hover' },
-      {
-        key: 'on-hover-active-menu',
-        label: 'On Hover Active Menu',
-        url: '/layouts/sidebars/on-hover-active',
-      },
-      { key: 'offcanvas-menu', label: 'Offcanvas Menu', url: '/layouts/sidebars/offcanvas' },
-      {
-        key: 'no-icons-with-lines-menu',
-        label: 'No Icons With Lines',
-        url: '/layouts/sidebars/no-icons-with-lines',
-      },
-      {
-        key: 'with-lines-menu',
-        label: 'Sidebar With Lines',
-        url: '/layouts/sidebars/with-lines',
-      },
-      { key: 'light-menu', label: 'Light Menu', url: '/layouts/sidebars/light' },
-      { key: 'gradient-menu', label: 'Gradient Menu', url: '/layouts/sidebars/gradient' },
-      { key: 'gray-menu', label: 'Gray Menu', url: '/layouts/sidebars/gray' },
-      { key: 'image-menu', label: 'Image Menu', url: '/layouts/sidebars/image' },
-    ],
-  },
-  {
-    key: 'topbars',
-    label: 'Topbars',
-    icon: TbLayoutNavbar,
-    children: [
-      { key: 'dark-topbar', label: 'Dark Topbar', url: '/layouts/topbars/dark' },
-      { key: 'gray-topbar', label: 'Gray Topbar', url: '/layouts/topbars/gray' },
-      { key: 'gradient-topbar', label: 'Gradient Topbar', url: '/layouts/topbars/gradient' },
-      {
-        key: 'with-sub-items-topbar',
-        label: 'Topbar with Sub Items',
-        url: '/layouts/topbars/with-sub-items',
-      },
-      {
-        key: 'with-tools-topbar',
-        label: 'Topbar with Tools',
-        url: '/layouts/topbars/with-tools',
-      },
-    ],
-  },
-  { key: 'items', label: 'Menu Items', isTitle: true },
-  {
-    key: 'menu-levels',
-    label: 'Menu Levels',
-    icon: TbSitemap,
-    children: [
-      {
-        key: 'second-level',
-        label: 'Second Level',
-        children: [
-          { key: 'item-2-1', label: 'Item 2.1', url: 'javascript: void(0);' },
-          { key: 'item-2-2', label: 'Item 2.2', url: 'javascript: void(0);' },
-        ],
-      },
-      {
-        key: 'third-level',
-        label: 'Third Level',
-        children: [
-          { key: 'item-3-1', label: 'Item 1', url: 'javascript: void(0);' },
-          {
-            key: 'fourth-level',
-            label: 'Item 2',
-            children: [
-              {
-                key: 'item-4-1',
-                label: 'Item 3.1',
-                url: 'javascript: void(0);',
-              },
-              {
-                key: 'item-4-2',
-                label: 'Item 3.2',
-                url: 'javascript: void(0);',
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  { key: 'disabled-menu', label: 'Disabled Menu', icon: TbBan, url: '#!', isDisabled: true },
-  { key: 'special-menu', label: 'Special Menu', icon: TbStar, url: '#!', isSpecial: true },
 ]
 
 export const horizontalMenuItems: MenuItemType[] = [

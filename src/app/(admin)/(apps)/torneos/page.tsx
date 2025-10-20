@@ -6,6 +6,7 @@ import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
+import { usePermisos } from '@/hooks/usePermisos'
 import {
   ColumnFiltersState,
   createColumnHelper,
@@ -32,6 +33,7 @@ const columnHelper = createColumnHelper<TorneoWithRelations>()
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
+  const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('torneos')
   
   const [data, setData] = useState<TorneoWithRelations[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -151,24 +153,34 @@ const Page = () => {
             <Button 
               variant="light" 
               size="sm" 
-              className="btn-icon rounded-circle">
+              className="btn-icon rounded-circle"
+              title="Ver detalles del torneo">
               <TbEye className="fs-lg" />
             </Button>
           </Link>
-          <Button 
-            variant="light" 
-            size="sm" 
-            className="btn-icon rounded-circle"
-            onClick={() => handleEditClick(row.original)}>
-            <TbEdit className="fs-lg" />
-          </Button>
-          <Button
-            variant="light"
-            size="sm"
-            className="btn-icon rounded-circle"
-            onClick={() => handleDeleteSingle(row.original)}>
-            <TbTrash className="fs-lg" />
-          </Button>
+          {puedeEditar && (
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="btn-icon rounded-circle"
+              onClick={() => handleEditClick(row.original)}
+              title="Editar torneo">
+              <TbEdit className="fs-lg" />
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Button
+              variant="light"
+              size="sm"
+              className="btn-icon rounded-circle"
+              onClick={() => handleDeleteSingle(row.original)}
+              title="Eliminar torneo">
+              <TbTrash className="fs-lg" />
+            </Button>
+          )}
+          {!puedeEditar && !puedeEliminar && (
+            <small className="text-muted">Solo ver</small>
+          )}
         </div>
       ),
     },
@@ -224,6 +236,12 @@ const Page = () => {
   const handleDelete = async () => {
     if (loading || !torneoToDelete) return
     
+    if (!puedeEliminar) {
+      setError('No tienes permiso para eliminar torneos')
+      setShowDeleteModal(false)
+      return
+    }
+    
     try {
       setLoading(true)
       
@@ -244,6 +262,11 @@ const Page = () => {
   }
 
   const handleEditClick = (torneo: TorneoWithRelations) => {
+    if (!puedeEditar) {
+      setError('No tienes permiso para editar torneos')
+      return
+    }
+    
     setEditingTorneo(torneo)
     setEditFormError(null)
     setEditFormSuccess(null)
@@ -251,6 +274,11 @@ const Page = () => {
   }
 
   const handleCreateTorneo = async (formData: FormData) => {
+    if (!puedeCrear) {
+      setFormError('No tienes permiso para crear torneos')
+      return
+    }
+    
     try {
       setLoading(true)
       setFormError(null)
@@ -273,6 +301,11 @@ const Page = () => {
 
   const handleUpdateTorneo = async (formData: FormData) => {
     if (!editingTorneo) return
+    
+    if (!puedeEditar) {
+      setEditFormError('No tienes permiso para editar torneos')
+      return
+    }
     
     try {
       setLoading(true)
@@ -315,6 +348,40 @@ const Page = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  if (cargandoPermisos) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Torneos" subtitle="Apps" />
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Verificando permisos...</span>
+          </div>
+          <p className="text-muted mt-2">Verificando permisos de acceso...</p>
+        </div>
+      </Container>
+    )
+  }
+
+  if (!puedeVer) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Torneos" subtitle="Apps" />
+        <Row className="justify-content-center">
+          <Col xxl={8}>
+            <Alert variant="danger" className="mt-4">
+              <Alert.Heading>❌ Acceso Denegado</Alert.Heading>
+              <p className="mb-0">
+                No tienes permisos para acceder a esta página.
+                <br />
+                <small className="text-muted">Contacta al administrador para solicitar acceso al módulo de Torneos.</small>
+              </p>
+            </Alert>
+          </Col>
+        </Row>
+      </Container>
+    )
+  }
 
   if (loading) {
     return (
@@ -361,9 +428,23 @@ const Page = () => {
                   <LuSearch className="app-search-icon text-muted" />
                 </div>
 
-                <Button type="submit" className="btn-purple rounded-circle btn-icon" onClick={toggleOffcanvas}>
-                  <TbPlus className="fs-lg" />
-                </Button>
+                {puedeCrear ? (
+                  <Button 
+                    type="button" 
+                    className="btn-purple rounded-circle btn-icon" 
+                    onClick={toggleOffcanvas}
+                    title="Agregar nuevo torneo">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button" 
+                    className="btn-secondary rounded-circle btn-icon" 
+                    disabled
+                    title="No tienes permiso para crear torneos">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                )}
               </div>
 
               <div className="d-flex align-items-center gap-2">

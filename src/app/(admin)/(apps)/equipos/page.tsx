@@ -6,6 +6,7 @@ import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
+import { usePermisos } from '@/hooks/usePermisos'
 import {
   ColumnFiltersState,
   createColumnHelper,
@@ -20,10 +21,10 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
+import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
 import { LuSearch, LuTrophy, LuUsers } from 'react-icons/lu'
 import { TbEdit, TbEye, TbPlus, TbTrash } from 'react-icons/tb'
-import { getEquipos, getCategorias, getEntrenadores, createEquipo, updateEquipo, deleteEquipo, deleteMultipleEquipos } from './actions'
+import { getEquipos, getCategorias, getEntrenadores, createEquipo, updateEquipo, deleteEquipo, deleteMultipleEquipos, getEquipoByIdWithRelations } from './actions'
 import type { EquipoWithRelations, Categoria, Entrenador } from '@/db/types'
 
 const columnHelper = createColumnHelper<EquipoWithRelations>()
@@ -31,17 +32,22 @@ const columnHelper = createColumnHelper<EquipoWithRelations>()
 // Función de filtro personalizada para categorías
 const categoriaFilterFn = (row: any, columnId: string, filterValue: string) => {
   const equipo = row.original as EquipoWithRelations
+  const categoriasNombres = equipo.equiposCategoria?.map(ec => ec.categoria.nombre) || []
+  const coincide = categoriasNombres.includes(filterValue)
   console.log('Filtro categoría:', {
     filterValue,
-    categoriaNombre: equipo.categoria?.nombre,
-    coincide: equipo.categoria?.nombre === filterValue
+    categoriasNombres,
+    coincide
   })
-  return equipo.categoria?.nombre === filterValue
+  return coincide
 }
 
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
+  
+  // 🔐 Sistema de permisos dinámicos
+  const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('equipos')
   
   const [data, setData] = useState<EquipoWithRelations[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -85,31 +91,26 @@ const Page = () => {
       cell: ({ row }) => row.original.entrenador?.nombre || 'Sin entrenador'
     }),
     {
-      id: 'categoria',
-      header: 'Categoría',
+      id: 'categorias',
+      header: 'Categorías',
       filterFn: categoriaFilterFn,
       enableColumnFilter: true,
-      cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => (
-        <span className="badge p-1 text-bg-light fs-sm">
-          <LuTrophy className="me-1" /> {row.original.categoria?.nombre || 'Sin categoría'}
-        </span>
-      ),
-    },
-    {
-      id: 'estado_categoria',
-      header: 'Estado Categoría',
-      cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => (
-        <span className={`badge ${row.original.categoria?.estado ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'} badge-label`}>
-          {row.original.categoria?.estado ? 'Activo' : 'Inactivo'}
-        </span>
-      ),
-    },
-    {
-      id: 'usuario_id',
-      header: 'Usuario ID',
-      cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => (
-        <span>{row.original.categoria?.usuario_id || 'N/A'}</span>
-      ),
+      cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => {
+        const categorias = row.original.equiposCategoria?.map(ec => ec.categoria) || []
+        return (
+          <div className="d-flex flex-wrap gap-1">
+            {categorias.length > 0 ? (
+              categorias.map((categoria, index) => (
+                <span key={index} className="badge p-1 text-bg-light fs-sm">
+                  <LuTrophy className="me-1" /> {categoria.nombre}
+                </span>
+              ))
+            ) : (
+              <span className="badge p-1 text-bg-secondary fs-sm">Sin categorías</span>
+            )}
+          </div>
+        )
+      },
     },
     columnHelper.accessor('createdAt', { 
       header: 'Fecha Creación',
@@ -130,20 +131,34 @@ const Page = () => {
       header: 'Acciones',
       cell: ({ row }: { row: TableRow<EquipoWithRelations> }) => (
         <div className="d-flex gap-1">
-          <Button 
-            variant="light" 
-            size="sm" 
-            className="btn-icon rounded-circle"
-            onClick={() => handleEditClick(row.original)}>
-            <TbEdit className="fs-lg" />
-          </Button>
-          <Button
-            variant="light"
-            size="sm"
-            className="btn-icon rounded-circle"
-            onClick={() => handleDeleteSingle(row.original)}>
-            <TbTrash className="fs-lg" />
-          </Button>
+          {/* 🔐 Botón Editar - Solo visible si tiene permiso */}
+          {puedeEditar && (
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="btn-icon rounded-circle"
+              onClick={() => handleEditClick(row.original)}
+              title="Editar equipo">
+              <TbEdit className="fs-lg" />
+            </Button>
+          )}
+          
+          {/* 🔐 Botón Eliminar - Solo visible si tiene permiso */}
+          {puedeEliminar && (
+            <Button
+              variant="light"
+              size="sm"
+              className="btn-icon rounded-circle"
+              onClick={() => handleDeleteSingle(row.original)}
+              title="Eliminar equipo">
+              <TbTrash className="fs-lg" />
+            </Button>
+          )}
+          
+          {/* Mensaje si no tiene permisos */}
+          {!puedeEditar && !puedeEliminar && (
+            <small className="text-muted">Sin acciones</small>
+          )}
         </div>
       ),
     },
@@ -199,6 +214,13 @@ const Page = () => {
   const handleDelete = async () => {
     if (loading) return // Evitar múltiples ejecuciones simultáneas
     
+    // 🔐 Verificar permiso antes de eliminar
+    if (!puedeEliminar) {
+      setError('No tienes permiso para eliminar equipos')
+      setShowDeleteModal(false)
+      return
+    }
+    
     try {
       setLoading(true)
       
@@ -222,6 +244,12 @@ const Page = () => {
   }
 
   const handleEditClick = (equipo: EquipoWithRelations) => {
+    // 🔐 Verificar permiso antes de abrir modal
+    if (!puedeEditar) {
+      setError('No tienes permiso para editar equipos')
+      return
+    }
+    
     setEditingEquipo(equipo)
     setEditFormError(null)
     setEditFormSuccess(null)
@@ -231,32 +259,25 @@ const Page = () => {
   const handleUpdateEquipo = async (formData: FormData) => {
     if (!editingEquipo) return
     
+    // 🔐 Verificar permiso antes de actualizar
+    if (!puedeEditar) {
+      setEditFormError('No tienes permiso para editar equipos')
+      return
+    }
+    
     try {
       setEditFormError(null)
       setEditFormSuccess(null)
       
-      // Optimistic update - actualizar la tabla inmediatamente
-      const nombre = formData.get('nombre') as string
-      const categoria_id = parseInt(formData.get('categoria_id') as string)
-      const entrenador_id = parseInt(formData.get('entrenador_id') as string)
-      const estado = formData.get('estado') === 'true'
-      const imagen_equipo = formData.get('imagen_equipo') as string
-      
-      // Actualizar la tabla inmediatamente
-      setData(prev => prev.map(equipo => 
-        equipo.id === editingEquipo.id 
-          ? {
-              ...equipo,
-              nombre,
-              categoria_id,
-              entrenador_id,
-              estado,
-              imagen_equipo: imagen_equipo || null,
-              categoria: categorias.find(c => c.id === categoria_id) || null,
-              entrenador: entrenadores.find(e => e.id === entrenador_id) || null
-            }
-          : equipo
-      ))
+      // Debug: verificar qué datos se están enviando
+      const categoria_ids = formData.getAll('categoria_ids')
+      console.log('Datos enviados desde el frontend (update):', {
+        id: editingEquipo.id,
+        nombre: formData.get('nombre'),
+        categoria_ids,
+        entrenador_id: formData.get('entrenador_id'),
+        estado: formData.get('estado')
+      })
       
       // Enviar actualización al servidor
       await updateEquipo(editingEquipo.id, formData)
@@ -265,11 +286,19 @@ const Page = () => {
       toggleEditOffcanvas()
       setEditingEquipo(null)
       
+      // Actualizar el equipo en el estado local para mantener la paginación
+      // Obtener los datos actualizados del equipo desde el servidor
+      const updatedEquipo = await getEquipoByIdWithRelations(editingEquipo.id)
+      if (updatedEquipo) {
+        setData(prev => prev.map(equipo => 
+          equipo.id === editingEquipo.id ? (updatedEquipo as EquipoWithRelations) : equipo
+        ))
+      } else {
+        // Si no se puede obtener el equipo actualizado, recargar todos los datos
+        await loadData()
+      }
+      
     } catch (error) {
-      // Si hay error, revertir el cambio optimista
-      setData(prev => prev.map(equipo => 
-        equipo.id === editingEquipo.id ? editingEquipo : equipo
-      ))
       setEditFormError(error instanceof Error ? error.message : 'Error al actualizar equipo')
     }
   }
@@ -294,9 +323,25 @@ const Page = () => {
   }
 
   const handleCreateEquipo = async (formData: FormData) => {
+    // 🔐 Verificar permiso antes de crear
+    if (!puedeCrear) {
+      setFormError('No tienes permiso para crear equipos')
+      return
+    }
+    
     try {
       setFormError(null)
       setFormSuccess(null)
+      
+      // Debug: verificar qué datos se están enviando
+      const categoria_ids = formData.getAll('categoria_ids')
+      console.log('Datos enviados desde el frontend:', {
+        nombre: formData.get('nombre'),
+        categoria_ids,
+        entrenador_id: formData.get('entrenador_id'),
+        estado: formData.get('estado')
+      })
+      
       await createEquipo(formData)
       setFormSuccess('Equipo creado exitosamente')
       toggleOffcanvas()
@@ -309,6 +354,42 @@ const Page = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  // 🔐 Verificar permisos mientras se cargan
+  if (cargandoPermisos) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Equipos" subtitle="Apps" />
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Verificando permisos...</span>
+          </div>
+          <p className="text-muted mt-2">Verificando permisos de acceso...</p>
+        </div>
+      </Container>
+    )
+  }
+
+  // 🔐 Bloquear acceso si no tiene permiso de ver
+  if (!puedeVer) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Equipos" subtitle="Apps" />
+        <Row className="justify-content-center">
+          <Col xxl={8}>
+            <Alert variant="danger" className="mt-4">
+              <Alert.Heading>❌ Acceso Denegado</Alert.Heading>
+              <p className="mb-0">
+                No tienes permisos para acceder a esta página.
+                <br />
+                <small className="text-muted">Contacta al administrador para solicitar acceso al módulo de Equipos.</small>
+              </p>
+            </Alert>
+          </Col>
+        </Row>
+      </Container>
+    )
+  }
 
   if (loading) {
     return (
@@ -355,9 +436,24 @@ const Page = () => {
                   <LuSearch className="app-search-icon text-muted" />
                 </div>
 
-                <Button type="submit" className="btn-purple rounded-circle btn-icon" onClick={toggleOffcanvas}>
-                  <TbPlus className="fs-lg" />
-                </Button>
+                {/* 🔐 Botón Crear - Solo visible si tiene permiso */}
+                {puedeCrear ? (
+                  <Button 
+                    type="button" 
+                    className="btn-purple rounded-circle btn-icon" 
+                    onClick={toggleOffcanvas}
+                    title="Agregar nuevo equipo">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button" 
+                    className="btn-secondary rounded-circle btn-icon" 
+                    disabled
+                    title="No tienes permiso para crear equipos">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                )}
               </div>
 
               <div className="d-flex align-items-center gap-2">
@@ -366,8 +462,8 @@ const Page = () => {
                 <div className="app-search">
                   <select
                     className="form-select form-control my-1 my-md-0"
-                    value={(table.getColumn('categoria')?.getFilterValue() as string) ?? 'Todas'}
-                    onChange={(e) => table.getColumn('categoria')?.setFilterValue(e.target.value === 'Todas' ? undefined : e.target.value)}>
+                    value={(table.getColumn('categorias')?.getFilterValue() as string) ?? 'Todas'}
+                    onChange={(e) => table.getColumn('categorias')?.setFilterValue(e.target.value === 'Todas' ? undefined : e.target.value)}>
                     <option value="Todas">Categoría</option>
                     {categorias.map((categoria) => (
                       <option key={categoria.id} value={categoria.nombre}>
@@ -469,17 +565,23 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={6}>
-                <FloatingLabel label="Categoría">
-                  <FormSelect name="categoria_id" required>
-                    <option value="">Seleccionar...</option>
+              <Col lg={12}>
+                <div className="border rounded p-3">
+                  <h6 className="mb-3">Categorías del Equipo</h6>
+                  <div className="row g-2">
                     {categorias.map((categoria) => (
-                      <option key={categoria.id} value={categoria.id}>
-                        {categoria.nombre}
-                      </option>
+                      <div key={categoria.id} className="col-md-6">
+                        <FormCheck
+                          type="checkbox"
+                          name="categoria_ids"
+                          value={categoria.id}
+                          id={`categoria_${categoria.id}`}
+                          label={categoria.nombre}
+                        />
+                      </div>
                     ))}
-                  </FormSelect>
-                </FloatingLabel>
+                  </div>
+                </div>
               </Col>
 
               <Col lg={6}>
@@ -559,17 +661,24 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={6}>
-                  <FloatingLabel label="Categoría">
-                    <FormSelect name="categoria_id" defaultValue={editingEquipo.categoria_id?.toString()} required>
-                      <option value="">Seleccionar...</option>
+                <Col lg={12}>
+                  <div className="border rounded p-3">
+                    <h6 className="mb-3">Categorías del Equipo</h6>
+                    <div className="row g-2">
                       {categorias.map((categoria) => (
-                        <option key={categoria.id} value={categoria.id}>
-                          {categoria.nombre}
-                        </option>
+                        <div key={categoria.id} className="col-md-6">
+                          <FormCheck
+                            type="checkbox"
+                            name="categoria_ids"
+                            value={categoria.id}
+                            id={`edit_categoria_${categoria.id}`}
+                            label={categoria.nombre}
+                            defaultChecked={editingEquipo.equiposCategoria?.some(ec => ec.categoria.id === categoria.id)}
+                          />
+                        </div>
                       ))}
-                    </FormSelect>
-                  </FloatingLabel>
+                    </div>
+                  </div>
                 </Col>
 
                 <Col lg={6}>

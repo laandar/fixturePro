@@ -4,10 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { entrenadorQueries } from '@/db/queries'
 import type { NewEntrenador } from '@/db/types'
+import { requirePermiso } from '@/lib/auth-helpers'
 
 // ===== ENTRENADORES =====
 
 export async function getEntrenadores() {
+  // No requiere permiso - función auxiliar usada por otros módulos
   try {
     return await entrenadorQueries.getAll()
   } catch (error) {
@@ -26,6 +28,9 @@ export async function getEntrenadorById(id: number) {
 }
 
 export async function createEntrenador(formData: FormData) {
+  // 🔐 Verificar permiso de crear
+  await requirePermiso('entrenadores', 'crear')
+  
   try {
     const nombre = formData.get('nombre') as string
 
@@ -53,6 +58,9 @@ export async function createEntrenador(formData: FormData) {
 }
 
 export async function updateEntrenador(id: number, formData: FormData) {
+  // 🔐 Verificar permiso de editar
+  await requirePermiso('entrenadores', 'editar')
+  
   try {
     const nombre = formData.get('nombre') as string
 
@@ -80,6 +88,9 @@ export async function updateEntrenador(id: number, formData: FormData) {
 }
 
 export async function deleteEntrenador(id: number) {
+  // 🔐 Verificar permiso de eliminar
+  await requirePermiso('entrenadores', 'eliminar')
+  
   try {
     // Validar que el ID sea un número válido
     if (isNaN(id) || id <= 0) {
@@ -101,6 +112,9 @@ export async function deleteEntrenador(id: number) {
 }
 
 export async function deleteMultipleEntrenadores(ids: number[]) {
+  // 🔐 Verificar permiso de eliminar
+  await requirePermiso('entrenadores', 'eliminar')
+  
   try {
     // Validar que todos los IDs sean números válidos
     if (!ids.every(id => !isNaN(id) && id > 0)) {

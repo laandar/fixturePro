@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
+    "dev:turbo": "next dev --turbopack",
     "build": "tsc && next build",
     "start": "next start",
     "lint": "next lint",
@@ -13,7 +14,9 @@
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/db/seed.ts",
-    "auth:seed-admin": "tsx src/lib/seed-admin.ts"
+    "auth:seed-admin": "tsx src/lib/seed-admin.ts",
+    "seed:roles-menus": "tsx src/db/seed-roles-menus.ts",
+    "migrate:users-to-roles": "tsx src/db/migrate-users-to-roles.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.0",

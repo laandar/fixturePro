@@ -18,7 +18,7 @@ export interface GestionJugadoresState {
     equipoVisitanteId: number | null;
     jornada: number | null;
     estadoEncuentro: string | null;
-    isAdmin: boolean;
+    isAdmin: () => boolean;
     showSelectionModalA: boolean;
     setShowSelectionModalA: (show: boolean) => void;
     showSelectionModalB: boolean;
@@ -46,6 +46,8 @@ export interface GestionJugadoresState {
     loadGolesExistentes: () => Promise<void>;
     loadTarjetasExistentes: () => Promise<void>;
     loadEstadoEncuentro: () => Promise<void>;
+    refreshEstadoEncuentro: () => Promise<void>;
+    refreshAllData: () => Promise<void>;
     handleTogglePlayerSelection: (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => void;
     handleSelectAllPlayers: (equipo: 'A' | 'B') => void;
     handleClearAllPlayers: (equipo: 'A' | 'B') => void;

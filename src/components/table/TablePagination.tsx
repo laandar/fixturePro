@@ -1,7 +1,7 @@
 'use client'
 import clsx from 'clsx'
 import { Col, Row } from 'react-bootstrap'
-import { TbChevronLeft, TbChevronRight } from 'react-icons/tb'
+import { TbChevronLeft, TbChevronRight, TbDots } from 'react-icons/tb'
 
 export type TablePaginationProps = {
   totalItems: number
@@ -33,6 +33,51 @@ const TablePagination = ({
   nextPage,
   canNextPage,
 }: TablePaginationProps) => {
+  // Función para generar números de página inteligentes
+  const generatePageNumbers = () => {
+    const delta = 2 // Número de páginas a mostrar a cada lado de la página actual
+    const range = []
+    const rangeWithDots = []
+
+    // Si hay pocas páginas, mostrar todas
+    if (pageCount <= 7) {
+      for (let i = 0; i < pageCount; i++) {
+        range.push(i)
+      }
+      return range
+    }
+
+    // Siempre mostrar la primera página
+    range.push(0)
+
+    // Calcular el rango alrededor de la página actual
+    const startPage = Math.max(1, pageIndex - delta)
+    const endPage = Math.min(pageCount - 2, pageIndex + delta)
+
+    // Si hay un gap después de la primera página, agregar puntos suspensivos
+    if (startPage > 1) {
+      rangeWithDots.push(0, 'start-ellipsis')
+    } else {
+      rangeWithDots.push(0)
+    }
+
+    // Agregar páginas en el rango calculado
+    for (let i = startPage; i <= endPage; i++) {
+      rangeWithDots.push(i)
+    }
+
+    // Si hay un gap antes de la última página, agregar puntos suspensivos
+    if (endPage < pageCount - 2) {
+      rangeWithDots.push('end-ellipsis', pageCount - 1)
+    } else {
+      rangeWithDots.push(pageCount - 1)
+    }
+
+    return rangeWithDots
+  }
+
+  const pageNumbers = generatePageNumbers()
+
   return (
     <Row className={clsx('align-items-center text-center text-sm-start', showInfo ? 'justify-content-between' : 'justify-content-end')}>
       {showInfo && (
@@ -52,13 +97,25 @@ const TablePagination = ({
               </button>
             </li>
 
-            {Array.from({ length: pageCount }).map((_, index) => (
-              <li key={index} className={`page-item ${pageIndex === index ? 'active' : ''}`}>
-                <button className="page-link" onClick={() => setPageIndex(index)}>
-                  {index + 1}
-                </button>
-              </li>
-            ))}
+            {pageNumbers.map((pageNumber, index) => {
+              if (pageNumber === 'start-ellipsis' || pageNumber === 'end-ellipsis') {
+                return (
+                  <li key={`ellipsis-${index}`} className="page-item disabled">
+                    <span className="page-link">
+                      <TbDots />
+                    </span>
+                  </li>
+                )
+              }
+
+              return (
+                <li key={pageNumber} className={`page-item ${pageIndex === pageNumber ? 'active' : ''}`}>
+                  <button className="page-link" onClick={() => setPageIndex(pageNumber as number)}>
+                    {(pageNumber as number) + 1}
+                  </button>
+                </li>
+              )
+            })}
 
             <li className="page-item">
               <button className="page-link" onClick={() => nextPage()} disabled={!canNextPage}>

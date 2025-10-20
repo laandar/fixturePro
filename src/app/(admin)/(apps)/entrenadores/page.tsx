@@ -5,6 +5,7 @@ import DataTable from '@/components/table/DataTable'
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
 import useToggle from '@/hooks/useToggle'
+import { usePermisos } from '@/hooks/usePermisos'
 import {
   ColumnFiltersState,
   createColumnHelper,
@@ -29,6 +30,9 @@ const columnHelper = createColumnHelper<Entrenador>()
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
+  
+  // 🔐 Sistema de permisos dinámicos
+  const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('entrenadores')
   
   const [data, setData] = useState<Entrenador[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,20 +73,34 @@ const Page = () => {
       header: 'Acciones',
       cell: ({ row }: { row: TableRow<Entrenador> }) => (
         <div className="d-flex gap-1">
-          <Button 
-            variant="light" 
-            size="sm" 
-            className="btn-icon rounded-circle"
-            onClick={() => handleEditClick(row.original)}>
-            <TbEdit className="fs-lg" />
-          </Button>
-          <Button
-            variant="light"
-            size="sm"
-            className="btn-icon rounded-circle"
-            onClick={() => handleDeleteSingle(row.original)}>
-            <TbTrash className="fs-lg" />
-          </Button>
+          {/* 🔐 Botón Editar - Solo visible si tiene permiso */}
+          {puedeEditar && (
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="btn-icon rounded-circle"
+              onClick={() => handleEditClick(row.original)}
+              title="Editar entrenador">
+              <TbEdit className="fs-lg" />
+            </Button>
+          )}
+          
+          {/* 🔐 Botón Eliminar - Solo visible si tiene permiso */}
+          {puedeEliminar && (
+            <Button
+              variant="light"
+              size="sm"
+              className="btn-icon rounded-circle"
+              onClick={() => handleDeleteSingle(row.original)}
+              title="Eliminar entrenador">
+              <TbTrash className="fs-lg" />
+            </Button>
+          )}
+          
+          {/* Mensaje si no tiene permisos */}
+          {!puedeEditar && !puedeEliminar && (
+            <small className="text-muted">Sin acciones</small>
+          )}
         </div>
       ),
     },
@@ -138,6 +156,13 @@ const Page = () => {
   const handleDelete = async () => {
     if (loading) return
     
+    // 🔐 Verificar permiso antes de eliminar
+    if (!puedeEliminar) {
+      setError('No tienes permiso para eliminar entrenadores')
+      setShowDeleteModal(false)
+      return
+    }
+    
     try {
       setLoading(true)
       
@@ -158,6 +183,12 @@ const Page = () => {
   }
 
   const handleEditClick = (entrenador: Entrenador) => {
+    // 🔐 Verificar permiso antes de abrir modal
+    if (!puedeEditar) {
+      setError('No tienes permiso para editar entrenadores')
+      return
+    }
+    
     setEditingEntrenador(entrenador)
     setEditFormError(null)
     setEditFormSuccess(null)
@@ -166,6 +197,12 @@ const Page = () => {
 
   const handleUpdateEntrenador = async (formData: FormData) => {
     if (!editingEntrenador) return
+    
+    // 🔐 Verificar permiso antes de actualizar
+    if (!puedeEditar) {
+      setEditFormError('No tienes permiso para editar entrenadores')
+      return
+    }
     
     try {
       setLoading(true)
@@ -202,6 +239,12 @@ const Page = () => {
   }
 
   const handleCreateEntrenador = async (formData: FormData) => {
+    // 🔐 Verificar permiso antes de crear
+    if (!puedeCrear) {
+      setFormError('No tienes permiso para crear entrenadores')
+      return
+    }
+    
     try {
       setLoading(true)
       setFormError(null)
@@ -225,6 +268,42 @@ const Page = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  // 🔐 Verificar permisos mientras se cargan
+  if (cargandoPermisos) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Entrenadores" subtitle="Apps" />
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Verificando permisos...</span>
+          </div>
+          <p className="text-muted mt-2">Verificando permisos de acceso...</p>
+        </div>
+      </Container>
+    )
+  }
+
+  // 🔐 Bloquear acceso si no tiene permiso de ver
+  if (!puedeVer) {
+    return (
+      <Container fluid>
+        <PageBreadcrumb title="Entrenadores" subtitle="Apps" />
+        <Row className="justify-content-center">
+          <Col xxl={8}>
+            <Alert variant="danger" className="mt-4">
+              <Alert.Heading>❌ Acceso Denegado</Alert.Heading>
+              <p className="mb-0">
+                No tienes permisos para acceder a esta página.
+                <br />
+                <small className="text-muted">Contacta al administrador para solicitar acceso al módulo de Entrenadores.</small>
+              </p>
+            </Alert>
+          </Col>
+        </Row>
+      </Container>
+    )
+  }
 
   if (loading) {
     return (
@@ -271,9 +350,24 @@ const Page = () => {
                   <LuSearch className="app-search-icon text-muted" />
                 </div>
 
-                <Button type="submit" className="btn-purple rounded-circle btn-icon" onClick={toggleOffcanvas}>
-                  <TbPlus className="fs-lg" />
-                </Button>
+                {/* 🔐 Botón Crear - Solo visible si tiene permiso */}
+                {puedeCrear ? (
+                  <Button 
+                    type="button" 
+                    className="btn-purple rounded-circle btn-icon" 
+                    onClick={toggleOffcanvas}
+                    title="Agregar nuevo entrenador">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button" 
+                    className="btn-secondary rounded-circle btn-icon" 
+                    disabled
+                    title="No tienes permiso para crear entrenadores">
+                    <TbPlus className="fs-lg" />
+                  </Button>
+                )}
               </div>
 
               <div className="d-flex align-items-center gap-2">

@@ -4,6 +4,7 @@ import { useLayoutContext } from '@/context/useLayoutContext'
 import { scrollToElement } from '@/helpers/layout'
 import { menuItems } from '@/layouts/components/data'
 import { MenuItemType } from '@/types/layout'
+import { useAuth } from '@/hooks/useAuth'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -119,6 +120,7 @@ const MenuItem = ({ item }: { item: MenuItemType }) => {
 
 const AppMenu = () => {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null)
+  const { user, isLoading } = useAuth()
 
   const scrollToActiveLink = () => {
     const activeItem: HTMLAnchorElement | null = document.querySelector('.side-nav-link.active')
@@ -135,9 +137,47 @@ const AppMenu = () => {
     setTimeout(() => scrollToActiveLink(), 100)
   }, [])
 
+  // Filtrar ítems del menú según el rol del usuario
+  const filterMenuByRole = (items: MenuItemType[]): MenuItemType[] => {
+    if (isLoading || !user) return []
+
+    return items.filter(item => {
+      // Los títulos siempre se muestran
+      if (item.isTitle) return true
+
+      // Si el ítem tiene roles definidos, verificar si el usuario tiene acceso
+      if (item.roles && !item.roles.includes(user.role)) {
+        return false
+      }
+
+      // Si tiene children, filtrar recursivamente
+      if (item.children) {
+        const filteredChildren = filterMenuByRole(item.children)
+        // Si no hay children visibles después del filtrado, ocultar el padre también
+        if (filteredChildren.length === 0) return false
+        // Actualizar los children filtrados
+        item.children = filteredChildren
+      }
+
+      return true
+    })
+  }
+
+  const filteredMenuItems = filterMenuByRole(menuItems)
+
+  if (isLoading) {
+    return (
+      <ul className="side-nav">
+        <li className="side-nav-item">
+          <span className="side-nav-link">Cargando...</span>
+        </li>
+      </ul>
+    )
+  }
+
   return (
     <ul className="side-nav">
-      {menuItems.map((item) =>
+      {filteredMenuItems.map((item) =>
         item.isTitle ? (
           <li className="side-nav-title" key={item.key}>
             {item.label}

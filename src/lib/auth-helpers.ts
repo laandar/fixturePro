@@ -1,5 +1,6 @@
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
+import { currentUserTienePermiso } from '@/lib/permisos-helpers';
 
 export type UserRole = 'admin' | 'arbitro' | 'jugador' | 'visitante';
 
@@ -66,5 +67,52 @@ export async function isAdmin() {
  */
 export async function requireAdmin() {
   return await requireRole('admin');
+}
+
+/**
+ * Verifica si el usuario actual tiene un permiso específico sobre un recurso
+ * @param menuKey - El key del menú/recurso (ej: 'entrenadores', 'equipos')
+ * @param accion - La acción a verificar: 'ver', 'crear', 'editar', 'eliminar'
+ * @returns true si tiene el permiso, false si no
+ */
+export async function tienePermiso(
+  menuKey: string,
+  accion: 'ver' | 'crear' | 'editar' | 'eliminar'
+): Promise<boolean> {
+  const user = await getCurrentUser();
+  
+  if (!user) return false;
+  
+  // Los admins tienen todos los permisos
+  if (user.role === 'admin') return true;
+  
+  // Verificar permisos específicos para otros roles
+  return await currentUserTienePermiso(menuKey, accion);
+}
+
+/**
+ * Requiere que el usuario tenga un permiso específico
+ * Lanza error si no tiene el permiso
+ * @param menuKey - El key del menú/recurso (ej: 'entrenadores', 'equipos')
+ * @param accion - La acción a verificar: 'ver', 'crear', 'editar', 'eliminar'
+ */
+export async function requirePermiso(
+  menuKey: string,
+  accion: 'ver' | 'crear' | 'editar' | 'eliminar'
+) {
+  const user = await requireAuth();
+  
+  // Los admins siempre pasan
+  if (user.role === 'admin') return user;
+  
+  const tieneElPermiso = await currentUserTienePermiso(menuKey, accion);
+  
+  if (!tieneElPermiso) {
+    throw new Error(
+      `No tienes permiso para ${accion} en ${menuKey}. Contacta al administrador.`
+    );
+  }
+  
+  return user;
 }
 
