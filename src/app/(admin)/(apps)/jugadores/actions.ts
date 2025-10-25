@@ -53,6 +53,16 @@ export async function getJugadores() {
   }
 }
 
+export async function getJugadoresActivos() {
+  // Obtener solo jugadores activos para gestión de encuentros
+  try {
+    return await jugadorQueries.getActiveWithRelations()
+  } catch (error) {
+    console.error('Error al obtener jugadores activos:', error)
+    throw new Error('Error al obtener jugadores activos')
+  }
+}
+
 export async function getEquiposCategorias() {
   // Obtener todas las combinaciones equipo-categoría disponibles
   try {
@@ -69,9 +79,10 @@ export async function getEquiposCategorias() {
   }
 }
 
-export async function getJugadorById(id: number) {
+export async function getJugadorById(id: number | string) {
   try {
-    return await jugadorQueries.getByIdWithRelations(id)
+    const jugadorId = typeof id === 'string' ? parseInt(id) : id
+    return await jugadorQueries.getByIdWithRelations(jugadorId)
   } catch (error) {
     console.error('Error al obtener jugador:', error)
     throw new Error('Error al obtener jugador')
@@ -162,8 +173,8 @@ export async function createJugador(formData: FormData) {
     // Si hay una foto, guardarla y actualizar el jugador
     if (foto && foto.size > 0) {
       try {
-        const fotoPath = await saveImage(foto, nuevoJugador.id)
-        await jugadorQueries.update(nuevoJugador.id, { foto: fotoPath })
+        const fotoPath = await saveImage(foto, parseInt(nuevoJugador.id))
+        await jugadorQueries.update(parseInt(nuevoJugador.id), { foto: fotoPath })
       } catch (error) {
         console.error('Error al guardar la foto:', error)
         // No lanzar error aquí para no impedir la creación del jugador
@@ -177,7 +188,7 @@ export async function createJugador(formData: FormData) {
   }
 }
 
-export async function updateJugador(id: number, formData: FormData) {
+export async function updateJugador(id: number | string, formData: FormData) {
   await requirePermiso('jugadores', 'editar')
   try {
     const cedula = formData.get('cedula') as string
@@ -259,7 +270,7 @@ export async function updateJugador(id: number, formData: FormData) {
     // Si hay una nueva foto, guardarla
     if (foto && foto.size > 0) {
       try {
-        const fotoPath = await saveImage(foto, id)
+        const fotoPath = await saveImage(foto, typeof id === 'string' ? parseInt(id) : id)
         jugadorData.foto = fotoPath as any
       } catch (error) {
         console.error('Error al guardar la foto:', error)
@@ -267,7 +278,7 @@ export async function updateJugador(id: number, formData: FormData) {
       }
     }
 
-    await jugadorQueries.updateWithEquiposCategorias(id, jugadorData as any, [equipo_categoria_id])
+    await jugadorQueries.updateWithEquiposCategorias(typeof id === 'string' ? parseInt(id) : id, jugadorData as any, [equipo_categoria_id])
     revalidatePath('/jugadores')
   } catch (error) {
     console.error('Error al actualizar jugador:', error)
@@ -275,21 +286,24 @@ export async function updateJugador(id: number, formData: FormData) {
   }
 }
 
-export async function deleteJugador(id: number) {
+export async function deleteJugador(id: number | string) {
   await requirePermiso('jugadores', 'eliminar')
   try {
-    // Validar que el ID sea un número válido
-    if (isNaN(id) || id <= 0) {
+    // Convertir a string si es number para mantener consistencia
+    const jugadorId = typeof id === 'number' ? id.toString() : id
+    
+    // Verificar si el ID es válido
+    if (!jugadorId || jugadorId.trim() === '') {
       throw new Error('ID de jugador inválido')
     }
     
     // Verificar si el jugador existe antes de eliminarlo
-    const jugador = await jugadorQueries.getById(id)
+    const jugador = await jugadorQueries.getById(jugadorId)
     if (!jugador) {
       throw new Error('El jugador no existe')
     }
     
-    await jugadorQueries.delete(id)
+    await jugadorQueries.delete(parseInt(jugadorId))
     revalidatePath('/jugadores')
   } catch (error) {
     console.error('Error al eliminar jugador:', error)
@@ -387,10 +401,10 @@ export async function getCategorias() {
 
 // ===== HISTORIAL DE JUGADORES =====
 
-export async function getHistorialJugador(jugadorId: number) {
+export async function getHistorialJugador(jugadorId: number | string) {
   try {
     const historial = await db.query.historialJugadores.findMany({
-      where: eq(historialJugadores.jugador_id, jugadorId),
+      where: eq(historialJugadores.jugador_id, jugadorId.toString()),
       orderBy: (historialJugadores, { desc }) => [desc(historialJugadores.fecha_calificacion)],
     })
     return historial

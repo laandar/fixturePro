@@ -48,7 +48,7 @@ const useLayoutContext = () => {
 }
 
 const LayoutProvider = ({ children }: ChildrenType) => {
-  const [settings, setSettings] = useLocalStorage<LayoutState>('__INSPINIA_NEXT_CONFIG__', INIT_STATE)
+  const [settings, setSettings] = useLocalStorage<LayoutState>('__FIXTUREPRO_NEXT_CONFIG__', INIT_STATE)
 
   const [offcanvasStates, setOffcanvasStates] = useState<LayoutOffcanvasStatesType>({
     showCustomizer: false,

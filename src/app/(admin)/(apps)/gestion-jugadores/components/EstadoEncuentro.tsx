@@ -49,7 +49,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       if (encuentroEncontrado) {
         console.log('Encuentro encontrado:', encuentroEncontrado)
         console.log('Estado actual:', encuentroEncontrado.estado)
-        setEncuentro(encuentroEncontrado as EncuentroWithRelations)
+        setEncuentro(encuentroEncontrado as any)
         
         // Verificar si es WO
         const esWO = await esEncuentroWO(encuentroEncontrado.id)
@@ -122,7 +122,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           // Convertir goles del contexto a formato de BD
           const golesParaGuardar: NewGol[] = goles.map(gol => ({
             encuentro_id: encuentro.id,
-            jugador_id: parseInt(gol.jugador),
+            jugador_id: gol.jugador, // Ya es string
             equipo_id: gol.equipo === nombreEquipoA ? equipoLocalId : equipoVisitanteId,
             minuto: gol.minuto || 0,
             tiempo: gol.tiempo || 'primer',
@@ -168,7 +168,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           // Convertir tarjetas del contexto a formato de BD
           const tarjetasParaGuardar: NewTarjeta[] = tarjetas.map(tarjeta => ({
             encuentro_id: encuentro.id,
-            jugador_id: parseInt(tarjeta.jugador),
+            jugador_id: tarjeta.jugador, // Ya es string
             equipo_id: tarjeta.equipo === nombreEquipoA ? equipoLocalId : equipoVisitanteId,
             minuto: tarjeta.minuto || 0,
             tiempo: tarjeta.tiempo || 'primer',

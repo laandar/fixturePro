@@ -10,7 +10,7 @@ import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 interface HistorialJugadorModalProps {
   show: boolean
   onHide: () => void
-  jugadorId: number
+  jugadorId: number | string
   jugadorNombre: string
 }
 
@@ -59,7 +59,8 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
     try {
       setLoading(true)
       setError(null)
-      const data = await getHistorialJugador(jugadorId)
+      const jugadorIdString = typeof jugadorId === 'number' ? jugadorId.toString() : jugadorId
+      const data = await getHistorialJugador(jugadorIdString)
       setHistorial(data)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar historial')
@@ -86,8 +87,10 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
       const numeroParseado = createFormData.numero ? parseInt(createFormData.numero, 10) : null
       const numeroValido = numeroParseado !== null && !isNaN(numeroParseado) ? numeroParseado : null
 
+      const jugadorIdString = (typeof jugadorId === 'number' ? jugadorId.toString() : jugadorId) as string
+      
       await createHistorialJugador({
-        jugador_id: jugadorId,
+        jugador_id: jugadorIdString,
         liga: createFormData.liga,
         equipo: createFormData.equipo || null,
         numero: numeroValido,

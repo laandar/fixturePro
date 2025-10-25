@@ -93,13 +93,11 @@ export class FixtureGenerator {
       equiposCopy.push({
         id: -1, // ID temporal para equipo BYE
         nombre: 'BYE',
-        categoria_id: null,
         entrenador_id: null,
         imagen_equipo: null,
         estado: true,
         createdAt: new Date(),
         updatedAt: new Date(),
-        categoria: null,
         entrenador: null,
       });
     }
@@ -301,13 +299,11 @@ export class FixtureGenerator {
     emparejamientos[indiceEmparejamientoConBye] = [equipoRestringido, {
       id: -1, // BYE
       nombre: 'BYE',
-      categoria_id: null,
       entrenador_id: null,
       imagen_equipo: null,
       estado: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-      categoria: null,
       entrenador: null,
     }];
     
@@ -358,13 +354,11 @@ export class FixtureGenerator {
         equiposConBye.push({
           id: -1, // BYE
           nombre: 'BYE',
-          categoria_id: null,
           entrenador_id: null,
           imagen_equipo: null,
           estado: true,
           createdAt: new Date(),
           updatedAt: new Date(),
-          categoria: null,
           entrenador: null,
         });
       }
@@ -539,17 +533,14 @@ export class FixtureGenerator {
       equiposConBye.push({
         id: -1, // BYE
         nombre: 'BYE',
-        categoria_id: null,
         entrenador_id: null,
         imagen_equipo: null,
         estado: true,
         createdAt: new Date(),
         updatedAt: new Date(),
-        categoria: null,
         entrenador: null,
       });
     }
-    
     // En el algoritmo Round Robin, el equipo que descansa es el que está en la posición central
     const posicionDescanso = Math.floor(equiposConBye.length / 2);
     const equiposRotados = this.rotateTeams(equiposConBye, jornada);

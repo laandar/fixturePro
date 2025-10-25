@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import Select from 'react-select'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
@@ -24,7 +25,7 @@ import Link from 'next/link'
 import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash, TbCamera } from 'react-icons/tb'
-import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, searchJugadores, searchJugadoresByCedula, searchJugadoresByNombre } from './actions'
+import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias } from './actions'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
@@ -36,6 +37,7 @@ import 'swiper/css'
 import 'swiper/css/navigation'
 import 'swiper/css/pagination'
 import '@/styles/mobile-carousel.css'
+import '@/styles/react-select.css'
 
 const columnHelper = createColumnHelper<JugadorWithEquipo>()
 
@@ -64,6 +66,26 @@ const estadoFilterFn = (row: any, columnId: string, filterValue: string) => {
   const jugador = row.original as JugadorWithEquipo
   const estadoString = jugador.estado ? 'true' : 'false'
   return estadoString === filterValue
+}
+
+// Función de filtro global personalizada que incluye búsqueda por cédula
+const globalFilterFn = (row: any, columnId: string, filterValue: string): boolean => {
+  const jugador = row.original as JugadorWithEquipo
+  if (!filterValue) return true
+  
+  const searchTerm = filterValue.toLowerCase()
+  
+  // Buscar en múltiples campos incluyendo cédula
+  return (
+    jugador.apellido_nombre?.toLowerCase().includes(searchTerm) ||
+    jugador.cedula?.toLowerCase().includes(searchTerm) ||
+    jugador.nacionalidad?.toLowerCase().includes(searchTerm) ||
+    jugador.liga?.toLowerCase().includes(searchTerm) ||
+    jugador.telefono?.toLowerCase().includes(searchTerm) ||
+    jugador.provincia?.toLowerCase().includes(searchTerm) ||
+    jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre?.toLowerCase().includes(searchTerm) ||
+    jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre?.toLowerCase().includes(searchTerm)
+  ) || false
 }
 
 const Page = () => {
@@ -105,16 +127,21 @@ const Page = () => {
       return equiposCategorias
     }
     
-    // Obtener equipos-categorías que tienen jugadores en las categorías seleccionadas
-    const equiposCategoriasEnCategorias = new Set<string>()
-    data.forEach(jugador => {
-      const equipoCategoria = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria
-      if (equipoCategoria && selectedCategorias.includes(equipoCategoria.categoria.nombre)) {
-        equiposCategoriasEnCategorias.add(equipoCategoria.equipo.nombre)
+    // Filtrar equipos-categorías que pertenecen a las categorías seleccionadas
+    return equiposCategorias.filter(equipoCategoria => 
+      selectedCategorias.includes(equipoCategoria.categoria.nombre)
+    )
+  }
+
+  // Función para obtener categorías únicas de los equipos-categorías
+  const getCategoriasUnicas = () => {
+    const categoriasUnicas = new Set<string>()
+    equiposCategorias.forEach(equipoCategoria => {
+      if (equipoCategoria.categoria?.nombre) {
+        categoriasUnicas.add(equipoCategoria.categoria.nombre)
       }
     })
-    
-    return equiposCategorias.filter(equipoCategoria => equiposCategoriasEnCategorias.has(equipoCategoria.equipo.nombre))
+    return Array.from(categoriasUnicas).sort()
   }
   
   // Estados para la funcionalidad de cámara
@@ -206,21 +233,30 @@ const Page = () => {
       ),
     }),
     {
-      id: 'equipo_categoria',
-      header: 'Equipo-Categoría',
+      id: 'categoria',
+      header: 'Categoría',
+      filterFn: categoriaFilterFn,
+      enableColumnFilter: true,
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        const categoria = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
+        return (
+          <span className="badge p-1 text-bg-warning fs-sm">
+            <LuTrophy className="me-1" /> {categoria?.nombre || 'Sin categoría'}
+          </span>
+        )
+      },
+    },
+    {
+      id: 'equipo',
+      header: 'Equipo',
       filterFn: equipoFilterFn,
       enableColumnFilter: true,
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
-        const equipoCategoria = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria
+        const equipo = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo
         return (
-          <div className="d-flex flex-column gap-1">
-            <span className="badge p-1 text-bg-light fs-sm">
-              {equipoCategoria?.equipo?.nombre || 'Sin equipo'}
-            </span>
-            <span className="badge p-1 text-bg-warning fs-sm">
-              <LuTrophy className="me-1" /> {equipoCategoria?.categoria?.nombre || 'Sin categoría'}
-            </span>
-          </div>
+          <span className="badge p-1 text-bg-light fs-sm">
+            {equipo?.nombre || 'Sin equipo'}
+          </span>
         )
       },
     },
@@ -272,8 +308,16 @@ const Page = () => {
   ]
 
   const [globalFilter, setGlobalFilter] = useState('')
-  const [searchType, setSearchType] = useState<'all' | 'nombre' | 'cedula'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedEquipoCategoria, setSelectedEquipoCategoria] = useState<any>(null)
+  const [selectedEditEquipoCategoria, setSelectedEditEquipoCategoria] = useState<any>(null)
+
+  // Opciones para react-select
+  const equipoCategoriaOptions = equiposCategorias.map((equipoCategoria) => ({
+    value: equipoCategoria.id,
+    label: `${equipoCategoria.equipo.nombre} - ${equipoCategoria.categoria.nombre}`,
+    equipoCategoria: equipoCategoria
+  }))
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
@@ -292,7 +336,7 @@ const Page = () => {
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    globalFilterFn: 'includesString',
+    globalFilterFn: globalFilterFn,
     enableColumnFilters: true,
     enableRowSelection: false,
   })
@@ -365,6 +409,16 @@ const Page = () => {
     setEditFormSuccess(null)
     setEditCapturedPhoto(null)
     setEditCapturedPhotoUrl(null)
+    
+    // Establecer el valor inicial del react-select para edición
+    const equipoCategoriaId = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.id
+    if (equipoCategoriaId) {
+      const selectedOption = equipoCategoriaOptions.find(option => option.value === equipoCategoriaId)
+      setSelectedEditEquipoCategoria(selectedOption || null)
+    } else {
+      setSelectedEditEquipoCategoria(null)
+    }
+    
     toggleEditModal()
   }
 
@@ -430,6 +484,7 @@ const Page = () => {
       // Recargar datos después de un breve delay
       setTimeout(async () => {
         await loadData()
+        setSelectedEditEquipoCategoria(null) // Limpiar react-select
         toggleEditModal()
         setEditingJugador(null)
       }, 1000)
@@ -457,43 +512,19 @@ const Page = () => {
     }
   }
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      await loadData()
-      return
-    }
+  // Debounce para la búsqueda local
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Usar el globalFilter de la tabla para filtrar localmente
+      setGlobalFilter(searchQuery)
+    }, 300) // 300ms de delay para respuesta más rápida
 
-    try {
-      setLoading(true)
-      setError(null)
-      
-      let searchResults: JugadorWithEquipo[] = []
-      
-      switch (searchType) {
-        case 'nombre':
-          searchResults = await searchJugadoresByNombre(searchQuery)
-          break
-        case 'cedula':
-          searchResults = await searchJugadoresByCedula(searchQuery)
-          break
-        default:
-          searchResults = await searchJugadores(searchQuery)
-          break
-      }
-      
-      setData(searchResults)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al buscar jugadores')
-    } finally {
-      setLoading(false)
-    }
-  }
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
-  const handleClearSearch = async () => {
+  const handleClearSearch = () => {
     setSearchQuery('')
-    setSearchType('all')
     setGlobalFilter('')
-    await loadData()
   }
 
   const handleCreateJugador = async (formData: FormData) => {
@@ -522,6 +553,7 @@ const Page = () => {
       // Recargar datos después de un breve delay
       setTimeout(async () => {
         await loadData()
+        setSelectedEquipoCategoria(null) // Limpiar react-select
         toggleCreateModal()
       }, 1000)
     } catch (error) {
@@ -653,38 +685,18 @@ const Page = () => {
               <Row className="g-2 align-items-end">
                 <Col lg={4}>
                   <label className="form-label fw-semibold mb-1">Buscar Jugador</label>
-                  <div className="d-flex gap-2">
-                    <div className="flex-grow-1 position-relative">
-                      <FormControl
-                        type="text"
-                        placeholder={searchType === 'cedula' ? 'Buscar por cédula...' : searchType === 'nombre' ? 'Buscar por nombre...' : 'Buscar por nombre o cédula...'}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                        className="ps-5"
-                      />
-                      <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
-                    </div>
-                    <Button variant="primary" onClick={handleSearch} disabled={loading}>
-                      <LuSearch className="fs-sm" />
-                    </Button>
-                    <Button variant="outline-secondary" onClick={handleClearSearch} disabled={loading}>
-                      Limpiar
-                    </Button>
+                  <div className="position-relative">
+                    <FormControl
+                      type="text"
+                      placeholder="Buscar por nombre o cédula..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="ps-5"
+                    />
+                    <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
                   </div>
                 </Col>
-                <Col lg={2}>
-                  <label className="form-label fw-semibold mb-1">Tipo de Búsqueda</label>
-                  <FormSelect
-                    value={searchType}
-                    onChange={(e) => setSearchType(e.target.value as 'all' | 'nombre' | 'cedula')}
-                  >
-                    <option value="all">Todo</option>
-                    <option value="nombre">Solo Nombre</option>
-                    <option value="cedula">Solo Cédula</option>
-                  </FormSelect>
-                </Col>
-                <Col lg={2}>
+                <Col lg={4}>
                   <label className="form-label fw-semibold mb-1">Categoría</label>
                   <FormSelect
                     value={selectedCategorias.length === 1 ? selectedCategorias[0] : 'Todas'}
@@ -703,14 +715,14 @@ const Page = () => {
                     }}
                   >
                     <option value="Todas">Todas las categorías</option>
-                    {equiposCategorias.map((equipoCategoria) => (
-                      <option key={equipoCategoria.id} value={equipoCategoria.categoria.nombre}>
-                        {equipoCategoria.categoria.nombre}
+                    {getCategoriasUnicas().map((categoria) => (
+                      <option key={categoria} value={categoria}>
+                        {categoria}
                       </option>
                     ))}
                   </FormSelect>
                 </Col>
-                <Col lg={2}>
+                <Col lg={4}>
                   <label className="form-label fw-semibold mb-1">Equipo</label>
                   <FormSelect
                     value={selectedEquipos.length === 1 ? selectedEquipos[0] : 'Todos'}
@@ -726,22 +738,9 @@ const Page = () => {
                     disabled={selectedCategorias.length === 0}
                   >
                     <option value="Todos">Todos los equipos</option>
-                    {getFilteredEquipos().map((equipo) => (
-                      <option key={equipo.id} value={equipo.nombre}>
-                        {equipo.nombre}
-                      </option>
-                    ))}
-                  </FormSelect>
-                </Col>
-                <Col lg={2}>
-                  <label className="form-label fw-semibold mb-1">Elementos por página</label>
-                  <FormSelect
-                    value={table.getState().pagination.pageSize}
-                    onChange={(e) => table.setPageSize(Number(e.target.value))}
-                  >
-                    {[5, 8, 10, 15, 20].map((size) => (
-                      <option key={size} value={size}>
-                        {size}
+                    {getFilteredEquipos().map((equipoCategoria) => (
+                      <option key={equipoCategoria.id} value={equipoCategoria.equipo.nombre}>
+                        {equipoCategoria.equipo.nombre}
                       </option>
                     ))}
                   </FormSelect>
@@ -760,10 +759,8 @@ const Page = () => {
                       setSelectedEquipos([])
                       setGlobalFilter('')
                       setSearchQuery('')
-                      setSearchType('all')
                       table.getColumn('categoria')?.setFilterValue(undefined)
                       table.getColumn('equipo')?.setFilterValue(undefined)
-                      loadData()
                     }}
                   >
                     Limpiar todos los filtros
@@ -786,31 +783,16 @@ const Page = () => {
           <OffcanvasBody>
             <div className="mb-3">
               <label className="form-label fw-semibold">Buscar Jugador</label>
-              <div className="d-flex gap-2 mb-2">
-                <div className="flex-grow-1 position-relative">
-                  <FormControl
-                    type="text"
-                    placeholder={searchType === 'cedula' ? 'Buscar por cédula...' : searchType === 'nombre' ? 'Buscar por nombre...' : 'Buscar por nombre o cédula...'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    className="ps-5"
-                  />
-                  <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
-                </div>
-                <Button variant="primary" onClick={handleSearch} disabled={loading} size="sm">
-                  <LuSearch className="fs-sm" />
-                </Button>
+              <div className="position-relative">
+                <FormControl
+                  type="text"
+                  placeholder="Buscar por nombre o cédula..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="ps-5"
+                />
+                <LuSearch className="position-absolute top-50 translate-middle-y ms-2" style={{ left: '0.5rem' }} />
               </div>
-              <FormSelect
-                value={searchType}
-                onChange={(e) => setSearchType(e.target.value as 'all' | 'nombre' | 'cedula')}
-                size="sm"
-              >
-                <option value="all">Buscar en todo</option>
-                <option value="nombre">Solo por nombre</option>
-                <option value="cedula">Solo por cédula</option>
-              </FormSelect>
             </div>
 
             <div className="mb-3">
@@ -832,9 +814,9 @@ const Page = () => {
                 }}
               >
                 <option value="Todas">Todas las categorías</option>
-                {equiposCategorias.map((equipoCategoria) => (
-                  <option key={equipoCategoria.id} value={equipoCategoria.categoria.nombre}>
-                    {equipoCategoria.categoria.nombre}
+                {getCategoriasUnicas().map((categoria) => (
+                  <option key={categoria} value={categoria}>
+                    {categoria}
                   </option>
                 ))}
               </FormSelect>
@@ -856,9 +838,9 @@ const Page = () => {
                 disabled={selectedCategorias.length === 0}
               >
                 <option value="Todos">Todos los equipos</option>
-                {getFilteredEquipos().map((equipo) => (
-                  <option key={equipo.id} value={equipo.nombre}>
-                    {equipo.nombre}
+                {getFilteredEquipos().map((equipoCategoria) => (
+                  <option key={equipoCategoria.id} value={equipoCategoria.equipo.nombre}>
+                    {equipoCategoria.equipo.nombre}
                   </option>
                 ))}
               </FormSelect>
@@ -876,10 +858,8 @@ const Page = () => {
                     setSelectedEquipos([])
                     setGlobalFilter('')
                     setSearchQuery('')
-                    setSearchType('all')
                     table.getColumn('categoria')?.setFilterValue(undefined)
                     table.getColumn('equipo')?.setFilterValue(undefined)
-                    loadData()
                   }}
                 >
                   Limpiar todos los filtros
@@ -922,29 +902,11 @@ const Page = () => {
                               enableMobileTilt={false}
                               onContactClick={() => handleVerPerfilClick(jugador)}
                               contactText="Ver Perfil"
+                              onEditClick={() => handleEditClick(jugador)}
+                              onDeleteClick={() => handleDeleteSingle(jugador)}
+                              showActionButtons={true}
                               className="h-100"
                             />
-                            {/* Botones de acción flotantes */}
-                            <div className="position-absolute top-0 end-0 p-2 d-flex gap-1">
-                              <Button 
-                                variant="light" 
-                                size="sm" 
-                                className="btn-icon rounded-circle shadow-sm"
-                                onClick={() => handleEditClick(jugador)}
-                                title="Editar jugador"
-                              >
-                                <TbEdit className="fs-sm" />
-                              </Button>
-                              <Button
-                                variant="light"
-                                size="sm"
-                                className="btn-icon rounded-circle shadow-sm"
-                                onClick={() => handleDeleteSingle(jugador)}
-                                title="Eliminar jugador"
-                              >
-                                <TbTrash className="fs-sm" />
-                              </Button>
-                            </div>
                           </div>
                         </div>
                       </Col>
@@ -997,29 +959,11 @@ const Page = () => {
                                   enableMobileTilt={false}
                                   onContactClick={() => handleVerPerfilClick(jugador)}
                                   contactText="Ver Perfil"
+                                  onEditClick={() => handleEditClick(jugador)}
+                                  onDeleteClick={() => handleDeleteSingle(jugador)}
+                                  showActionButtons={true}
                                   className="h-100"
                                 />
-                                {/* Botones de acción flotantes */}
-                                <div className="position-absolute top-0 end-0 p-2 d-flex gap-1">
-                                  <Button 
-                                    variant="light" 
-                                    size="sm" 
-                                    className="btn-icon rounded-circle shadow-sm"
-                                    onClick={() => handleEditClick(jugador)}
-                                    title="Editar jugador"
-                                  >
-                                    <TbEdit className="fs-sm" />
-                                  </Button>
-                                  <Button
-                                    variant="light"
-                                    size="sm"
-                                    className="btn-icon rounded-circle shadow-sm"
-                                    onClick={() => handleDeleteSingle(jugador)}
-                                    title="Eliminar jugador"
-                                  >
-                                    <TbTrash className="fs-sm" />
-                                  </Button>
-                                </div>
                               </div>
                             </div>
                           </SwiperSlide>
@@ -1218,16 +1162,23 @@ const Page = () => {
               </Col>
 
               <Col lg={6}>
-                <FloatingLabel label="Equipo-Categoría">
-                  <FormSelect name="equipo_categoria_id" required>
-                    <option value="">Seleccionar...</option>
-                    {equiposCategorias.map((equipoCategoria) => (
-                      <option key={equipoCategoria.id} value={equipoCategoria.id}>
-                        {equipoCategoria.equipo.nombre} - {equipoCategoria.categoria.nombre}
-                      </option>
-                    ))}
-                  </FormSelect>
-                </FloatingLabel>
+                
+                <Select
+                  value={selectedEquipoCategoria}
+                  onChange={(selectedOption) => setSelectedEquipoCategoria(selectedOption)}
+                  options={equipoCategoriaOptions}
+                  placeholder="Seleccionar equipo-categoría..."
+                  isSearchable
+                  maxMenuHeight={300}
+                  className="react-select-container"
+                  classNamePrefix="react-select"
+                  name="equipo_categoria_id"
+                />
+                <input
+                  type="hidden"
+                  name="equipo_categoria_id"
+                  value={selectedEquipoCategoria?.value || ''}
+                />
               </Col>
 
               <Col lg={3}>
@@ -1457,16 +1408,23 @@ const Page = () => {
                 </Col>
 
                 <Col lg={6}>
-                  <FloatingLabel label="Equipo-Categoría">
-                    <FormSelect name="equipo_categoria_id" defaultValue={editingJugador.equipo_categoria_id?.toString()} required>
-                      <option value="">Seleccionar...</option>
-                      {equiposCategorias.map((equipoCategoria) => (
-                        <option key={equipoCategoria.id} value={equipoCategoria.id}>
-                          {equipoCategoria.equipo.nombre} - {equipoCategoria.categoria.nombre}
-                        </option>
-                      ))}
-                    </FormSelect>
-                  </FloatingLabel>
+                  
+                  <Select
+                    value={selectedEditEquipoCategoria}
+                    onChange={(selectedOption) => setSelectedEditEquipoCategoria(selectedOption)}
+                    options={equipoCategoriaOptions}
+                    placeholder="Seleccionar equipo-categoría..."
+                    isSearchable
+                    maxMenuHeight={300}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    name="equipo_categoria_id"
+                  />
+                  <input
+                    type="hidden"
+                    name="equipo_categoria_id"
+                    value={selectedEditEquipoCategoria?.value || ''}
+                  />
                 </Col>
 
                 <Col lg={3}>
@@ -1591,7 +1549,7 @@ const Page = () => {
             setShowHistorialModal(false)
             setSelectedJugadorForHistorial(null)
           }}
-          jugadorId={selectedJugadorForHistorial.id}
+          jugadorId={selectedJugadorForHistorial.id as string}
           jugadorNombre={selectedJugadorForHistorial.apellido_nombre}
         />
       )}

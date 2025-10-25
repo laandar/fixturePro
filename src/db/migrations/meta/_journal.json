@@ -246,6 +246,13 @@
       "when": 1760929134975,
       "tag": "0034_glossy_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1761183614754,
+      "tag": "0035_lame_baron_strucker",
+      "breakpoints": true
     }
   ]
 }

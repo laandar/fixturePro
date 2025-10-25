@@ -302,7 +302,7 @@ const Page = () => {
         getCanchasWithCategorias(),
         getCategorias(),
       ])
-      setData(canchasData)
+      setData(canchasData as any)
       setCategorias(categoriasData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar canchas')

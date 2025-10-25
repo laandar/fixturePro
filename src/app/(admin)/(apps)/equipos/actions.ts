@@ -82,8 +82,8 @@ export async function createEquipo(formData: FormData) {
       estado,
     }
 
-    // Convertir string IDs a números
-    const categoriaIds = categoria_ids.map(id => parseInt(id))
+    // Convertir string IDs a números y eliminar duplicados
+    const categoriaIds = [...new Set(categoria_ids.map(id => parseInt(id)))]
 
     // Crear equipo con múltiples categorías
     await equipoCategoriaQueries.crearEquipoConCategorias(equipoData, categoriaIds)
@@ -129,8 +129,8 @@ export async function updateEquipo(id: number, formData: FormData) {
       estado,
     }
 
-    // Convertir string IDs a números
-    const categoriaIds = categoria_ids.map(id => parseInt(id))
+    // Convertir string IDs a números y eliminar duplicados
+    const categoriaIds = [...new Set(categoria_ids.map(id => parseInt(id)))]
 
     // Actualizar equipo con múltiples categorías
     await equipoQueries.updateWithCategorias(id, equipoData, categoriaIds)

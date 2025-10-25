@@ -26,7 +26,7 @@ const Page = () => {
             </div>
 
             <p className="text-center text-muted mt-5 mb-0">
-              © 2014 - {currentYear} INSPINIA — by <span className="fw-bold">{author}</span>
+              © 2014 - {currentYear} FIXTUREPRO — by <span className="fw-bold">{author}</span>
             </p>
           </Col>
         </Row>

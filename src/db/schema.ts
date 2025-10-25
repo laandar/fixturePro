@@ -37,7 +37,7 @@ export const equipos = pgTable('equipos', {
 
 // Tabla de jugadores
 export const jugadores = pgTable('jugadores', {
-  id: integer('id').primaryKey(), // IDENTITY se maneja en la DB
+  id: varchar('id', { length: 255 }).primaryKey(), // ID como varchar
   cedula: varchar('cedula', { length: 20 }).notNull().unique(),
   apellido_nombre: text('apellido_nombre').notNull(),
   nacionalidad: text('nacionalidad').notNull(),
@@ -70,7 +70,7 @@ export const equipoCategoria = pgTable('equipo_categoria', {
 // Tabla intermedia para relación muchos a muchos entre jugadores y equipo-categoría
 export const jugadorEquipoCategoria = pgTable('jugador_equipo_categoria', {
   id: serial('id').primaryKey(),
-  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   equipo_categoria_id: integer('equipo_categoria_id').references(() => equipoCategoria.id).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
@@ -308,7 +308,7 @@ export const jugadorEquipoCategoriaRelations = relations(jugadorEquipoCategoria,
 export const goles = pgTable('goles', {
   id: serial('id').primaryKey(),
   encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
-  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
   minuto: integer('minuto').notNull(),
   tiempo: text('tiempo', { enum: ['primer', 'segundo'] }).notNull(),
@@ -326,7 +326,7 @@ export const horariosRelations = relations(horarios, ({ many }) => ({
 export const tarjetas = pgTable('tarjetas', {
   id: serial('id').primaryKey(),
   encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
-  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
   tipo: text('tipo', { enum: ['amarilla', 'roja'] }).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
@@ -353,7 +353,7 @@ export const golesRelations = relations(goles, ({ one }) => ({
 export const jugadoresParticipantes = pgTable('jugadores_participantes', {
   id: serial('id').primaryKey(),
   encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
-  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   equipo_tipo: text('equipo_tipo', { enum: ['local', 'visitante'] }).notNull(),
   es_capitan: boolean('es_capitan').default(false), // Indica si el jugador es capitán del equipo
   createdAt: timestamp('created_at').defaultNow(),
@@ -380,8 +380,8 @@ export const tarjetasRelations = relations(tarjetas, ({ one }) => ({
 export const cambiosJugadores = pgTable('cambios_jugadores', {
   id: serial('id').primaryKey(),
   encuentro_id: integer('encuentro_id').references(() => encuentros.id).notNull(),
-  jugador_sale_id: integer('jugador_sale_id').references(() => jugadores.id).notNull(),
-  jugador_entra_id: integer('jugador_entra_id').references(() => jugadores.id).notNull(),
+  jugador_sale_id: varchar('jugador_sale_id', { length: 255 }).references(() => jugadores.id).notNull(),
+  jugador_entra_id: varchar('jugador_entra_id', { length: 255 }).references(() => jugadores.id).notNull(),
   equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
   minuto: integer('minuto').notNull(),
   tiempo: text('tiempo', { enum: ['primer', 'segundo'] }).notNull(),
@@ -453,7 +453,7 @@ export const firmasEncuentrosRelations = relations(firmasEncuentros, ({ one }) =
 // Tabla de historial de jugadores
 export const historialJugadores = pgTable('historial_jugadores', {
   id: serial('id').primaryKey(),
-  jugador_id: integer('jugador_id').references(() => jugadores.id).notNull(),
+  jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   liga: text('liga').notNull(),
   equipo: text('equipo'), // Nombre del equipo como texto
   numero: integer('numero'), // Número de camiseta

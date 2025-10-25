@@ -79,7 +79,7 @@ const Page = () => {
     }),
     {
       header: 'Rango de Edad',
-      cell: ({ row }) => {
+      cell: ({ row }: { row: TableRow<Categoria> }) => {
         const categoria = row.original
         if (categoria.edad_minima_anos !== null && categoria.edad_maxima_anos !== null) {
           const rango = {

@@ -85,7 +85,7 @@ export const getEstadisticasGoleadores = (
   console.log('Procesando goles para estadísticas:', goles.length)
   console.log('Goles disponibles:', goles)
   
-  const golesPorJugador: Record<number, { 
+  const golesPorJugador: Record<string, { 
     jugador: any, 
     goles: number, 
     penales: number, 
@@ -124,7 +124,7 @@ export const getEstadisticasGoleadores = (
     console.log('Buscando jugador con ID:', jugadorId)
     
     // Buscar el jugador en todos los jugadores disponibles
-    let jugador = todosJugadores.find(j => j.id === parseInt(jugadorId))
+    let jugador = todosJugadores.find(j => j.id === jugadorId)
     
     if (jugador) {
       console.log('Jugador encontrado:', jugador.apellido_nombre)
@@ -135,7 +135,7 @@ export const getEstadisticasGoleadores = (
 
     // Calcular hat-tricks (3 o más goles en un partido)
     const golesPorPartido: Record<number, number> = {}
-    goles.filter(g => g.jugador_id === parseInt(jugadorId) && g.tipo === 'gol')
+    goles.filter(g => g.jugador_id === jugadorId && g.tipo === 'gol')
          .forEach(gol => {
            golesPorPartido[gol.encuentro_id] = (golesPorPartido[gol.encuentro_id] || 0) + 1
          })
@@ -213,7 +213,7 @@ export const getEstadisticasSanciones = (
   tarjetas: Tarjeta[],
   todosJugadores: any[]
 ): EstadisticaSancion[] => {
-  const sancionesPorJugador: Record<number, { 
+  const sancionesPorJugador: Record<string, { 
     jugador: any, 
     amarillas: number, 
     rojas: number,
@@ -246,7 +246,7 @@ export const getEstadisticasSanciones = (
 
   // Obtener información de jugadores
   const jugadoresConSanciones = Object.entries(sancionesPorJugador).map(([jugadorId, stats]) => {
-    const jugador = todosJugadores.find(j => j.id === parseInt(jugadorId))
+    const jugador = todosJugadores.find(j => j.id === jugadorId)
     
     // Calcular sanciones por acumulación de amarillas (5 amarillas = 1 partido)
     if (stats.amarillas >= 5) {

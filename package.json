@@ -1,5 +1,5 @@
 {
-  "name": "inspinia",
+  "name": "fixturepro",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -28,6 +28,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@tanstack/react-table": "^8.21.3",
     "@types/pg": "^8.15.4",
+    "@types/react-select": "^5.0.0",
     "bcryptjs": "^3.0.2",
     "bootstrap": "^5.3.7",
     "class-variance-authority": "^0.7.1",
@@ -52,6 +53,7 @@
     "react-flatpickr": "^4.0.10",
     "react-icons": "^5.5.0",
     "react-range": "^1.10.0",
+    "react-select": "^5.10.2",
     "simplebar-react": "3.3.0",
     "swiper": "^12.0.2",
     "tailwind-merge": "^3.3.1",

@@ -355,7 +355,7 @@ const Customizer = () => {
           </Col>
           <Col sm={6}>
             <a
-              href="https://wrapbootstrap.com/theme/inspinia-multipurpose-admin-dashboard-template-WB0R5L90S?ref=inspinia"
+              href="https://wrapbootstrap.com/theme/fixturepro-multipurpose-admin-dashboard-template-WB0R5L90S?ref=fixturepro"
               target="_blank"
               className="btn btn-danger bg-gradient py-2 fw-semibold w-100">
               Buy Now

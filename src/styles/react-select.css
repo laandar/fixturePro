@@ -1,0 +1,125 @@
+/* Estilos personalizados para React Select */
+.react-select-container {
+  font-family: inherit;
+}
+
+.react-select__control {
+  border: 1px solid #ced4da !important;
+  border-radius: 0.375rem !important;
+  box-shadow: none !important;
+  min-height: 48px !important;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out !important;
+}
+
+.react-select__control:hover {
+  border-color: #86b7fe !important;
+}
+
+.react-select__control--is-focused {
+  border-color: #86b7fe !important;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
+}
+
+.react-select__multi-value {
+  background-color: #e7f3ff !important;
+  border-radius: 0.25rem !important;
+  border: 1px solid #b3d9ff !important;
+}
+
+.react-select__multi-value__label {
+  color: #0066cc !important;
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+}
+
+.react-select__multi-value__remove {
+  color: #0066cc !important;
+  border-radius: 0 0.25rem 0.25rem 0 !important;
+}
+
+.react-select__multi-value__remove:hover {
+  background-color: #b3d9ff !important;
+  color: #004499 !important;
+}
+
+.react-select__placeholder {
+  color: #6c757d !important;
+  font-size: 0.875rem !important;
+}
+
+.react-select__input-container {
+  color: #212529 !important;
+  font-size: 0.875rem !important;
+}
+
+.react-select__menu {
+  border: 1px solid #dee2e6 !important;
+  border-radius: 0.375rem !important;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+  margin-top: 0.25rem !important;
+}
+
+.react-select__option {
+  color: #212529 !important;
+  font-size: 0.875rem !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+.react-select__option:hover {
+  background-color: #f8f9fa !important;
+  color: #212529 !important;
+}
+
+.react-select__option--is-focused {
+  background-color: #e7f3ff !important;
+  color: #0066cc !important;
+}
+
+.react-select__option--is-selected {
+  background-color: #0066cc !important;
+  color: white !important;
+}
+
+.react-select__option--is-selected:hover {
+  background-color: #004499 !important;
+  color: white !important;
+}
+
+.react-select__indicator-separator {
+  background-color: #dee2e6 !important;
+}
+
+.react-select__dropdown-indicator {
+  color: #6c757d !important;
+}
+
+.react-select__dropdown-indicator:hover {
+  color: #495057 !important;
+}
+
+.react-select__clear-indicator {
+  color: #6c757d !important;
+}
+
+.react-select__clear-indicator:hover {
+  color: #dc3545 !important;
+}
+
+/* Estilos para el estado de carga */
+.react-select__loading-indicator {
+  color: #0066cc !important;
+}
+
+/* Estilos para el mensaje "No options" */
+.react-select__no-options-message {
+  color: #6c757d !important;
+  font-size: 0.875rem !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+/* Estilos para el indicador de carga */
+.react-select__loading-message {
+  color: #6c757d !important;
+  font-size: 0.875rem !important;
+  padding: 0.5rem 0.75rem !important;
+}

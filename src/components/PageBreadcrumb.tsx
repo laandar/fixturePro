@@ -16,7 +16,7 @@ const PageBreadcrumb = ({ title, subtitle }: PageBreadcrumbProps) => {
       <div className="text-end">
         <div className="breadcrumb m-0 py-0 d-flex align-items-center gap-1">
           <BreadcrumbItem linkAs={Link} href="">
-            Inspinia
+            FixturePro
           </BreadcrumbItem>{' '}
           <TbChevronRight />
           {subtitle && (

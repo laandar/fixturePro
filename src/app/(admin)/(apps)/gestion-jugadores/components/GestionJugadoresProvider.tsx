@@ -3,9 +3,10 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap'
 import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJugadoresContext'
-import { getJugadores } from '../../jugadores/actions'
+import { getJugadoresActivos } from '../../jugadores/actions'
 import { getEquipos } from '../../equipos/actions'
 import { getCategorias } from '../../categorias/actions'
+import { getTorneoById } from '../../torneos/actions'
 import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction, designarCapitan } from '../actions'
 import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante, NewCambioJugador } from '@/db/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -76,6 +77,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     const [isSaving, setIsSaving] = useState(false)
     const [cambiosJugadores, setCambiosJugadores] = useState<Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>([])
     const [estadoEncuentro, setEstadoEncuentro] = useState<string | null>(null)
+    const [torneoCategoriaId, setTorneoCategoriaId] = useState<number | null>(null)
     
     // Usar el hook useAuth para obtener información del usuario actual
     const { isAdmin } = useAuth()
@@ -83,12 +85,38 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     const loadData = useCallback(async () => {
         try {
             setLoading(true)
+            
+            // Obtener información del torneo si tenemos torneoId
+            let torneoCategoriaIdValue: number | null = null
+            if (torneoId) {
+                try {
+                    const torneoData = await getTorneoById(torneoId)
+                    if (torneoData?.categoria_id) {
+                        torneoCategoriaIdValue = torneoData.categoria_id
+                        setTorneoCategoriaId(torneoData.categoria_id)
+                    }
+                } catch (err) {
+                    console.error('Error al obtener información del torneo:', err)
+                }
+            }
+            
             const [jugadoresData, equiposData, categoriasData] = await Promise.all([
-                getJugadores(),
+                getJugadoresActivos(),
                 getEquipos(),
                 getCategorias(),
             ])
-            setJugadores(jugadoresData)
+            
+            // Filtrar jugadores por categoría del torneo si tenemos la categoría
+            let jugadoresFiltrados = jugadoresData
+            if (torneoCategoriaIdValue) {
+                jugadoresFiltrados = jugadoresData.filter((jugador: JugadorWithEquipo) => 
+                    jugador.jugadoresEquipoCategoria?.some((jec: any) => 
+                        jec.equipoCategoria?.categoria?.id === torneoCategoriaIdValue
+                    )
+                )
+            }
+            
+            setJugadores(jugadoresFiltrados)
             setEquipos(equiposData)
             setCategorias(categoriasData)
         } catch (err) {
@@ -96,7 +124,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [torneoId])
 
 
     const loadGolesExistentes = useCallback(async () => {
@@ -533,23 +561,23 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
 
     // Determinar jugadores de los equipos según la URL o valores por defecto
     const jugadoresEquipoA = jugadores.filter(j => {
-        if (equipoLocalIdNum && j.equipo?.id) {
-            return j.equipo.id === equipoLocalIdNum
-        } else if (nombreEquipoLocal && j.equipo?.nombre) {
-            return j.equipo.nombre === nombreEquipoLocal
+        if (equipoLocalIdNum && j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id) {
+            return j.jugadoresEquipoCategoria[0].equipoCategoria.equipo.id === equipoLocalIdNum
+        } else if (nombreEquipoLocal && j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre) {
+            return j.jugadoresEquipoCategoria[0].equipoCategoria.equipo.nombre === nombreEquipoLocal
         }
         // Si no hay parámetros en la URL, intentamos buscar equipo local de la BD o fallback
-        return j.equipo?.nombre === 'UDEF' || (equipos.length > 0 && j.equipo?.id === equipos[0]?.id)
+        return j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre === 'UDEF' || (equipos.length > 0 && j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id === equipos[0]?.id)
     })
     
     const jugadoresEquipoB = jugadores.filter(j => {
-        if (equipoVisitanteIdNum && j.equipo?.id) {
-            return j.equipo.id === equipoVisitanteIdNum
-        } else if (nombreEquipoVisitante && j.equipo?.nombre) {
-            return j.equipo.nombre === nombreEquipoVisitante
+        if (equipoVisitanteIdNum && j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id) {
+            return j.jugadoresEquipoCategoria[0].equipoCategoria.equipo.id === equipoVisitanteIdNum
+        } else if (nombreEquipoVisitante && j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre) {
+            return j.jugadoresEquipoCategoria[0].equipoCategoria.equipo.nombre === nombreEquipoVisitante
         }
         // Si no hay parámetros en la URL, intentamos buscar equipo visitante de la BD o fallback
-        return j.equipo?.nombre === '9 Octubre' || (equipos.length > 1 && j.equipo?.id === equipos[1]?.id)
+        return j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre === '9 Octubre' || (equipos.length > 1 && j.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id === equipos[1]?.id)
     })
 
     const handleTogglePlayerSelection = (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
@@ -600,7 +628,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         const newCard: CardType = {
             id: Date.now().toString(),
             jugador: jugador.id.toString(),
-            equipo: jugador.equipo?.nombre || '',
+            equipo: jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || '',
             tipo,
             minuto: 0,
             tiempo: 'primer',
@@ -614,7 +642,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             const rojaDobleAmarilla: CardType = {
                 id: (Date.now() + 1).toString(),
                 jugador: jugador.id.toString(),
-                equipo: jugador.equipo?.nombre || '',
+                equipo: jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || '',
                 tipo: 'roja',
                 minuto: 0,
                 tiempo: 'primer',
@@ -642,7 +670,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         const newGoal: Goal = {
             id: Date.now().toString(),
             jugador: jugador.id.toString(),
-            equipo: jugador.equipo?.nombre || '',
+            equipo: jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || '',
             minuto: 0, // Placeholder
             tiempo: 'primer',
             tipo,
@@ -800,8 +828,8 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             setCambiosJugadores(prev => prev.filter(cambio => cambio.id !== cambioId))
             
             // 2. Remover el jugador que entra de la lista de participantes
-            setJugadoresParticipantesA(prev => prev.filter(jugador => jugador.id !== jugadorEntraId))
-            setJugadoresParticipantesB(prev => prev.filter(jugador => jugador.id !== jugadorEntraId))
+            setJugadoresParticipantesA(prev => prev.filter(jugador => jugador.id !== jugadorEntraId.toString()))
+            setJugadoresParticipantesB(prev => prev.filter(jugador => jugador.id !== jugadorEntraId.toString()))
             
         } catch (err) {
             console.error('❌ Error al deshacer cambio de jugador:', err)
@@ -882,7 +910,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             // Determinar el tipo de equipo
             const equipoTipo: 'local' | 'visitante' = equipo === 'A' ? 'local' : 'visitante'
 
-            const result = await designarCapitan(encuentro.id, jugador.id, equipoTipo)
+            const result = await designarCapitan(encuentro.id, parseInt(jugador.id), equipoTipo)
             
             if (result.success) {
                 // Recargar los jugadores participantes para actualizar la UI
@@ -963,6 +991,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         equipoVisitanteId: equipoVisitanteIdNum,
         jornada: jornadaNum,
         estadoEncuentro,
+        torneoCategoriaId,
         isAdmin,
         showSelectionModalA,
         setShowSelectionModalA,
@@ -1013,7 +1042,6 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         deshacerCambioJugador,
         cambiosJugadores,
         setCambiosJugadores,
-        refreshAllData,
     }
 
 

@@ -60,7 +60,7 @@ const Page = () => {
               </div>
 
               <p className="text-center text-muted mt-auto mb-0">
-                © 2014 - <span>{currentYear}</span> INSPINIA — by <span className="fw-semibold">{author}</span>
+                © 2014 - <span>{currentYear}</span> FIXTUREPRO — by <span className="fw-semibold">{author}</span>
               </p>
             </CardBody>
           </Card>

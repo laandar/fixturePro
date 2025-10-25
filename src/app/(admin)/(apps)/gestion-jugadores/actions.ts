@@ -293,7 +293,7 @@ export async function deleteJugadorParticipante(encuentroId: number, jugadorId: 
     
     await db.delete(jugadoresParticipantes).where(and(
       eq(jugadoresParticipantes.encuentro_id, encuentroId),
-      eq(jugadoresParticipantes.jugador_id, jugadorId)
+      eq(jugadoresParticipantes.jugador_id, jugadorId.toString())
     ))
     
     console.log('✅ Jugador participante eliminado exitosamente')
@@ -456,7 +456,7 @@ export async function deshacerCambioJugador(
     // 2. Eliminar el jugador que entra de jugadores_participantes
     await db.delete(jugadoresParticipantes).where(and(
       eq(jugadoresParticipantes.encuentro_id, encuentroId),
-      eq(jugadoresParticipantes.jugador_id, jugadorEntraId)
+      eq(jugadoresParticipantes.jugador_id, jugadorEntraId.toString())
     ))
     console.log('✅ Jugador que entra eliminado de jugadores_participantes')
 
@@ -569,9 +569,9 @@ export async function designarCapitan(encuentroId: number, jugadorId: number, eq
       .set({ es_capitan: true })
       .where(
         and(
-          eq(jugadoresParticipantes.encuentro_id, encuentroId),
-          eq(jugadoresParticipantes.jugador_id, jugadorId),
-          eq(jugadoresParticipantes.equipo_tipo, equipoTipo)
+        eq(jugadoresParticipantes.encuentro_id, encuentroId),
+        eq(jugadoresParticipantes.jugador_id, jugadorId.toString()),
+        eq(jugadoresParticipantes.equipo_tipo, equipoTipo)
         )
       )
       .returning()

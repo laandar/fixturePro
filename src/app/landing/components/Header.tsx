@@ -27,9 +27,9 @@ export default function Header() {
     <>
       <Alert variant="primary" className="top-alert text-center mb-0 rounded-0" dismissible closeVariant="white">
         <div className="fst-italic fw-medium">
-          🚀 INSPINIA 4.x is here! Now with Bootstrap 5, dark mode, and a refreshed UI. Upgrade today for the best experience!
+          🚀 FIXTUREPRO 4.x is here! Now with Bootstrap 5, dark mode, and a refreshed UI. Upgrade today for the best experience!
           <a
-            href="https://wrapbootstrap.com/theme/inspinia-multipurpose-admin-dashboard-template-WB0R5L90S?ref=inspinia"
+            href="https://wrapbootstrap.com/theme/fixturepro-multipurpose-admin-dashboard-template-WB0R5L90S?ref=fixturepro"
             target="_blank"
             rel="noopener noreferrer"
             className="fw-semibold fst-normal text-white text-decoration-underline link-offset-3 ms-2">

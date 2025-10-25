@@ -282,16 +282,36 @@ export const jugadorQueries = {
     });
   },
 
+  // Obtener solo jugadores activos con relaciones (para gestión de encuentros)
+  getActiveWithRelations: async () => {
+    return await db.query.jugadores.findMany({
+      where: eq(jugadores.estado, true),
+      with: {
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: true,
+                categoria: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [asc(jugadores.apellido_nombre)],
+    });
+  },
+
   // Obtener jugador por ID
-  getById: async (id: number) => {
-    const result = await db.select().from(jugadores).where(eq(jugadores.id, id));
+  getById: async (id: number | string) => {
+    const result = await db.select().from(jugadores).where(eq(jugadores.id, id.toString()));
     return result[0];
   },
 
   // Obtener jugador por ID con relaciones
   getByIdWithRelations: async (id: number) => {
     return await db.query.jugadores.findFirst({
-      where: eq(jugadores.id, id),
+      where: eq(jugadores.id, id.toString()),
       with: {
         jugadoresEquipoCategoria: {
           with: {
@@ -375,7 +395,7 @@ export const jugadorQueries = {
     const result = await db
       .update(jugadores)
       .set({ ...cleanedData, updatedAt: new Date() })
-      .where(eq(jugadores.id, id))
+      .where(eq(jugadores.id, id.toString()))
       .returning();
     return result[0];
   },
@@ -402,7 +422,7 @@ export const jugadorQueries = {
     const result = await db
       .update(jugadores)
       .set({ ...cleanedData, updatedAt: new Date() })
-      .where(eq(jugadores.id, id))
+      .where(eq(jugadores.id, id.toString()))
       .returning();
 
     // Si se proporcionan equipos-categorías, actualizar las relaciones
@@ -415,7 +435,7 @@ export const jugadorQueries = {
 
   // Eliminar jugador
   delete: async (id: number) => {
-    return await db.delete(jugadores).where(eq(jugadores.id, id));
+    return await db.delete(jugadores).where(eq(jugadores.id, id.toString()));
   },
 };
 
@@ -424,7 +444,7 @@ export const jugadorEquipoCategoriaQueries = {
   // Asignar jugador a equipo-categoría
   asignarJugadorAEquipoCategoria: async (jugadorId: number, equipoCategoriaId: number) => {
     return await db.insert(jugadorEquipoCategoria).values({
-      jugador_id: jugadorId,
+      jugador_id: jugadorId.toString(),
       equipo_categoria_id: equipoCategoriaId
     }).returning();
   },
@@ -433,7 +453,7 @@ export const jugadorEquipoCategoriaQueries = {
   removerJugadorDeEquipoCategoria: async (jugadorId: number, equipoCategoriaId: number) => {
     return await db.delete(jugadorEquipoCategoria)
       .where(and(
-        eq(jugadorEquipoCategoria.jugador_id, jugadorId),
+        eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()),
         eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId)
       ));
   },
@@ -441,7 +461,7 @@ export const jugadorEquipoCategoriaQueries = {
   // Obtener equipos-categorías de un jugador
   getEquiposCategoriasDeJugador: async (jugadorId: number) => {
     return await db.query.jugadorEquipoCategoria.findMany({
-      where: eq(jugadorEquipoCategoria.jugador_id, jugadorId),
+      where: eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()),
       with: {
         equipoCategoria: {
           with: {
@@ -484,12 +504,12 @@ export const jugadorEquipoCategoriaQueries = {
   // Actualizar equipos-categorías de un jugador
   actualizarEquiposCategoriasDeJugador: async (jugadorId: number, equipoCategoriaIds: number[]) => {
     // Eliminar todas las relaciones actuales
-    await db.delete(jugadorEquipoCategoria).where(eq(jugadorEquipoCategoria.jugador_id, jugadorId));
+    await db.delete(jugadorEquipoCategoria).where(eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()));
     
     // Agregar las nuevas relaciones
     if (equipoCategoriaIds.length > 0) {
       const relacionesData = equipoCategoriaIds.map(equipoCategoriaId => ({
-        jugador_id: jugadorId,
+        jugador_id: jugadorId.toString(),
         equipo_categoria_id: equipoCategoriaId
       }));
       
@@ -1217,7 +1237,7 @@ export const estadisticasQueries = {
     });
 
     // Agrupar goles por jugador
-    const golesPorJugador: Record<number, {
+    const golesPorJugador: Record<string, {
       jugador: any,
       goles: number,
       penales: number,

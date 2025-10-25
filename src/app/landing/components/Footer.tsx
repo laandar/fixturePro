@@ -62,7 +62,7 @@ const Footer = () => {
           <div className="col-lg-3">
             <Image src={logoWhite} alt="logo" height={30} />
             <p className="mt-3 fs-sm">
-              INSPINIA is the top-selling admin dashboard template on WrapBootstrap, known for its sleek design, flexibility, and powerful features.
+              FIXTUREPRO is the top-selling admin dashboard template on WrapBootstrap, known for its sleek design, flexibility, and powerful features.
               Build modern web applications with ease using the best in class!
             </p>
             <div className="d-flex gap-2 mt-4 mb-2">
@@ -96,7 +96,7 @@ const Footer = () => {
         <Row className="mt-5">
           <Col xs={12} className="text-center">
             <p className="mb-4">
-              © 2014 - Inspinia By <span className="fw-semibold">{author}</span>{' '}
+              © 2014 - FixturePro By <span className="fw-semibold">{author}</span>{' '}
             </p>
           </Col>
         </Row>

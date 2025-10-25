@@ -1,5 +1,6 @@
 import { db } from './index';
 import { categorias } from './schema';
+import { eq } from 'drizzle-orm';
 
 /**
  * Script para crear una categoría Sub 12 con rango de edad específico
@@ -11,7 +12,7 @@ export async function seedCategoriaSub12() {
 
     // Verificar si ya existe una categoría Sub 12
     const categoriaExistente = await db.select().from(categorias).where(
-      categorias.nombre.eq('Sub 12')
+      eq(categorias.nombre, 'Sub 12')
     );
 
     if (categoriaExistente.length > 0) {

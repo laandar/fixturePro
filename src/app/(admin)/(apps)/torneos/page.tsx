@@ -336,7 +336,7 @@ const Page = () => {
         getTorneos(),
         getCategorias()
       ])
-      setData(torneosData as TorneoWithRelations[])
+      setData(torneosData as any)
       setCategorias(categoriasData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar datos')

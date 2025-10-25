@@ -15,8 +15,9 @@ export const tempPlayerImages = [
 ]
 
 // Función para obtener una imagen temporal basada en el ID del jugador
-export const getTempPlayerImage = (jugadorId: number): string => {
-  const index = jugadorId % tempPlayerImages.length
+export const getTempPlayerImage = (jugadorId: number | string): string => {
+  const numericId = typeof jugadorId === 'string' ? parseInt(jugadorId) || 0 : jugadorId
+  const index = numericId % tempPlayerImages.length
   return tempPlayerImages[index]
 }
 

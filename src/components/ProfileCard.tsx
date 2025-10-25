@@ -21,6 +21,9 @@ interface ProfileCardProps {
   contactText?: string;
   showUserInfo?: boolean;
   onContactClick?: () => void;
+  onEditClick?: () => void;
+  onDeleteClick?: () => void;
+  showActionButtons?: boolean;
 }
 
 const DEFAULT_BEHIND_GRADIENT =
@@ -63,7 +66,10 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
   status = 'Online',
   contactText = 'Contact Me',
   showUserInfo = true,
-  onContactClick
+  onContactClick,
+  onEditClick,
+  onDeleteClick,
+  showActionButtons = false
 }) => {
   // Detectar si estamos en Firefox
   const isFirefox = useMemo(() => {
@@ -73,7 +79,11 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
 
   // Función helper para obtener la URL correcta del avatar
   const getAvatarUrl = useCallback((url: string | undefined) => {
-    // Siempre usar la imagen local person.png
+    // Si hay una URL válida, usarla; si no, usar la imagen por defecto
+    if (url && url.trim() !== '') {
+      return url;
+    }
+    // Fallback a imagen local person.png
     const personUrl = isFirefox ? `${window.location.origin}/uploads/jugadores/person.png` : '/uploads/jugadores/person.png';
     return personUrl;
   }, [isFirefox]);
@@ -350,15 +360,30 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
                   <div className="pc-status">{status}</div>
                 </div>
               </div>
-              <button
-                className="pc-contact-btn"
-                onClick={handleContactClick}
-                style={{ pointerEvents: 'auto' }}
-                type="button"
-                aria-label={`Contact ${name || 'user'}`}
-              >
-                {contactText}
-              </button>
+              <div className="pc-actions">
+                {showActionButtons && (
+                  <div className="pc-action-buttons">
+                    <button
+                      className="pc-action-btn pc-edit-btn"
+                      onClick={onEditClick}
+                      title="Editar jugador"
+                      type="button"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                )}
+                <button
+                  className="pc-contact-btn"
+                  onClick={handleContactClick}
+                  style={{ pointerEvents: 'auto' }}
+                  type="button"
+                  aria-label={`Contact ${name || 'user'}`}
+                  title="Ver Perfil"
+                >
+                  👁️
+                </button>
+              </div>
             </div>
           )}
         </div>

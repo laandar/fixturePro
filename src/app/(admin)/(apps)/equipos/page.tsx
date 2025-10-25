@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import '@/styles/react-select.css'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
@@ -22,6 +23,7 @@ import {
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
+import Select from 'react-select'
 import { LuSearch, LuTrophy, LuUsers } from 'react-icons/lu'
 import { TbEdit, TbEye, TbPlus, TbTrash } from 'react-icons/tb'
 import { getEquipos, getCategorias, getEntrenadores, createEquipo, updateEquipo, deleteEquipo, deleteMultipleEquipos, getEquipoByIdWithRelations } from './actions'
@@ -60,6 +62,14 @@ const Page = () => {
   const [editingEquipo, setEditingEquipo] = useState<EquipoWithRelations | null>(null)
   const [editFormError, setEditFormError] = useState<string | null>(null)
   const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
+  const [selectedCategorias, setSelectedCategorias] = useState<{ value: number; label: string }[]>([])
+  const [editSelectedCategorias, setEditSelectedCategorias] = useState<{ value: number; label: string }[]>([])
+  
+  // Opciones para React Select
+  const categoriaOptions = categorias.map(categoria => ({
+    value: categoria.id,
+    label: categoria.nombre
+  }))
   
   const columns = [
     columnHelper.accessor('nombre', {
@@ -253,6 +263,14 @@ const Page = () => {
     setEditingEquipo(equipo)
     setEditFormError(null)
     setEditFormSuccess(null)
+    
+    // Establecer las categorías seleccionadas para React Select
+    const categoriasSeleccionadas = equipo.equiposCategoria?.map(ec => ({
+      value: ec.categoria.id,
+      label: ec.categoria.nombre
+    })) || []
+    setEditSelectedCategorias(categoriasSeleccionadas)
+    
     toggleEditOffcanvas()
   }
 
@@ -269,6 +287,11 @@ const Page = () => {
       setEditFormError(null)
       setEditFormSuccess(null)
       
+      // Agregar las categorías seleccionadas al FormData
+      editSelectedCategorias.forEach(categoria => {
+        formData.append('categoria_ids', categoria.value.toString())
+      })
+      
       // Debug: verificar qué datos se están enviando
       const categoria_ids = formData.getAll('categoria_ids')
       console.log('Datos enviados desde el frontend (update):', {
@@ -283,6 +306,7 @@ const Page = () => {
       await updateEquipo(editingEquipo.id, formData)
       
       setEditFormSuccess('Equipo actualizado exitosamente')
+      setEditSelectedCategorias([]) // Limpiar selección
       toggleEditOffcanvas()
       setEditingEquipo(null)
       
@@ -333,6 +357,11 @@ const Page = () => {
       setFormError(null)
       setFormSuccess(null)
       
+      // Agregar las categorías seleccionadas al FormData
+      selectedCategorias.forEach(categoria => {
+        formData.append('categoria_ids', categoria.value.toString())
+      })
+      
       // Debug: verificar qué datos se están enviando
       const categoria_ids = formData.getAll('categoria_ids')
       console.log('Datos enviados desde el frontend:', {
@@ -344,6 +373,7 @@ const Page = () => {
       
       await createEquipo(formData)
       setFormSuccess('Equipo creado exitosamente')
+      setSelectedCategorias([]) // Limpiar selección
       toggleOffcanvas()
       await loadData()
     } catch (error) {
@@ -566,22 +596,47 @@ const Page = () => {
               </Col>
 
               <Col lg={12}>
-                <div className="border rounded p-3">
-                  <h6 className="mb-3">Categorías del Equipo</h6>
-                  <div className="row g-2">
-                    {categorias.map((categoria) => (
-                      <div key={categoria.id} className="col-md-6">
-                        <FormCheck
-                          type="checkbox"
-                          name="categoria_ids"
-                          value={categoria.id}
-                          id={`categoria_${categoria.id}`}
-                          label={categoria.nombre}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <label className="form-label fw-semibold">Categorías del Equipo</label>
+                <Select
+                  isMulti
+                  name="categoria_ids"
+                  options={categoriaOptions}
+                  value={selectedCategorias}
+                  onChange={(selectedOptions) => setSelectedCategorias(selectedOptions as { value: number; label: string }[])}
+                  placeholder="Selecciona las categorías..."
+                  className="react-select-container"
+                  classNamePrefix="react-select"
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      minHeight: '48px',
+                      border: '1px solid #ced4da',
+                      borderRadius: '0.375rem',
+                      '&:hover': {
+                        borderColor: '#86b7fe'
+                      }
+                    }),
+                    multiValue: (base) => ({
+                      ...base,
+                      backgroundColor: '#e7f3ff',
+                      borderRadius: '0.25rem'
+                    }),
+                    multiValueLabel: (base) => ({
+                      ...base,
+                      color: '#0066cc',
+                      fontWeight: '500'
+                    }),
+                    multiValueRemove: (base) => ({
+                      ...base,
+                      color: '#0066cc',
+                      '&:hover': {
+                        backgroundColor: '#b3d9ff',
+                        color: '#004499'
+                      }
+                    })
+                  }}
+                />
+                <small className="text-muted">Selecciona múltiples categorías para este equipo</small>
               </Col>
 
               <Col lg={6}>
@@ -662,23 +717,47 @@ const Page = () => {
                 </Col>
 
                 <Col lg={12}>
-                  <div className="border rounded p-3">
-                    <h6 className="mb-3">Categorías del Equipo</h6>
-                    <div className="row g-2">
-                      {categorias.map((categoria) => (
-                        <div key={categoria.id} className="col-md-6">
-                          <FormCheck
-                            type="checkbox"
-                            name="categoria_ids"
-                            value={categoria.id}
-                            id={`edit_categoria_${categoria.id}`}
-                            label={categoria.nombre}
-                            defaultChecked={editingEquipo.equiposCategoria?.some(ec => ec.categoria.id === categoria.id)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <label className="form-label fw-semibold">Categorías del Equipo</label>
+                  <Select
+                    isMulti
+                    name="categoria_ids"
+                    options={categoriaOptions}
+                    value={editSelectedCategorias}
+                    onChange={(selectedOptions) => setEditSelectedCategorias(selectedOptions as { value: number; label: string }[])}
+                    placeholder="Selecciona las categorías..."
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        minHeight: '48px',
+                        border: '1px solid #ced4da',
+                        borderRadius: '0.375rem',
+                        '&:hover': {
+                          borderColor: '#86b7fe'
+                        }
+                      }),
+                      multiValue: (base) => ({
+                        ...base,
+                        backgroundColor: '#e7f3ff',
+                        borderRadius: '0.25rem'
+                      }),
+                      multiValueLabel: (base) => ({
+                        ...base,
+                        color: '#0066cc',
+                        fontWeight: '500'
+                      }),
+                      multiValueRemove: (base) => ({
+                        ...base,
+                        color: '#0066cc',
+                        '&:hover': {
+                          backgroundColor: '#b3d9ff',
+                          color: '#004499'
+                        }
+                      })
+                    }}
+                  />
+                  <small className="text-muted">Selecciona múltiples categorías para este equipo</small>
                 </Col>
 
                 <Col lg={6}>

@@ -9,7 +9,7 @@ import { getGolesTorneo, getTarjetasTorneo } from '../../gestion-jugadores/actio
 import { generarPropuestaJornada, confirmarJornada, regenerarJornadaDinamica, confirmarRegeneracionJornada, analizarTorneo } from '../dynamic-actions'
 import { getCategorias, getEquipos, getEquiposByCategoria } from '../../equipos/actions'
 import { getJugadores } from '../../jugadores/actions'
-import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada } from '../horarios-actions'
+import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada, generarTablaDistribucionHorarios } from '../horarios-actions'
 import { getCanchas } from '@/app/(admin)/(apps)/canchas/actions'
 import type { TorneoWithRelations, EquipoWithRelations, Categoria, EncuentroWithRelations, Horario, Gol, Tarjeta } from '@/db/types'
 import type { DynamicFixtureResult, JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
@@ -60,7 +60,10 @@ const TorneoDetailPage = () => {
   const [showEmparejamientosModal, setShowEmparejamientosModal] = useState(false)
   const [showHorariosModal, setShowHorariosModal] = useState(false)
   const [showAsignarHorarioModal, setShowAsignarHorarioModal] = useState(false)
-  const [showAsignacionAutomaticaModal, setShowAsignacionAutomaticaModal] = useState(false)
+  const [showTablaDistribucionModal, setShowTablaDistribucionModal] = useState(false)
+  const [tablaDistribucion, setTablaDistribucion] = useState<any>(null)
+  const [soloEncuentrosSinHorario, setSoloEncuentrosSinHorario] = useState(false)
+  const [reiniciarAsignaciones, setReiniciarAsignaciones] = useState(true)
   const [editingHorario, setEditingHorario] = useState<Horario | null>(null)
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
   const [selectedHorarioId, setSelectedHorarioId] = useState<number | null>(null)
@@ -411,25 +414,6 @@ const TorneoDetailPage = () => {
     }
   }
 
-  const handleAsignacionAutomatica = async (formData: FormData) => {
-    try {
-      const reiniciarAsignaciones = formData.get('reiniciar_asignaciones') === 'true'
-      const soloEncuentrosSinHorario = formData.get('solo_encuentros_sin_horario') === 'true'
-      const ordenPorJornada = formData.get('orden_por_jornada') === 'true'
-
-      const resultado = await asignarHorariosAutomaticamente(torneoId, {
-        reiniciarAsignaciones,
-        soloEncuentrosSinHorario,
-        ordenPorJornada
-      })
-
-      setSuccess(`Asignación automática completada: ${resultado.asignacionesRealizadas} encuentros actualizados`)
-      setShowAsignacionAutomaticaModal(false)
-      await loadData()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error en la asignación automática')
-    }
-  }
 
  
   const handleEditHorario = (horario: Horario) => {
@@ -440,6 +424,51 @@ const TorneoDetailPage = () => {
   const handleCloseHorariosModal = () => {
     setShowHorariosModal(false)
     setEditingHorario(null)
+  }
+
+  const handleMostrarTablaDistribucion = async () => {
+    try {
+      setLoading(true)
+      const resultado = await generarTablaDistribucionHorarios(torneoId)
+      if (resultado.success) {
+        setTablaDistribucion(resultado.tabla)
+        setShowTablaDistribucionModal(true)
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al generar tabla de distribución')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEjecutarAsignacionAutomatica = async () => {
+    try {
+      setLoading(true)
+      
+      // Ejecutar asignación automática con configuración seleccionada
+      const resultadoAsignacion = await asignarHorariosAutomaticamente(torneoId, {
+        reiniciarAsignaciones: reiniciarAsignaciones,
+        soloEncuentrosSinHorario: soloEncuentrosSinHorario,
+        ordenPorJornada: true
+      })
+
+      if (resultadoAsignacion?.success) {
+        setSuccess(`Asignación automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros actualizados`)
+        
+        // Recargar datos
+        await loadData()
+        
+        // Generar nueva tabla de distribución
+        const resultadoTabla = await generarTablaDistribucionHorarios(torneoId)
+        if (resultadoTabla.success) {
+          setTablaDistribucion(resultadoTabla.tabla)
+        }
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error en la asignación automática')
+    } finally {
+      setLoading(false)
+    }
   }
 
 
@@ -1273,49 +1302,45 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Horarios */}
                 <Tab.Pane eventKey="horarios">
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h3 className="fw-bold text-primary">🕐 Gestión de Horarios</h3>
-                    <div className="d-flex gap-4">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h4 className="fw-bold text-primary mb-0">🕐 Gestión de Horarios</h4>
+                    <div className="d-flex gap-2">
                       <Button 
-                        variant="success" 
-                        size="lg"
-                        onClick={() => setShowAsignacionAutomaticaModal(true)}
+                        variant="info" 
+                        size="sm"
+                        onClick={handleMostrarTablaDistribucion}
                         disabled={horarios.length === 0}
-                        className="px-4">
-                        <LuSettings className="me-2" size={18} />
-                        Asignación Automática
+                        className="px-3">
+                        <LuInfo className="me-1" size={16} />
+                        Tabla
                       </Button>
                       <Button 
                         variant="primary" 
-                        size="lg"
+                        size="sm"
                         onClick={() => setShowHorariosModal(true)}
-                        className="px-4">
-                        <LuPlus className="me-2" size={18} />
-                        Crear Horario
+                        className="px-3">
+                        <LuPlus className="me-1" size={16} />
+                        Nuevo
                       </Button>
                     </div>
                   </div>
 
-                  <Alert variant="info" className="mb-4">
-                    <h6><LuClock className="me-2" />Gestión de Horarios</h6>
-                    <p className="mb-2">
-                      Los horarios te permiten asignar tiempos específicos a cada encuentro:
-                    </p>
-                    <ul className="mb-0">
-                      <li><strong>Horarios parametrizables:</strong> Define horarios personalizados con duración y colores</li>
-                      <li><strong>Asignación automática:</strong> Los encuentros pueden tener horarios asignados automáticamente</li>
-                      <li><strong>Visualización clara:</strong> Cada horario tiene un color distintivo para fácil identificación</li>
-                      <li><strong>Orden personalizable:</strong> Define el orden de aparición de los horarios</li>
-                    </ul>
+                  <Alert variant="info" className="mb-3 py-2">
+                    <div className="d-flex align-items-center">
+                      <LuClock className="me-2" size={16} />
+                      <small className="mb-0">
+                        <strong>Horarios:</strong> Define tiempos específicos para cada encuentro con asignación automática y distribución equitativa.
+                      </small>
+                    </div>
                   </Alert>
 
                   <Row>
                     <Col md={8}>
                       <Card>
-                        <CardHeader className="bg-light">
-                          <h4 className="mb-0 fw-bold text-primary">
-                            <LuClock className="me-2" />Horarios Disponibles
-                          </h4>
+                        <CardHeader className="bg-light py-3">
+                          <h5 className="mb-0 fw-bold text-primary">
+                            <LuClock className="me-2" size={18} />Horarios Disponibles
+                          </h5>
                         </CardHeader>
                         <CardBody>
                           {horarios.length === 0 ? (
@@ -1333,79 +1358,52 @@ const TorneoDetailPage = () => {
                               </Button>
                             </div>
                           ) : (
-                            <div className="d-grid gap-3">
+                            <div className="row g-3">
                               {horarios.map(horario => (
-                                <div key={horario.id} className="d-flex align-items-center justify-content-between p-4 border rounded shadow-sm">
-                                  <div className="d-flex align-items-center gap-4">
-                                    <div 
-                                      className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                      style={{
-                                        width: '60px', 
-                                        height: '60px', 
-                                        backgroundColor: horario.color || '#007bff',
-                                        fontSize: '18px'
-                                      }}
-                                    >
-                                      {horario.orden}
+                                <div key={horario.id} className="col-md-6 col-lg-4">
+                                  <div className="card h-100 border-0 shadow-sm">
+                                    <div className="card-body p-3">
+                                      <div className="d-flex align-items-center justify-content-between mb-2">
+                                        <div 
+                                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                                          style={{
+                                            width: '40px', 
+                                            height: '40px', 
+                                            backgroundColor: horario.color || '#007bff',
+                                            fontSize: '14px'
+                                          }}
+                                        >
+                                          {horario.orden}
+                                        </div>
+                                        <div className="d-flex gap-1">
+                                          <Button 
+                                            variant="outline-primary" 
+                                            size="sm"
+                                            onClick={() => handleEditHorario(horario)}
+                                            title="Editar horario"
+                                            className="p-2">
+                                            <LuSettings size={14} />
+                                          </Button>
+                                          <Button 
+                                            variant="outline-danger" 
+                                            size="sm"
+                                            onClick={() => handleDeleteHorario(horario.id)}
+                                            title="Eliminar horario"
+                                            className="p-2">
+                                            <LuTrash size={14} />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                      <h5 className="mb-1 fw-bold text-primary">{horario.hora_inicio}</h5>
+                                      <small className="text-muted">
+                                        Orden: {horario.orden}
+                                      </small>
                                     </div>
-                                    <div>
-                                      <h4 className="mb-2 fw-bold text-primary">{horario.hora_inicio}</h4>
-                                      <p className="text-muted mb-0 fs-6">
-                                        <strong>Orden:</strong> {horario.orden}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="d-flex gap-3">
-                                    <Button 
-                                      variant="outline-primary" 
-                                      size="lg"
-                                      onClick={() => handleEditHorario(horario)}
-                                      title="Editar horario"
-                                      className="px-4">
-                                      <LuSettings size={18} className="me-2" />
-                                      Editar
-                                    </Button>
-                                    <Button 
-                                      variant="outline-danger" 
-                                      size="lg"
-                                      onClick={() => handleDeleteHorario(horario.id)}
-                                      title="Eliminar horario"
-                                      className="px-4">
-                                      <LuTrash size={18} className="me-2" />
-                                      Eliminar
-                                    </Button>
                                   </div>
                                 </div>
                               ))}
                             </div>
                           )}
-                        </CardBody>
-                      </Card>
-                    </Col>
-                    <Col md={4}>
-                      <Card>
-                        <CardHeader>
-                          <h6><LuInfo className="me-2" />Estadísticas</h6>
-                        </CardHeader>
-                        <CardBody>
-                          <div className="d-grid gap-3">
-                            <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                              <span>Total Horarios:</span>
-                              <Badge bg="primary">{horarios.length}</Badge>
-                            </div>
-                            <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                              <span>Encuentros con Horario:</span>
-                              <Badge bg="success">
-                                {encuentros.filter(e => e.horario_id).length}
-                              </Badge>
-                            </div>
-                            <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                              <span>Sin Horario:</span>
-                              <Badge bg="warning">
-                                {encuentros.filter(e => !e.horario_id).length}
-                              </Badge>
-                            </div>
-                          </div>
                         </CardBody>
                       </Card>
                     </Col>
@@ -2280,131 +2278,142 @@ const TorneoDetailPage = () => {
         </ModalFooter>
       </Modal>
 
-      {/* Modal para asignación automática de horarios */}
-      <Modal show={showAsignacionAutomaticaModal} onHide={() => setShowAsignacionAutomaticaModal(false)} size="lg">
+
+      {/* Modal: Tabla de Distribución de Horarios */}
+      <Modal 
+        show={showTablaDistribucionModal} 
+        onHide={() => setShowTablaDistribucionModal(false)}
+        size="xl"
+        centered
+      >
         <ModalHeader closeButton>
           <Modal.Title>
-            <LuSettings className="me-2" />
-            Asignación Automática de Horarios
+            <LuInfo className="me-2" />
+            Tabla de Distribución de Horarios
           </Modal.Title>
         </ModalHeader>
         <ModalBody>
-          <Alert variant="info" className="mb-4">
-            <h6><LuInfo className="me-2" />Configuración de Asignación Automática</h6>
-            <p className="mb-2">
-              Configura cómo se asignarán los horarios automáticamente a los encuentros:
-            </p>
-            <ul className="mb-0">
-              <li><strong>Reiniciar asignaciones:</strong> Elimina todos los horarios actuales y asigna nuevos</li>
-              <li><strong>Solo encuentros sin horario:</strong> Solo asigna horarios a encuentros que no tienen ninguno</li>
-              <li><strong>Orden por jornada:</strong> Respeta el orden de las jornadas al asignar horarios</li>
-            </ul>
-          </Alert>
-
-          <Form id="asignacion-automatica-form" action={handleAsignacionAutomatica}>
-            <Row>
-              <Col md={12}>
-                <h6>Opciones de Asignación</h6>
-                <div className="d-grid gap-3">
-                  <Form.Check
-                    type="checkbox"
-                    id="reiniciar_asignaciones"
-                    name="reiniciar_asignaciones"
-                    value="true"
-                    label={
-                      <div>
-                        <strong>Reiniciar todas las asignaciones</strong>
-                        <br />
-                        <small className="text-muted">
-                          Elimina todos los horarios actuales y asigna nuevos horarios a todos los encuentros
-                        </small>
-                      </div>
-                    }
-                  />
-                  
-                  <Form.Check
-                    type="checkbox"
-                    id="solo_encuentros_sin_horario"
-                    name="solo_encuentros_sin_horario"
-                    value="true"
-                    label={
-                      <div>
-                        <strong>Solo encuentros sin horario</strong>
-                        <br />
-                        <small className="text-muted">
-                          Solo asigna horarios a encuentros que actualmente no tienen ninguno asignado
-                        </small>
-                      </div>
-                    }
-                  />
-                  
-                  <Form.Check
-                    type="checkbox"
-                    id="orden_por_jornada"
-                    name="orden_por_jornada"
-                    value="true"
-                    label={
-                      <div>
-                        <strong>Ordenar por jornada</strong>
-                        <br />
-                        <small className="text-muted">
-                          Asigna horarios respetando el orden de las jornadas (primera jornada primero)
-                        </small>
-                      </div>
-                    }
-                  />
-                </div>
-              </Col>
-            </Row>
-
-            <Row className="mt-4">
-              <Col md={12}>
-                <h6>Horarios Disponibles</h6>
-                <div className="d-grid gap-2">
-                  {horarios.map(horario => (
-                    <div key={horario.id} className="d-flex align-items-center gap-4 p-4 border rounded shadow-sm mb-3">
-                      <div 
-                        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                        style={{
-                          width: '50px', 
-                          height: '50px', 
-                          backgroundColor: horario.color || '#007bff',
-                          fontSize: '16px'
-                        }}
-                      >
-                        {horario.orden}
-                      </div>
-                      <div className="flex-grow-1">
-                        <h5 className="mb-1 fw-bold text-primary">{horario.hora_inicio}</h5>
-                        <p className="text-muted mb-0">
-                          <strong>Orden:</strong> {horario.orden}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {horarios.length === 0 && (
-                  <Alert variant="warning">
-                    <strong>No hay horarios disponibles</strong>
-                    <br />
-                    Debes crear al menos un horario antes de poder asignar automáticamente.
-                  </Alert>
+          {/* Sección de Asignación Automática */}
+          <div className="mb-4">
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <h6 className="mb-0 text-success">
+                <LuSettings className="me-2" size={18} />
+                Asignación Automática de Horarios
+              </h6>
+              <Button 
+                variant="success" 
+                size="sm"
+                onClick={handleEjecutarAsignacionAutomatica}
+                disabled={loading}
+                className="px-3">
+                {loading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    Ejecutando...
+                  </>
+                ) : (
+                  <>
+                    <LuSettings className="me-1" size={14} />
+                    Ejecutar Asignación
+                  </>
                 )}
-              </Col>
-            </Row>
-          </Form>
+              </Button>
+            </div>
+            
+            <div className="row g-2">
+              <div className="col-md-6">
+                <div className="form-check">
+                  <input 
+                    className="form-check-input" 
+                    type="checkbox" 
+                    id="reiniciarAsignaciones"
+                    checked={reiniciarAsignaciones}
+                    onChange={(e) => setReiniciarAsignaciones(e.target.checked)}
+                  />
+                  <label className="form-check-label" htmlFor="reiniciarAsignaciones">
+                    <small className="fw-semibold">Reiniciar todas las asignaciones</small>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-6">
+                <div className="form-check">
+                  <input 
+                    className="form-check-input" 
+                    type="checkbox" 
+                    id="soloEncuentrosSinHorario"
+                    checked={soloEncuentrosSinHorario}
+                    onChange={(e) => setSoloEncuentrosSinHorario(e.target.checked)}
+                  />
+                  <label className="form-check-label" htmlFor="soloEncuentrosSinHorario">
+                    <small>Solo encuentros sin horario</small>
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+  
+          </div>
+
+          {tablaDistribucion && (
+            <div>
+              {/* Tabla de Distribución por Equipo */}
+              <Card>
+                <CardHeader className="bg-light">
+                  <h6 className="mb-0">📋 Distribución por Equipo</h6>
+                </CardHeader>
+                <CardBody>
+                  <div className="table-responsive">
+                    <Table striped bordered hover size="sm">
+                      <thead className="table-dark">
+                        <tr>
+                          <th>Equipo</th>
+                          {tablaDistribucion.horarios.map((horario: any) => (
+                            <th key={horario.id} className="text-center">
+                              {horario.hora}
+                            </th>
+                          ))}
+                          <th className="text-center">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tablaDistribucion.equipos.map((equipo: any) => (
+                          <tr key={equipo.id}>
+                            <td className="fw-bold">{equipo.nombre}</td>
+                            {equipo.distribucion.map((dist: any) => (
+                              <td key={dist.horario_id} className="text-center">
+                                <Badge 
+                                  bg={dist.veces >= tablaDistribucion.estadisticas.vecesMinimas && 
+                                      dist.veces <= tablaDistribucion.estadisticas.vecesMaximas ? 
+                                      "success" : "warning"}
+                                >
+                                  {dist.veces}
+                                </Badge>
+                              </td>
+                            ))}
+                            <td className="text-center">
+                              <Badge bg="primary">{equipo.totalEncuentros}</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                  
+                  {/* Leyenda */}
+                  <div className="mt-3">
+                    <small className="text-muted">
+                      <Badge bg="success" className="me-2">Verde</Badge> = Distribución equitativa
+                      <Badge bg="warning" className="ms-3 me-2">Amarillo</Badge> = Fuera del rango esperado
+                    </small>
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+          )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setShowAsignacionAutomaticaModal(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            variant="success" 
-            type="submit" 
-            form="asignacion-automatica-form"
-            disabled={horarios.length === 0}>
-            <LuSettings className="me-1" />
-            Ejecutar Asignación Automática
+          <Button variant="secondary" onClick={() => setShowTablaDistribucionModal(false)}>
+            Cerrar
           </Button>
         </ModalFooter>
       </Modal>

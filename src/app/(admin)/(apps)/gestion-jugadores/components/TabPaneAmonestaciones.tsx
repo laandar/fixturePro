@@ -19,10 +19,16 @@ const TabPaneAmonestaciones = () => {
     // Función para obtener el equipo del jugador por ID
     const getJugadorEquipo = (jugadorId: string) => {
         const jugadorA = jugadoresParticipantesA.find(j => j.id.toString() === jugadorId)
-        if (jugadorA) return jugadorA.equipo?.nombre || 'Equipo A'
+        if (jugadorA) {
+            const equipo = jugadorA.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo
+            return equipo?.nombre || 'Equipo A'
+        }
         
         const jugadorB = jugadoresParticipantesB.find(j => j.id.toString() === jugadorId)
-        if (jugadorB) return jugadorB.equipo?.nombre || 'Equipo B'
+        if (jugadorB) {
+            const equipo = jugadorB.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo
+            return equipo?.nombre || 'Equipo B'
+        }
         
         return 'Equipo desconocido'
     }

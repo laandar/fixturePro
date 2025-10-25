@@ -56,6 +56,8 @@ const TabPaneJugadores = () => {
         jugadorSale: string;
         jugadorEntra: string;
     } | null>(null);
+    const [searchFilterA, setSearchFilterA] = useState('');
+    const [searchFilterB, setSearchFilterB] = useState('');
 
     const {
         loading,
@@ -92,6 +94,7 @@ const TabPaneJugadores = () => {
         equipoVisitanteId,
         jornada,
         estadoEncuentro,
+        torneoCategoriaId,
         isAdmin,
         cambiosJugadores,
         setCambiosJugadores,
@@ -100,6 +103,21 @@ const TabPaneJugadores = () => {
 
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
     const shouldDisableActions = isEncuentroFinalizado && !isAdmin();
+
+    // Función para filtrar jugadores por búsqueda
+    const filterJugadores = (jugadores: JugadorWithEquipo[], searchTerm: string) => {
+        if (!searchTerm.trim()) return jugadores;
+        
+        const term = searchTerm.toLowerCase().trim();
+        return jugadores.filter(jugador => 
+            jugador.apellido_nombre.toLowerCase().includes(term) ||
+            jugador.cedula.toLowerCase().includes(term)
+        );
+    };
+
+    // Jugadores filtrados para cada equipo
+    const jugadoresFiltradosA = filterJugadores(jugadoresEquipoA, searchFilterA);
+    const jugadoresFiltradosB = filterJugadores(jugadoresEquipoB, searchFilterB);
 
     const handleImageClick = (imageUrl: string) => {
         setSelectedImage(imageUrl);
@@ -495,7 +513,7 @@ const TabPaneJugadores = () => {
                                                     size="sm"
        onClick={() => {
            if (change.id) {
-               handleDeshacerCambio(change.id, change.entra.id, change.sale.apellido_nombre, change.entra.apellido_nombre);
+               handleDeshacerCambio(change.id, parseInt(change.entra.id), change.sale.apellido_nombre, change.entra.apellido_nombre);
            }
        }}
                                                     title="Deshacer cambio1"
@@ -753,7 +771,7 @@ const TabPaneJugadores = () => {
                                                 <Button 
                                                     variant="outline-danger" 
                                                     size="sm"
-                                                    onClick={() => change.id && handleDeshacerCambio(change.id, change.entra.id, change.sale.apellido_nombre, change.entra.apellido_nombre)}
+                                                    onClick={() => change.id && handleDeshacerCambio(change.id, parseInt(change.entra.id), change.sale.apellido_nombre, change.entra.apellido_nombre)}
                                                     title="Deshacer cambio"
                                                     disabled={shouldDisableActions}
                                                 >
@@ -770,33 +788,151 @@ const TabPaneJugadores = () => {
             </Row>
 
             {/* Modal de Selección de Jugadores Equipo A */}
-            <Modal show={showSelectionModalA} onHide={() => setShowSelectionModalA(false)} size="lg">
+            <Modal 
+                show={showSelectionModalA} 
+                onHide={() => setShowSelectionModalA(false)} 
+                size="xl"
+                centered
+                scrollable
+            >
                 <ModalHeader closeButton>
-                    <ModalTitle>Seleccionar Jugadores para Equipo A</ModalTitle>
+                    <ModalTitle className="d-flex align-items-center">
+                        <TbUsers className="me-2" />
+                        Seleccionar Jugadores para {nombreEquipoA}
+                    </ModalTitle>
                 </ModalHeader>
-                <ModalBody>
-                    <div className="d-flex justify-content-end mb-3">
-                        <Button variant="outline-primary" size="sm" onClick={() => handleSelectAllPlayers('A')} className="me-2" disabled={shouldDisableActions}>
-                            Seleccionar Todos
-                        </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleClearAllPlayers('A')} disabled={shouldDisableActions}>
-                            Limpiar Selección
-                        </Button>
+                <ModalBody className="p-3">
+                    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
+                        <div className="text-muted small">
+                            Total: {jugadoresEquipoA.length} jugadores disponibles
+                            {searchFilterA && (
+                                <span className="ms-2 text-primary">
+                                    ({jugadoresFiltradosA.length} encontrados)
+                                </span>
+                            )}
+                        </div>
+                        <div className="d-flex gap-2">
+                            <Button 
+                                variant="outline-primary" 
+                                size="sm" 
+                                onClick={() => handleSelectAllPlayers('A')} 
+                                disabled={shouldDisableActions}
+                            >
+                                <TbCheck className="me-1" />
+                                Seleccionar Todos
+                            </Button>
+                            <Button 
+                                variant="outline-danger" 
+                                size="sm" 
+                                onClick={() => handleClearAllPlayers('A')} 
+                                disabled={shouldDisableActions}
+                            >
+                                <TbTrash className="me-1" />
+                                Limpiar
+                            </Button>
+                        </div>
                     </div>
-                    <Row>
-                        {jugadoresEquipoA.map((jugador: JugadorWithEquipo) => (
-                            <Col md={6} key={jugador.id}>
-                                <Form.Check
-                                    type="checkbox"
-                                    id={`jugador-A-${jugador.id}`}
-                                    label={`${jugador.apellido_nombre} (${jugador.cedula})`}
-                                    checked={jugadoresParticipantesA.some(p => p.id === jugador.id)}
-                                    onChange={() => handleTogglePlayerSelection(jugador, 'A')}
-                                    disabled={shouldDisableActions}
-                                />
-                            </Col>
+                    
+                    {/* Campo de búsqueda */}
+                    <div className="mb-3">
+                        <Form.Control
+                            type="text"
+                            placeholder="Buscar por nombre o cédula..."
+                            value={searchFilterA}
+                            onChange={(e) => setSearchFilterA(e.target.value)}
+                            className="form-control-lg"
+                            style={{ fontSize: '0.9rem' }}
+                        />
+                    </div>
+                    
+                    <div className="row g-2">
+                        {jugadoresFiltradosA.map((jugador: JugadorWithEquipo) => (
+                            <div key={jugador.id} className="col-12 col-sm-6 col-lg-4">
+                                <div 
+                                    className={`card h-100 border-2 ${jugadoresParticipantesA.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : 'border-light'} ${!shouldDisableActions ? 'cursor-pointer' : ''}`} 
+                                    style={{ overflow: 'hidden', cursor: shouldDisableActions ? 'not-allowed' : 'pointer' }}
+                                    onClick={() => !shouldDisableActions && handleTogglePlayerSelection(jugador, 'A')}
+                                >
+                                    <div className="card-body p-3" style={{ overflow: 'hidden' }}>
+                                        <div className="d-flex align-items-start" style={{ minWidth: 0 }}>
+                                            {jugador.foto ? (
+                                                <Image
+                                                    src={jugador.foto}
+                                                    alt={jugador.apellido_nombre}
+                                                    roundedCircle
+                                                    className="me-3 flex-shrink-0"
+                                                    style={{ width: '40px', height: '40px', objectFit: 'cover', flexShrink: 0 }}
+                                                />
+                                            ) : (
+                                                <div
+                                                    className="rounded-circle bg-light d-flex align-items-center justify-content-center me-3 flex-shrink-0"
+                                                    style={{ width: '40px', height: '40px', flexShrink: 0 }}
+                                                >
+                                                    <TbUsers className="text-muted" size={20} />
+                                                </div>
+                                            )}
+                                            <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                                                <div 
+                                                    className="fw-bold" 
+                                                    title={jugador.apellido_nombre}
+                                                    style={{ 
+                                                        wordWrap: 'break-word',
+                                                        wordBreak: 'break-word',
+                                                        hyphens: 'auto',
+                                                        lineHeight: '1.2',
+                                                        maxWidth: '100%',
+                                                        display: 'block'
+                                                    }}
+                                                >
+                                                    {jugador.apellido_nombre}
+                                                </div>
+                                                <div 
+                                                    className="text-muted small"
+                                                    title={jugador.cedula}
+                                                    style={{ 
+                                                        wordWrap: 'break-word',
+                                                        wordBreak: 'break-word',
+                                                        hyphens: 'auto',
+                                                        lineHeight: '1.2',
+                                                        maxWidth: '100%',
+                                                        display: 'block'
+                                                    }}
+                                                >
+                                                    {jugador.cedula}
+                                                </div>
+                                            </div>
+                                            {/* Indicador visual de selección */}
+                                            {jugadoresParticipantesA.some(p => p.id === jugador.id) && (
+                                                <div className="ms-2">
+                                                    <TbCheck className="text-primary" size={24} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         ))}
-                    </Row>
+                    </div>
+                    
+                    {jugadoresFiltradosA.length === 0 && (
+                        <div className="text-center text-muted py-5">
+                            <TbUsers size={48} className="mb-3" />
+                            {searchFilterA ? (
+                                <div>
+                                    <p>No se encontraron jugadores que coincidan con "{searchFilterA}"</p>
+                                    <Button 
+                                        variant="outline-secondary" 
+                                        size="sm" 
+                                        onClick={() => setSearchFilterA('')}
+                                    >
+                                        Limpiar búsqueda
+                                    </Button>
+                                </div>
+                            ) : (
+                                <p>No hay jugadores disponibles para este equipo</p>
+                            )}
+                        </div>
+                    )}
                 </ModalBody>
                 <ModalFooter>
                     {saveMessage && (
@@ -810,6 +946,7 @@ const TabPaneJugadores = () => {
                     <Button variant="secondary" onClick={() => {
                         setShowSelectionModalA(false);
                         setSaveMessage(null);
+                        setSearchFilterA('');
                     }}>
                         Cerrar
                     </Button>
@@ -824,33 +961,151 @@ const TabPaneJugadores = () => {
             </Modal>
 
             {/* Modal de Selección de Jugadores Equipo B */}
-            <Modal show={showSelectionModalB} onHide={() => setShowSelectionModalB(false)} size="lg">
+            <Modal 
+                show={showSelectionModalB} 
+                onHide={() => setShowSelectionModalB(false)} 
+                size="xl"
+                centered
+                scrollable
+            >
                 <ModalHeader closeButton>
-                    <ModalTitle>Seleccionar Jugadores para Equipo B</ModalTitle>
+                    <ModalTitle className="d-flex align-items-center">
+                        <TbUsers className="me-2" />
+                        Seleccionar Jugadores para {nombreEquipoB}
+                    </ModalTitle>
                 </ModalHeader>
-                <ModalBody>
-                    <div className="d-flex justify-content-end mb-3">
-                        <Button variant="outline-primary" size="sm" onClick={() => handleSelectAllPlayers('B')} className="me-2" disabled={isEncuentroFinalizado}>
-                            Seleccionar Todos
-                        </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleClearAllPlayers('B')} disabled={isEncuentroFinalizado}>
-                            Limpiar Selección
-                        </Button>
+                <ModalBody className="p-3">
+                    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
+                        <div className="text-muted small">
+                            Total: {jugadoresEquipoB.length} jugadores disponibles
+                            {searchFilterB && (
+                                <span className="ms-2 text-primary">
+                                    ({jugadoresFiltradosB.length} encontrados)
+                                </span>
+                            )}
+                        </div>
+                        <div className="d-flex gap-2">
+                            <Button 
+                                variant="outline-primary" 
+                                size="sm" 
+                                onClick={() => handleSelectAllPlayers('B')} 
+                                disabled={shouldDisableActions}
+                            >
+                                <TbCheck className="me-1" />
+                                Seleccionar Todos
+                            </Button>
+                            <Button 
+                                variant="outline-danger" 
+                                size="sm" 
+                                onClick={() => handleClearAllPlayers('B')} 
+                                disabled={shouldDisableActions}
+                            >
+                                <TbTrash className="me-1" />
+                                Limpiar
+                            </Button>
+                        </div>
                     </div>
-                    <Row>
-                        {jugadoresEquipoB.map((jugador: JugadorWithEquipo) => (
-                            <Col md={6} key={jugador.id}>
-                                <Form.Check
-                                    type="checkbox"
-                                    id={`jugador-B-${jugador.id}`}
-                                    label={`${jugador.apellido_nombre} (${jugador.cedula})`}
-                                    checked={jugadoresParticipantesB.some(p => p.id === jugador.id)}
-                                    onChange={() => handleTogglePlayerSelection(jugador, 'B')}
-                                    disabled={shouldDisableActions}
-                                />
-                            </Col>
+                    
+                    {/* Campo de búsqueda */}
+                    <div className="mb-3">
+                        <Form.Control
+                            type="text"
+                            placeholder="Buscar por nombre o cédula..."
+                            value={searchFilterB}
+                            onChange={(e) => setSearchFilterB(e.target.value)}
+                            className="form-control-lg"
+                            style={{ fontSize: '0.9rem' }}
+                        />
+                    </div>
+                    
+                    <div className="row g-2">
+                        {jugadoresFiltradosB.map((jugador: JugadorWithEquipo) => (
+                            <div key={jugador.id} className="col-12 col-sm-6 col-lg-4">
+                                <div 
+                                    className={`card h-100 border-2 ${jugadoresParticipantesB.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : 'border-light'} ${!shouldDisableActions ? 'cursor-pointer' : ''}`} 
+                                    style={{ overflow: 'hidden', cursor: shouldDisableActions ? 'not-allowed' : 'pointer' }}
+                                    onClick={() => !shouldDisableActions && handleTogglePlayerSelection(jugador, 'B')}
+                                >
+                                    <div className="card-body p-3" style={{ overflow: 'hidden' }}>
+                                        <div className="d-flex align-items-start" style={{ minWidth: 0 }}>
+                                            {jugador.foto ? (
+                                                <Image
+                                                    src={jugador.foto}
+                                                    alt={jugador.apellido_nombre}
+                                                    roundedCircle
+                                                    className="me-3 flex-shrink-0"
+                                                    style={{ width: '40px', height: '40px', objectFit: 'cover', flexShrink: 0 }}
+                                                />
+                                            ) : (
+                                                <div
+                                                    className="rounded-circle bg-light d-flex align-items-center justify-content-center me-3 flex-shrink-0"
+                                                    style={{ width: '40px', height: '40px', flexShrink: 0 }}
+                                                >
+                                                    <TbUsers className="text-muted" size={20} />
+                                                </div>
+                                            )}
+                                            <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                                                <div 
+                                                    className="fw-bold" 
+                                                    title={jugador.apellido_nombre}
+                                                    style={{ 
+                                                        wordWrap: 'break-word',
+                                                        wordBreak: 'break-word',
+                                                        hyphens: 'auto',
+                                                        lineHeight: '1.2',
+                                                        maxWidth: '100%',
+                                                        display: 'block'
+                                                    }}
+                                                >
+                                                    {jugador.apellido_nombre}
+                                                </div>
+                                                <div 
+                                                    className="text-muted small"
+                                                    title={jugador.cedula}
+                                                    style={{ 
+                                                        wordWrap: 'break-word',
+                                                        wordBreak: 'break-word',
+                                                        hyphens: 'auto',
+                                                        lineHeight: '1.2',
+                                                        maxWidth: '100%',
+                                                        display: 'block'
+                                                    }}
+                                                >
+                                                    {jugador.cedula}
+                                                </div>
+                                            </div>
+                                            {/* Indicador visual de selección */}
+                                            {jugadoresParticipantesB.some(p => p.id === jugador.id) && (
+                                                <div className="ms-2">
+                                                    <TbCheck className="text-primary" size={24} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         ))}
-                    </Row>
+                    </div>
+                    
+                    {jugadoresFiltradosB.length === 0 && (
+                        <div className="text-center text-muted py-5">
+                            <TbUsers size={48} className="mb-3" />
+                            {searchFilterB ? (
+                                <div>
+                                    <p>No se encontraron jugadores que coincidan con "{searchFilterB}"</p>
+                                    <Button 
+                                        variant="outline-secondary" 
+                                        size="sm" 
+                                        onClick={() => setSearchFilterB('')}
+                                    >
+                                        Limpiar búsqueda
+                                    </Button>
+                                </div>
+                            ) : (
+                                <p>No hay jugadores disponibles para este equipo</p>
+                            )}
+                        </div>
+                    )}
                 </ModalBody>
                 <ModalFooter>
                     {saveMessage && (
@@ -864,6 +1119,7 @@ const TabPaneJugadores = () => {
                     <Button variant="secondary" onClick={() => {
                         setShowSelectionModalB(false);
                         setSaveMessage(null);
+                        setSearchFilterB('');
                     }}>
                         Cerrar
                     </Button>

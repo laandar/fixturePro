@@ -18,6 +18,7 @@ export interface GestionJugadoresState {
     equipoVisitanteId: number | null;
     jornada: number | null;
     estadoEncuentro: string | null;
+    torneoCategoriaId: number | null;
     isAdmin: () => boolean;
     showSelectionModalA: boolean;
     setShowSelectionModalA: (show: boolean) => void;

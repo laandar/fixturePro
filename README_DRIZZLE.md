@@ -249,7 +249,7 @@ Sincroniza el esquema directamente con la base de datos (solo desarrollo).
 Crea un archivo `.env.local` con:
 
 ```env
-DATABASE_URL=postgresql://username:password@localhost:5432/inspinia_db
+DATABASE_URL=postgresql://username:password@localhost:5432/fixturepro_db
 ```
 
 ### Configuración de Base de Datos
@@ -261,7 +261,7 @@ export default defineConfig({
   out: './src/db/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/inspinia_db',
+    url: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/fixturepro_db',
   },
   verbose: true,
   strict: true,
@@ -408,4 +408,4 @@ const avgPrice = await db.select({ average: avg(products.price) }).from(products
 
 ---
 
-¡Drizzle ORM está completamente configurado y listo para usar en tu proyecto Inspinia! 🎉 
+¡Drizzle ORM está completamente configurado y listo para usar en tu proyecto FixturePro! 🎉 

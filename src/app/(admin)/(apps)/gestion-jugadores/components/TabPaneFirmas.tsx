@@ -92,7 +92,7 @@ const TabPaneFirmas = () => {
     // Función para manejar el cambio de capitán
     const handleCaptainChange = async (team: 'A' | 'B', newCaptainId: number) => {
         const newCaptain = (team === 'A' ? jugadoresParticipantesA : jugadoresParticipantesB)
-            .find(player => player.id === newCaptainId)
+            .find(player => player.id === newCaptainId.toString())
         
         if (newCaptain) {
             try {
