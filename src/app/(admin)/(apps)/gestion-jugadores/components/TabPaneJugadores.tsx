@@ -460,7 +460,7 @@ const TabPaneJugadores = () => {
                                                 {change.sale.foto ? (
                                                     <Image
                                                         src={change.sale.foto}
-                                                        alt={change.sale.apellido_nombre}
+                                                        
                                                         roundedCircle
                                                         className="me-2"
                                                         style={{ width: '30px', height: '30px', objectFit: 'cover' }}
@@ -720,7 +720,7 @@ const TabPaneJugadores = () => {
                                                 {change.sale.foto ? (
                                                     <Image
                                                         src={change.sale.foto}
-                                                        alt={change.sale.apellido_nombre}
+                                                        
                                                         roundedCircle
                                                         className="me-2"
                                                         style={{ width: '30px', height: '30px', objectFit: 'cover' }}
