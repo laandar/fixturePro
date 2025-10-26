@@ -27,3 +27,8 @@ declare module '*.webp' {
   const value: any;
   export default value;
 }
+
+declare module '*.ico' {
+  const value: any;
+  export default value;
+}
