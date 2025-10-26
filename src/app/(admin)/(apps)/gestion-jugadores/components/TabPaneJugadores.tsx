@@ -325,7 +325,7 @@ const TabPaneJugadores = () => {
                                             {jugador.foto ? (
                                                 <Image
                                                     src={jugador.foto}
-                                                    alt={jugador.apellido_nombre}
+                                                    
                                                     roundedCircle
                                                     className="me-3"
                                                     style={{ width: '40px', height: '40px', objectFit: 'cover', cursor: 'pointer' }}
@@ -585,7 +585,7 @@ const TabPaneJugadores = () => {
                                             {jugador.foto ? (
                                                 <Image
                                                     src={jugador.foto}
-                                                    alt={jugador.apellido_nombre}
+                                                    
                                                     roundedCircle
                                                     className="me-3"
                                                     style={{ width: '40px', height: '40px', objectFit: 'cover', cursor: 'pointer' }}
@@ -858,7 +858,7 @@ const TabPaneJugadores = () => {
                                             {jugador.foto ? (
                                                 <Image
                                                     src={jugador.foto}
-                                                    alt={jugador.apellido_nombre}
+                                                    
                                                     roundedCircle
                                                     className="me-3 flex-shrink-0"
                                                     style={{ width: '40px', height: '40px', objectFit: 'cover', flexShrink: 0 }}
@@ -1031,7 +1031,7 @@ const TabPaneJugadores = () => {
                                             {jugador.foto ? (
                                                 <Image
                                                     src={jugador.foto}
-                                                    alt={jugador.apellido_nombre}
+                                                    
                                                     roundedCircle
                                                     className="me-3 flex-shrink-0"
                                                     style={{ width: '40px', height: '40px', objectFit: 'cover', flexShrink: 0 }}
@@ -1178,7 +1178,7 @@ const TabPaneJugadores = () => {
                                                     {jugador.foto ? (
                                                         <Image
                                                             src={jugador.foto}
-                                                            alt={jugador.apellido_nombre}
+                                                            
                                                             roundedCircle
                                                             className="me-3"
                                                             style={{ width: '40px', height: '40px', objectFit: 'cover' }}
