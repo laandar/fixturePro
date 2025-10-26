@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Button, Card, CardBody, Col, Form, Row } from 'react-bootstrap'
 
-import user1 from '@/assets/images/users/user-1.jpg'
+
 
 const Page = () => {
   const [code, setCode] = useState<string[]>(Array(6).fill(''))
@@ -32,7 +32,7 @@ const Page = () => {
                 <p className="text-muted mx-auto mb-5">This screen is locked. Enter your PIN to continue.</p>
 
                 <div className="text-center mb-4">
-                  <Image src={user1} className="rounded-circle img-thumbnail avatar-xxl mb-2" alt="thumbnail" width={120} height={120} />
+                  
                   <h5 className="fs-md">Damian D.</h5>
                 </div>
 
@@ -63,7 +63,7 @@ const Page = () => {
               </p>
 
               <p className="text-center text-muted mt-auto mb-0">
-                © 2014 - <span>{currentYear}</span> FIXTUREPRO — by <span className="fw-semibold">{author}</span>
+                ©  <span>{currentYear}</span> FIXTUREPRO — by <span className="fw-semibold">{author}</span>
               </p>
             </CardBody>
           </Card>

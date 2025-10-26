@@ -91,13 +91,7 @@ export const menuItems: MenuItemType[] = [
     url: '/dashboard',
     roles: ['admin', 'arbitro', 'jugador', 'visitante'], // Todos
   },
-  { 
-    key: 'landing', 
-    label: 'Landing Page', 
-    icon: TbStackFront, 
-    url: '/landing',
-    roles: ['admin', 'arbitro', 'jugador', 'visitante'], // Todos
-  },
+
   { key: 'apps', label: 'Aplicaciones', isTitle: true },
   {
     key: 'sports',
@@ -369,11 +363,5 @@ export const horizontalMenuItems: MenuItemType[] = [
         ],
       },
     ],
-  },
-  {
-    key: 'landing',
-    label: 'Landing',
-    icon: TbRocket,
-    url: '/landing',
   },
 ]

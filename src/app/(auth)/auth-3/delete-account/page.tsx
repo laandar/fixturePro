@@ -44,7 +44,7 @@ const Page = () => {
               </div>
 
               <p className="text-center text-muted mt-auto mb-0">
-                © 2014 - {currentYear} FIXTUREPRO — by <span className="fw-semibold">{author}</span>
+                ©  {currentYear} FIXTUREPRO — by <span className="fw-semibold">{author}</span>
               </p>
             </CardBody>
           </Card>

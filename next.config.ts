@@ -46,7 +46,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/',
-        destination: '/dashboard',
+        destination: '/auth-3/sign-in',
         permanent: false,
       },
     ];

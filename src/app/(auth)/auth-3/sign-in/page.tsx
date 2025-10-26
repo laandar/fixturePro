@@ -117,7 +117,7 @@ function SignInForm() {
               </p>
 
               <p className="text-center text-muted mt-auto mb-0">
-                © 2014 - {currentYear} FixturePro — by <span className="fw-semibold">{author}</span>
+                ©  {currentYear} FixturePro — by <span className="fw-semibold">{author}</span>
               </p>
             </CardBody>
           </Card>

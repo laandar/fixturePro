@@ -4,7 +4,6 @@ import { useLayoutContext } from '@/context/useLayoutContext'
 import CustomizerToggler from '@/layouts/components/topbar/components/CustomizerToggler'
 import LanguageDropdown from '@/layouts/components/topbar/components/LanguageDropdown'
 import MegaMenu from '@/layouts/components/topbar/components/MegaMenu'
-import MessageDropdown from '@/layouts/components/topbar/components/MessageDropdown'
 import NotificationDropdown from '@/layouts/components/topbar/components/NotificationDropdown'
 import ThemeToggler from '@/layouts/components/topbar/components/ThemeToggler'
 import UserProfile from '@/layouts/components/topbar/components/UserProfile'
@@ -63,22 +62,17 @@ const Topbar = () => {
             <TbMenu4 className="fs-22" />
           </Button>
 
-          <div className="app-search d-none d-xl-flex">
-            <FormControl type="search" className="topbar-search" name="search" placeholder="Search for something..." />
-            <LuSearch className="app-search-icon text-muted" />
-          </div>
+         
 
-          <MegaMenu />
+          
         </div>
 
         <div className="d-flex align-items-center gap-2">
-          <LanguageDropdown />
+          {/* <LanguageDropdown /> */}
 
-          <MessageDropdown />
+           {/* <NotificationDropdown />
 
-          <NotificationDropdown />
-
-          <CustomizerToggler />
+          <CustomizerToggler />*/}
 
           <ThemeToggler />
 

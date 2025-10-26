@@ -1,6 +1,6 @@
-import avatar from '@/assets/images/users/user-1.jpg'
 import AppLogo from '@/components/AppLogo'
 import { author, currentYear } from '@/helpers'
+import sellerLogo from '@/assets/images/sellers/3.png'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardBody, Col, Form, FormControl, InputGroup, Row } from 'react-bootstrap'
@@ -27,7 +27,7 @@ const Page = () => {
                 <p className="text-muted mx-auto mb-5">Let&apos;s get you signed in. Enter your PIN to continue</p>
 
                 <div className="text-center mb-4">
-                  <Image src={avatar} className="rounded-circle img-thumbnail avatar-xxl mb-2" alt="thumbnail" width={120} height={120} />
+                  <Image src={sellerLogo} className="rounded-circle img-thumbnail avatar-xxl mb-2" alt="thumbnail" width={120} height={120} />
                   <h5 className="fs-md">Damian D.</h5>
                 </div>
 
@@ -60,7 +60,7 @@ const Page = () => {
               </div>
 
               <p className="text-center text-muted mt-auto mb-0">
-                © 2014 - <span>{currentYear}</span> FIXTUREPRO — by <span className="fw-semibold">{author}</span>
+                ©  <span>{currentYear}</span> FIXTUREPRO — by <span className="fw-semibold">{author}</span>
               </p>
             </CardBody>
           </Card>
