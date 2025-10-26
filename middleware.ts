@@ -1,6 +1,12 @@
 import { auth } from '@/auth';
+import { NextResponse } from 'next/server';
 
 export default auth((req) => {
+  // Forzar HTTPS en producción
+  if (process.env.NODE_ENV === 'production' && req.headers.get('x-forwarded-proto') !== 'https') {
+    return NextResponse.redirect(`https://${req.headers.get('host')}${req.nextUrl.pathname}`, 301);
+  }
+
   const isLoggedIn = !!req.auth;
   const pathname = req.nextUrl.pathname;
   

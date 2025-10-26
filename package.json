@@ -16,7 +16,9 @@
     "db:seed": "tsx src/db/seed.ts",
     "auth:seed-admin": "tsx src/lib/seed-admin.ts",
     "seed:roles-menus": "tsx src/db/seed-roles-menus.ts",
-    "migrate:users-to-roles": "tsx src/db/migrate-users-to-roles.ts"
+    "migrate:users-to-roles": "tsx src/db/migrate-users-to-roles.ts",
+    "railway:deploy": "node scripts/deploy-railway.js",
+    "railway:setup": "npm run db:push && npm run seed:roles-menus && npm run auth:seed-admin"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.0",

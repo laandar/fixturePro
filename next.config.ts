@@ -51,6 +51,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Forzar HTTPS en producción
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains; preload',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
