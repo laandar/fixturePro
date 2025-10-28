@@ -23,9 +23,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: false,
       message: 'Error en función getTorneosPublicos',
-      error: error.message,
-      type: error.constructor.name,
-      stack: error.stack,
+      error: error instanceof Error ? error.message : String(error),
+      type: error instanceof Error ? error.constructor.name : typeof error,
+      stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString()
     }, { status: 500 })
   }
