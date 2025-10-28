@@ -15,7 +15,8 @@ export async function GET() {
     
     // Analizar estados
     const estadosTorneos = todosLosTorneos.reduce((acc, torneo) => {
-      acc[torneo.estado] = (acc[torneo.estado] || 0) + 1
+      const estado = torneo.estado || 'sin_estado'
+      acc[estado] = (acc[estado] || 0) + 1
       return acc
     }, {} as Record<string, number>)
     
