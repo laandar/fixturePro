@@ -1291,23 +1291,39 @@ export const estadisticasQueries = {
 
   // Obtener todos los torneos públicos (activos, finalizados o planificados)
   getTorneosPublicos: async () => {
-    const torneosData = await db.query.torneos.findMany({
-      where: (torneos, { or, eq }) => or(
-        eq(torneos.estado, 'en_curso'),
-        eq(torneos.estado, 'finalizado'),
-        eq(torneos.estado, 'planificado')
-      ),
-      with: {
-        categoria: true,
-        equiposTorneo: true,
-      },
-      orderBy: [asc(torneos.fecha_inicio)],
-    });
+    try {
+      console.log('🔍 [getTorneosPublicos] Iniciando consulta...')
+      
+      const torneosData = await db.query.torneos.findMany({
+        where: (torneos, { or, eq }) => or(
+          eq(torneos.estado, 'en_curso'),
+          eq(torneos.estado, 'finalizado'),
+          eq(torneos.estado, 'planificado')
+        ),
+        with: {
+          categoria: true,
+          equiposTorneo: true,
+        },
+        orderBy: [asc(torneos.fecha_inicio)],
+      });
 
-    return torneosData.map(torneo => ({
-      ...torneo,
-      equiposCount: torneo.equiposTorneo?.length || 0
-    }));
+      console.log('📊 [getTorneosPublicos] Torneos encontrados:', torneosData.length)
+
+      const result = torneosData.map(torneo => ({
+        ...torneo,
+        equiposCount: torneo.equiposTorneo?.length || 0
+      }));
+
+      console.log('✅ [getTorneosPublicos] Consulta completada exitosamente')
+      return result;
+    } catch (error) {
+      console.error('❌ [getTorneosPublicos] Error en consulta:', error)
+      console.error('📋 [getTorneosPublicos] Detalles:', {
+        message: error instanceof Error ? error.message : 'Error desconocido',
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      throw error; // Re-lanzar el error para que sea manejado por el componente
+    }
   },
 
   // Obtener TODOS los torneos (para debug)
