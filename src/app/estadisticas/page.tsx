@@ -11,6 +11,10 @@ export async function generateMetadata() {
   }
 }
 
+// Forzar regeneración de la página
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function EstadisticasPage() {
   try {
     // Log para debugging en producción
