@@ -25,6 +25,29 @@ export default async function EstadisticasPage() {
     
     if (!torneos || torneos.length === 0) {
       console.log('⚠️ No se encontraron torneos')
+      
+      // Obtener información adicional para debugging
+      let debugInfo = null
+      try {
+        const todosLosTorneos = await estadisticasQueries.getAllTorneos()
+        debugInfo = {
+          totalTorneos: todosLosTorneos.length,
+          estados: todosLosTorneos.reduce((acc, t) => {
+            const estado = t.estado || 'sin_estado'
+            acc[estado] = (acc[estado] || 0) + 1
+            return acc
+          }, {} as Record<string, number>),
+          torneos: todosLosTorneos.map(t => ({
+            id: t.id,
+            nombre: t.nombre,
+            estado: t.estado
+          }))
+        }
+        console.log('🔍 Debug info:', debugInfo)
+      } catch (debugError) {
+        console.error('Error obteniendo debug info:', debugError)
+      }
+      
       return (
       <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
         <Container className="py-5">
@@ -40,6 +63,29 @@ export default async function EstadisticasPage() {
             </div>
             <h2 className="text-dark">No hay torneos disponibles</h2>
             <p className="text-muted">Los torneos aparecerán aquí una vez que estén activos o finalizados.</p>
+            
+            {/* Información de debug */}
+            {debugInfo && (
+              <div className="mt-4 p-3 bg-light rounded" style={{ maxWidth: '600px', margin: '0 auto' }}>
+                <h6 className="text-muted mb-2">🔍 Información de Debug:</h6>
+                <div className="text-start">
+                  <p className="mb-1"><strong>Total de torneos:</strong> {debugInfo.totalTorneos}</p>
+                  <p className="mb-1"><strong>Estados encontrados:</strong></p>
+                  <ul className="mb-2">
+                    {Object.entries(debugInfo.estados).map(([estado, count]) => (
+                      <li key={estado}>{estado}: {count} torneo(s)</li>
+                    ))}
+                  </ul>
+                  <details>
+                    <summary className="text-muted">Ver todos los torneos</summary>
+                    <pre className="mt-2 p-2 bg-white rounded" style={{ fontSize: '0.8rem', overflow: 'auto' }}>
+                      {JSON.stringify(debugInfo.torneos, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              </div>
+            )}
+            
             {process.env.NODE_ENV === 'development' && (
               <div className="mt-3">
                 <small className="text-muted">

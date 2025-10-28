@@ -71,6 +71,19 @@ https://ligaatahualpaoficial.com/api/debug/torneos-test
 }
 ```
 
+### Paso 3: Diagnóstico Completo (NUEVO)
+
+Visita en producción:
+```
+https://ligaatahualpaoficial.com/api/debug/estadisticas-completo
+```
+
+**Este endpoint te mostrará:**
+- Total de torneos en la base de datos
+- Cantidad de torneos públicos (filtrados)
+- Distribución por estados
+- Lista completa de torneos con sus estados
+
 ## 🚀 Soluciones por Problema
 
 ### Si `db-status` falla:
