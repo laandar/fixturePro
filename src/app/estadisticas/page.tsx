@@ -17,41 +17,10 @@ export const revalidate = 0
 
 export default async function EstadisticasPage() {
   try {
-    // Log para debugging en producción
-    console.log('🔍 Intentando cargar torneos públicos...')
-    console.log('🌍 Entorno:', process.env.NODE_ENV)
-    console.log('🔗 DATABASE_URL presente:', !!process.env.DATABASE_URL)
-    
     // Obtener todos los torneos activos o finalizados
     const torneos = await estadisticasQueries.getTorneosPublicos()
     
-    console.log('📊 Torneos obtenidos:', torneos?.length || 0)
-    
     if (!torneos || torneos.length === 0) {
-      console.log('⚠️ No se encontraron torneos')
-      
-      // Obtener información adicional para debugging
-      let debugInfo = null
-      try {
-        const todosLosTorneos = await estadisticasQueries.getAllTorneos()
-        debugInfo = {
-          totalTorneos: todosLosTorneos.length,
-          estados: todosLosTorneos.reduce((acc, t) => {
-            const estado = t.estado || 'sin_estado'
-            acc[estado] = (acc[estado] || 0) + 1
-            return acc
-          }, {} as Record<string, number>),
-          torneos: todosLosTorneos.map(t => ({
-            id: t.id,
-            nombre: t.nombre,
-            estado: t.estado
-          }))
-        }
-        console.log('🔍 Debug info:', debugInfo)
-      } catch (debugError) {
-        console.error('Error obteniendo debug info:', debugError)
-      }
-      
       return (
       <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
         <Container className="py-5">
@@ -67,36 +36,6 @@ export default async function EstadisticasPage() {
             </div>
             <h2 className="text-dark">No hay torneos disponibles</h2>
             <p className="text-muted">Los torneos aparecerán aquí una vez que estén activos o finalizados.</p>
-            
-            {/* Información de debug */}
-            {debugInfo && (
-              <div className="mt-4 p-3 bg-light rounded" style={{ maxWidth: '600px', margin: '0 auto' }}>
-                <h6 className="text-muted mb-2">🔍 Información de Debug:</h6>
-                <div className="text-start">
-                  <p className="mb-1"><strong>Total de torneos:</strong> {debugInfo.totalTorneos}</p>
-                  <p className="mb-1"><strong>Estados encontrados:</strong></p>
-                  <ul className="mb-2">
-                    {Object.entries(debugInfo.estados).map(([estado, count]) => (
-                      <li key={estado}>{estado}: {count} torneo(s)</li>
-                    ))}
-                  </ul>
-                  <details>
-                    <summary className="text-muted">Ver todos los torneos</summary>
-                    <pre className="mt-2 p-2 bg-white rounded" style={{ fontSize: '0.8rem', overflow: 'auto' }}>
-                      {JSON.stringify(debugInfo.torneos, null, 2)}
-                    </pre>
-                  </details>
-                </div>
-              </div>
-            )}
-            
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mt-3">
-                <small className="text-muted">
-                  Debug: {torneos === null ? 'torneos es null' : 'torneos es array vacío'}
-                </small>
-              </div>
-            )}
           </div>
         </Container>
       </div>
@@ -271,12 +210,7 @@ export default async function EstadisticasPage() {
       </div>
     )
   } catch (error) {
-    console.error('❌ Error al cargar torneos:', error)
-    console.error('📋 Detalles del error:', {
-      message: error instanceof Error ? error.message : 'Error desconocido',
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : undefined
-    })
+    console.error('Error al cargar torneos:', error)
     
     return (
       <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
@@ -293,16 +227,6 @@ export default async function EstadisticasPage() {
             </div>
             <h2 className="text-dark">Error al cargar torneos</h2>
             <p className="text-muted">Ocurrió un error al cargar la lista de torneos. Intenta nuevamente más tarde.</p>
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mt-3">
-                <details className="text-start">
-                  <summary className="text-muted">Detalles del error (solo en desarrollo)</summary>
-                  <pre className="mt-2 p-3 bg-light rounded text-danger" style={{ fontSize: '0.8rem' }}>
-                    {error instanceof Error ? error.message : 'Error desconocido'}
-                  </pre>
-                </details>
-              </div>
-            )}
           </div>
         </Container>
       </div>
