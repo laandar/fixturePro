@@ -43,7 +43,6 @@
 - ✅ `src/app/layout.tsx` - Integrado SessionProvider
 
 ### Ejemplos
-- ✅ `src/app/(admin)/(apps)/example-protected/page.tsx` - Ejemplo Server Component
 - ✅ `src/app/(admin)/(apps)/example-client-auth/page.tsx` - Ejemplo Client Component
 
 ### Documentación

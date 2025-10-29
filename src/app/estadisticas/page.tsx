@@ -25,15 +25,6 @@ export default async function EstadisticasPage() {
       <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
         <Container className="py-5">
           <div className="text-center">
-            <div className="avatar avatar-lg mx-auto mb-4">
-              <div className="avatar-title rounded-circle" style={{
-                background: 'linear-gradient(135deg, #6c757d 0%, #495057 100%)',
-                color: '#ffffff',
-                boxShadow: '0 8px 32px rgba(108, 117, 125, 0.4)'
-              }}>
-                <LuTrophy className="fs-2" />
-              </div>
-            </div>
             <h2 className="text-dark">No hay torneos disponibles</h2>
             <p className="text-muted">Los torneos aparecerán aquí una vez que estén activos o finalizados.</p>
           </div>
@@ -47,24 +38,13 @@ export default async function EstadisticasPage() {
         background: 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%)',
         overflow: 'hidden'
       }}>
-        <Container fluid className="py-5">
+        <Container fluid className="py-3 py-md-5">
           <Row className="align-items-center min-vh-100">
             {/* Columna Izquierda - Texto */}
-            <Col lg={5} className="text-white ps-5">
-              <div className="mb-4">
-                <div className="avatar avatar-lg mb-3" style={{
-                  background: 'rgba(255, 255, 255, 0.15)',
-                  backdropFilter: 'blur(10px)',
-                  border: '2px solid rgba(255, 255, 255, 0.3)'
-                }}>
-                  <div className="avatar-title text-white">
-                    <LuTrophy className="fs-1" />
-                  </div>
-                </div>
-              </div>
+            <Col xs={12} lg={5} className="text-white ps-0 ps-lg-5 text-center text-lg-start mb-4 mb-lg-0">
               
-              <h1 className="display-1 fw-bold mb-4" style={{ 
-                fontSize: 'clamp(2.5rem, 5vw, 4.5rem)',
+              <h1 className="display-1 fw-bold mb-3 mb-md-4" style={{ 
+                fontSize: 'clamp(2rem, 8vw, 4.5rem)',
                 lineHeight: '1.1',
                 letterSpacing: '-0.02em'
               }}>
@@ -80,14 +60,14 @@ export default async function EstadisticasPage() {
                 </span>
               </h1>
               
-              <p className="fs-5 mb-4 text-white-75" style={{ 
+              <p className="fs-5 fs-md-6 mb-3 mb-md-4 text-white-75 mx-auto mx-lg-0" style={{ 
                 maxWidth: '500px',
                 lineHeight: '1.6'
               }}>
                 Consulta en tiempo real las estadísticas, tabla de posiciones y máximos goleadores de todos los torneos activos.
               </p>
               
-              <div className="d-flex align-items-center gap-4 mb-4">
+              <div className="d-flex flex-column flex-md-row align-items-center justify-content-center justify-content-lg-start gap-3 gap-md-4 mb-4">
                 <div className="d-flex align-items-center gap-2">
                   <LuTrendingUp className="fs-3" style={{ color: '#4ade80' }} />
                   <div>
@@ -106,8 +86,8 @@ export default async function EstadisticasPage() {
                 </div>
               </div>
 
-              {/* Decorative elements */}
-              <div className="position-absolute" style={{
+              {/* Decorative elements - Hidden on mobile */}
+              <div className="position-absolute d-none d-lg-block" style={{
                 bottom: '10%',
                 left: '5%',
                 width: '80px',
@@ -117,8 +97,8 @@ export default async function EstadisticasPage() {
                 filter: 'blur(40px)'
               }} />
               
-              {/* Soccer field icons decorative */}
-              <div className="position-absolute" style={{
+              {/* Soccer field icons decorative - Hidden on mobile */}
+              <div className="position-absolute d-none d-lg-block" style={{
                 top: '10%',
                 left: '8%',
                 opacity: 0.08,
@@ -127,7 +107,7 @@ export default async function EstadisticasPage() {
                 <TbSoccerField style={{ fontSize: '70px', color: '#ffffff' }} />
               </div>
               
-              <div className="position-absolute" style={{
+              <div className="position-absolute d-none d-lg-block" style={{
                 top: '45%',
                 left: '3%',
                 opacity: 0.06,
@@ -136,7 +116,7 @@ export default async function EstadisticasPage() {
                 <TbSoccerField style={{ fontSize: '60px', color: '#ffffff' }} />
               </div>
               
-              <div className="position-absolute" style={{
+              <div className="position-absolute d-none d-lg-block" style={{
                 bottom: '20%',
                 left: '12%',
                 opacity: 0.07,
@@ -147,9 +127,9 @@ export default async function EstadisticasPage() {
             </Col>
 
             {/* Columna Derecha - Tarjetas de Torneos */}
-            <Col lg={7} className="pe-5 position-relative">
-              {/* Decorative soccer icons on right side */}
-              <div className="position-absolute" style={{
+            <Col xs={12} lg={7} className="pe-0 pe-lg-5 position-relative">
+              {/* Decorative soccer icons on right side - Hidden on mobile */}
+              <div className="position-absolute d-none d-lg-block" style={{
                 top: '8%',
                 right: '10%',
                 opacity: 0.05,
@@ -159,7 +139,7 @@ export default async function EstadisticasPage() {
                 <TbSoccerField style={{ fontSize: '80px', color: '#ffffff' }} />
               </div>
               
-              <div className="position-absolute" style={{
+              <div className="position-absolute d-none d-lg-block" style={{
                 top: '40%',
                 right: '5%',
                 opacity: 0.04,
@@ -169,7 +149,7 @@ export default async function EstadisticasPage() {
                 <TbSoccerField style={{ fontSize: '70px', color: '#ffffff' }} />
               </div>
               
-              <div className="position-absolute" style={{
+              <div className="position-absolute d-none d-lg-block" style={{
                 bottom: '25%',
                 right: '15%',
                 opacity: 0.045,
@@ -179,7 +159,7 @@ export default async function EstadisticasPage() {
                 <TbSoccerField style={{ fontSize: '65px', color: '#ffffff' }} />
               </div>
               
-              <div className="position-absolute" style={{
+              <div className="position-absolute d-none d-lg-block" style={{
                 bottom: '8%',
                 right: '8%',
                 opacity: 0.04,
@@ -190,15 +170,15 @@ export default async function EstadisticasPage() {
               </div>
               
               <div style={{ 
-                maxHeight: '80vh', 
+                maxHeight: '70vh',
                 overflowY: 'auto',
-                paddingRight: '20px',
+                paddingRight: '0',
                 position: 'relative',
                 zIndex: 1
               }}>
-                <Row className="g-3">
+                <Row className="g-2 g-md-3">
                   {torneos.map((torneo) => (
-                    <Col key={torneo.id} md={6} xl={6}>
+                    <Col key={torneo.id} xs={12} sm={6} lg={6} xl={6}>
                       <TorneoCard torneo={torneo} />
                     </Col>
                   ))}
@@ -216,15 +196,6 @@ export default async function EstadisticasPage() {
       <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
         <Container className="py-5">
           <div className="text-center">
-            <div className="avatar avatar-lg mx-auto mb-4">
-              <div className="avatar-title rounded-circle" style={{
-                background: 'linear-gradient(135deg, #dc3545 0%, #e83e8c 100%)',
-                color: '#ffffff',
-                boxShadow: '0 8px 32px rgba(220, 53, 69, 0.4)'
-              }}>
-                <LuTrophy className="fs-2" />
-              </div>
-            </div>
             <h2 className="text-dark">Error al cargar torneos</h2>
             <p className="text-muted">Ocurrió un error al cargar la lista de torneos. Intenta nuevamente más tarde.</p>
           </div>

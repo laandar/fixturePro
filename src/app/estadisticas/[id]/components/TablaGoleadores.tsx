@@ -106,17 +106,33 @@ export default function TablaGoleadores({ goleadores }: TablaGoleadoresProps) {
                 <td className="align-middle py-2">
                   <div className="d-flex align-items-center gap-4">
                     <div className="position-relative">
-                      <img
-                        src={goleador.jugador.foto || 'https://via.placeholder.com/40x40/6c757d/ffffff?text=👤'}
-                        alt={goleador.jugador.apellido_nombre}
-                        className="rounded-circle"
-                        width={40}
-                        height={40}
-                        style={{
-                          border: '2px solid rgba(255, 255, 255, 0.2)',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-                        }}
-                      />
+                      {goleador.jugador.foto && goleador.jugador.foto.trim() !== '' ? (
+                        <img
+                          src={goleador.jugador.foto}
+                          
+                          className="rounded-circle"
+                          width={40}
+                          height={40}
+                          style={{
+                            border: '2px solid rgba(255, 255, 255, 0.2)',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                          style={{
+                            width: '40px',
+                            height: '40px',
+                            background: 'linear-gradient(135deg, #fd7e14 0%, #e8590c 100%)',
+                            border: '2px solid rgba(255, 255, 255, 0.2)',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                            fontSize: '18px'
+                          }}
+                        >
+                          {goleador.jugador.apellido_nombre.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                     </div>
                     <div>
                             <h5 className="mb-0 fw-bold text-white">{goleador.jugador.apellido_nombre}</h5>

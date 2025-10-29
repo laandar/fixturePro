@@ -1,17 +1,34 @@
 import Image from 'next/image'
 import Link from 'next/link'
 
-import logoDark from '@/assets/images/logo-black.png'
-import logo from '@/assets/images/logo.png'
-
 const AppLogo = () => {
   return (
     <>
       <Link href="/" className="logo-dark">
-        <Image src={logoDark} alt="dark logo" height="32" />
+        <Image 
+          src="/uploads/logoLdba.jpeg" 
+          alt="LDBA logo" 
+          width="150" 
+          height="40" 
+          style={{ 
+            objectFit: 'contain',
+            maxWidth: '100%',
+            height: 'auto'
+          }}
+        />
       </Link>
       <Link href="/" className="logo-light">
-        <Image src={logo} alt="logo" height="32" />
+        <Image 
+          src="/uploads/logoLdba.jpeg" 
+          alt="LDBA logo" 
+          width="150" 
+          height="40" 
+          style={{ 
+            objectFit: 'contain',
+            maxWidth: '100%',
+            height: 'auto'
+          }}
+        />
       </Link>
     </>
   )

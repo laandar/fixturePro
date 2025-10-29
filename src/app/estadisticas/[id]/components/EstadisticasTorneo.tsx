@@ -105,37 +105,46 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
 
       {/* Header del Torneo - Estilo Oscuro Elegante */}
       <div className="text-white py-3 position-relative" style={{ 
-        background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1f1f1f 100%)',
+        background: `
+          linear-gradient(135deg, rgba(26, 26, 26, 0.8) 0%, rgba(45, 45, 45, 0.8) 50%, rgba(31, 31, 31, 0.8) 100%),
+          url('/uploads/ldba.jpeg')
+        `,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
       }}>
         <Container>
           <Row className="align-items-center">
-            <Col md={8}>
-              <div className="d-flex align-items-center gap-3 mb-2">
+            <Col xs={12} md={8}>
+              <div className="d-flex flex-column flex-md-row align-items-center align-items-md-start gap-3 mb-2">
                 <div className="position-relative animate-float">
-                  <div className="avatar avatar-xl" style={{
-                    background: '#666666',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-                    border: '3px solid rgba(255, 255, 255, 0.2)'
-                  }}>
-                    <div className="avatar-title text-white">
-                      <LuCrown className="fs-1" />
-                    </div>
-                  </div>
+                  <img
+                    src="/uploads/logoLdba.jpeg"
+                    alt="Logo LDBA"
+                    className="rounded-circle"
+                    style={{
+                      width: '80px',
+                      height: '80px',
+                      objectFit: 'cover',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+                      border: '3px solid rgba(255, 255, 255, 0.2)'
+                    }}
+                  />
                 </div>
-                <div>
-                  <h1 className="display-5 mb-2 text-white fw-bold animate-slide-in-left">
+                <div className="text-center text-md-start">
+                  <h1 className="display-6 display-md-5 mb-2 text-white fw-bold animate-slide-in-left">
                     {torneo.nombre}
                   </h1>
-                  <div className="d-flex align-items-center gap-3 mb-2">
+                  <div className="d-flex flex-wrap justify-content-center justify-content-md-start align-items-center gap-2 gap-md-3 mb-2">
                     {torneo.categoria?.nombre && (
                       <Badge 
                         className="px-2 py-1" 
                         style={{ 
                           background: '#666666',
                           color: '#ffffff',
-                          fontSize: '1rem',
+                          fontSize: '0.9rem',
                           border: 'none',
                           fontWeight: 'bold',
                           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
@@ -151,7 +160,7 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
               </div>
               
               {torneo.descripcion && (
-                <p className="text-white-75 mb-2 fs-6" style={{ 
+                <p className="text-white-75 mb-2 fs-6 text-center text-md-start" style={{ 
                   textShadow: '1px 1px 2px rgba(0, 0, 0, 0.3)',
                   maxWidth: '600px'
                 }}>
@@ -159,7 +168,7 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                 </p>
               )}
               
-              <div className="d-flex flex-wrap gap-4 align-items-center">
+              <div className="d-flex flex-wrap justify-content-center justify-content-md-start gap-3 gap-md-4 align-items-center">
                 <div className="d-flex align-items-center gap-2 p-2 rounded-3" style={{
                   background: 'rgba(255, 255, 255, 0.1)',
                   backdropFilter: 'blur(10px)',
@@ -167,11 +176,11 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
                 }}>
                   <LuCalendar className="fs-4 text-white" />
-                  <div>
-                    <div className="fw-semibold text-white">
+                  <div className="text-center text-md-start">
+                    <div className="fw-semibold text-white small">
                       {new Date(torneo.fecha_inicio).toLocaleDateString('es-ES')}
                     </div>
-                    <div className="fw-semibold text-white">
+                    <div className="fw-semibold text-white small">
                       {new Date(torneo.fecha_fin).toLocaleDateString('es-ES')}
                     </div>
                   </div>
@@ -179,8 +188,8 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
               </div>
             </Col>
             
-            <Col md={4} className="text-md-end mt-4 mt-md-0">
-              <div className="d-flex flex-column gap-3">
+            <Col xs={12} md={4} className="text-center text-md-end mt-4 mt-md-0">
+              <div className="d-flex flex-column flex-md-column gap-2 gap-md-3">
                 <Button 
                   variant="light" 
                   onClick={handleShare}
@@ -190,7 +199,8 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                     color: '#ffffff',
                     border: 'none',
                     boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
-                    transition: 'all 0.3s ease'
+                    transition: 'all 0.3s ease',
+                    fontSize: '0.9rem'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateY(-2px)'
@@ -202,7 +212,8 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   }}
                 >
                   <LuShare2 />
-                  Compartir Estadísticas
+                  <span className="d-none d-sm-inline">Compartir Estadísticas</span>
+                  <span className="d-inline d-sm-none">Compartir</span>
                 </Button>
                 <Button 
                   variant="outline-light"
@@ -212,7 +223,8 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                     background: 'rgba(255, 255, 255, 0.1)',
                     color: 'white',
                     backdropFilter: 'blur(10px)',
-                    transition: 'all 0.3s ease'
+                    transition: 'all 0.3s ease',
+                    fontSize: '0.9rem'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
@@ -224,7 +236,8 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   }}
                 >
                   <LuDownload />
-                  Exportar Datos
+                  <span className="d-none d-sm-inline">Exportar Datos</span>
+                  <span className="d-inline d-sm-none">Exportar</span>
                 </Button>
               </div>
             </Col>
@@ -250,76 +263,100 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
             pointerEvents: 'none'
           }} />
           
-          <CardHeader className="border-0 bg-transparent">
-            <Nav variant="tabs" className="nav-tabs-custom border-0" activeKey={activeTab} onSelect={(k) => k && setActiveTab(k)}>
-              <NavItem>
+          <CardHeader className="border-0 bg-transparent p-0">
+            <Nav variant="tabs" className="nav-tabs-custom border-0 d-flex flex-row" activeKey={activeTab} onSelect={(k) => k && setActiveTab(k)}>
+              <NavItem className="flex-fill">
                 <NavLink 
                   eventKey="posiciones" 
-                  className="fw-bold px-3 py-2 border-0 position-relative"
+                  className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
                   style={{
-                    background: activeTab === 'posiciones' ? '#666666' : 'transparent',
+                    background: activeTab === 'posiciones' 
+                      ? 'rgba(255, 255, 255, 0.2)' 
+                      : 'transparent',
                     color: '#ffffff',
                     borderRadius: activeTab === 'posiciones' ? '15px 15px 0 0' : '0',
-                    transition: 'all 0.3s ease',
-                    fontSize: '1.1rem'
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontSize: '0.95rem',
+                    minHeight: '60px',
+                    textAlign: 'center',
+                    boxShadow: activeTab === 'posiciones' 
+                      ? '0 4px 15px rgba(0, 0, 0, 0.2)' 
+                      : 'none',
+                    marginBottom: '1px'
                   }}
                   onMouseEnter={(e) => {
                     if (activeTab !== 'posiciones') {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                      e.currentTarget.style.color = '#ffffff'
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.2)'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (activeTab !== 'posiciones') {
                       e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = '#ffffff'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = 'none'
                     }
                   }}
                 >
-                  <LuTrophy className="me-2 fs-5" />
-                  Tabla de Posiciones
+                  <LuTrophy className="fs-4 fs-md-5" />
+                  <span className="fw-bold d-none d-lg-inline">Tabla de Posiciones</span>
+                  <span className="fw-bold d-inline d-lg-none">Posiciones</span>
                   {activeTab === 'posiciones' && (
                     <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
-                      width: '60px',
-                      height: '3px',
-                      background: '#ffffff',
-                      borderRadius: '2px'
+                      width: '80px',
+                      height: '4px',
+                      background: 'linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%)',
+                      borderRadius: '2px',
+                      boxShadow: '0 2px 8px rgba(255, 255, 255, 0.3)'
                     }} />
                   )}
                 </NavLink>
               </NavItem>
-              <NavItem>
+              <NavItem className="flex-fill">
                 <NavLink 
                   eventKey="goleadores" 
-                  className="fw-bold px-3 py-2 border-0 position-relative"
+                  className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
                   style={{
-                    background: activeTab === 'goleadores' ? '#666666' : 'transparent',
+                    background: activeTab === 'goleadores' 
+                      ? 'rgba(255, 255, 255, 0.2)' 
+                      : 'transparent',
                     color: '#ffffff',
                     borderRadius: activeTab === 'goleadores' ? '15px 15px 0 0' : '0',
-                    transition: 'all 0.3s ease',
-                    fontSize: '1.1rem'
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontSize: '0.95rem',
+                    minHeight: '60px',
+                    textAlign: 'center',
+                    boxShadow: activeTab === 'goleadores' 
+                      ? '0 4px 15px rgba(0, 0, 0, 0.2)' 
+                      : 'none',
+                    marginBottom: '1px'
                   }}
                   onMouseEnter={(e) => {
                     if (activeTab !== 'goleadores') {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                      e.currentTarget.style.color = '#ffffff'
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.2)'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (activeTab !== 'goleadores') {
                       e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = '#ffffff'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = 'none'
                     }
                   }}
                 >
-                  <LuTarget className="me-2 fs-5" />
-                  Tabla de Goleadores
+                  <LuTarget className="fs-4 fs-md-5" />
+                  <span className="fw-bold d-none d-lg-inline">Tabla de Goleadores</span>
+                  <span className="fw-bold d-inline d-lg-none">Goleadores</span>
                   {activeTab === 'goleadores' && (
                     <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
-                      width: '60px',
-                      height: '3px',
-                      background: '#ffffff',
-                      borderRadius: '2px'
+                      width: '80px',
+                      height: '4px',
+                      background: 'linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%)',
+                      borderRadius: '2px',
+                      boxShadow: '0 2px 8px rgba(255, 255, 255, 0.3)'
                     }} />
                   )}
                 </NavLink>

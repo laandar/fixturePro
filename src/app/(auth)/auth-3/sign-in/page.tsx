@@ -31,7 +31,15 @@ function SignInForm() {
     <div className="auth-box p-0 w-100">
       <Row className="w-100 g-0">
         <Col>
-          <div className="h-100 position-relative card-side-img rounded-0 overflow-hidden">
+          <div 
+            className="h-100 position-relative card-side-img rounded-0 overflow-hidden"
+            style={{
+              backgroundImage: 'url(/uploads/ldba.jpeg)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat'
+            }}
+          >
             <div className="p-4 card-img-overlay auth-overlay d-flex align-items-end justify-content-center"></div>
           </div>
         </Col>
@@ -106,15 +114,6 @@ function SignInForm() {
                 </Form>
               </div>
 
-              <p className="text-muted text-center mt-4 mb-0">
-                ¿Nuevo aquí?{' '}
-                <Link 
-                  href="/auth-3/sign-up" 
-                  className="text-decoration-underline link-offset-3 fw-semibold"
-                >
-                  Crear una cuenta
-                </Link>
-              </p>
 
               <p className="text-center text-muted mt-auto mb-0">
                 ©  {currentYear} FixturePro — by <span className="fw-semibold">{author}</span>

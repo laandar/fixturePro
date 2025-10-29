@@ -21,8 +21,8 @@ const Page = () => {
               </div>
 
               <div className="mt-auto text-center">
-                <h4 className="fw-bold">Forgot Password? | IN++</h4>
-                <p className="text-muted auth-sub-text mx-auto">Enter your email address and we&apos;ll send you a link to reset your password.</p>
+                <h4 className="fw-bold">¿Olvidaste tu Contraseña?</h4>
+                <p className="text-muted auth-sub-text mx-auto">Ingresa tu dirección de correo electrónico y te enviaremos un enlace para restablecer tu contraseña.</p>
 
                 <Form className="mt-4">
                   <div className="mb-3">
@@ -31,7 +31,7 @@ const Page = () => {
                         type="email"
                         className="py-2 px-3 bg-light bg-opacity-40 border-light"
                         id="userEmail"
-                        placeholder="Enter email"
+                        placeholder="Ingresa tu correo electrónico"
                         required
                       />
                     </InputGroup>
@@ -41,28 +41,28 @@ const Page = () => {
                     <div className="form-check">
                       <input className="form-check-input form-check-input-light fs-14" type="checkbox" id="termAndPolicy" />
                       <label className="form-check-label" htmlFor="termAndPolicy">
-                        Agree the Terms &amp; Policy
+                        Acepto los Términos y Políticas
                       </label>
                     </div>
                   </div>
 
                   <div className="d-grid">
                     <Button type="submit" className="btn btn-primary fw-semibold py-2">
-                      Send Request
+                      Enviar Solicitud
                     </Button>
                   </div>
                 </Form>
               </div>
 
               <p className="text-muted text-center mt-4 mb-0">
-                Return to{' '}
+                Volver a{' '}
                 <Link href="/auth-3/sign-in" className="text-decoration-underline link-offset-3 fw-semibold">
-                  Sign in
+                  Iniciar Sesión
                 </Link>
               </p>
 
               <p className="text-center text-muted mt-auto mb-0">
-                ©  <span>{currentYear}</span> FIXTUREPRO — by <span className="fw-semibold">{author}</span>
+                ©  <span>{currentYear}</span> FIXTUREPRO — por <span className="fw-semibold">{author}</span>
               </p>
             </CardBody>
           </Card>

@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
+import '@/styles/mobile-tabs.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
 import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos } from '../actions'
 import { getGolesTorneo, getTarjetasTorneo } from '../../gestion-jugadores/actions'
-import { generarPropuestaJornada, confirmarJornada, regenerarJornadaDinamica, confirmarRegeneracionJornada, analizarTorneo } from '../dynamic-actions'
+import { generarPropuestaJornada, confirmarJornada, regenerarJornadaDinamica, confirmarRegeneracionJornada } from '../dynamic-actions'
 import { getCategorias, getEquipos, getEquiposByCategoria } from '../../equipos/actions'
 import { getJugadores } from '../../jugadores/actions'
 import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada, generarTablaDistribucionHorarios } from '../horarios-actions'
@@ -15,7 +16,6 @@ import type { TorneoWithRelations, EquipoWithRelations, Categoria, EncuentroWith
 import type { DynamicFixtureResult, JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
 import DynamicFixtureModal from '@/components/DynamicFixtureModal'
 import EmparejamientosFaltantesModal from '@/components/EmparejamientosFaltantesModal'
-import TorneoAnalytics from '@/components/TorneoAnalytics'
 import EncuentroCard from '@/components/EncuentroCard'
 import { saveAs } from 'file-saver'
 import { exportFixtureToExcel } from '@/lib/excel-exporter'
@@ -74,10 +74,53 @@ const TorneoDetailPage = () => {
   const [showDynamicRegenerateModal, setShowDynamicRegenerateModal] = useState(false)
   const [jornadaDinamica, setJornadaDinamica] = useState<number>(1)
   const [isRegenerating, setIsRegenerating] = useState(false)
-  const [analisisTorneo, setAnalisisTorneo] = useState<any>(null)
   
   // Estado para tabs
   const [activeTab, setActiveTab] = useState('general')
+
+  // Efecto para manejar indicadores de scroll en las pestañas móviles
+  useEffect(() => {
+    const updateScrollIndicators = () => {
+      const scrollContainer = document.querySelector('.nav-scroll-container')
+      const leftIndicator = document.querySelector('.scroll-indicator-left')
+      const rightIndicator = document.querySelector('.scroll-indicator-right')
+      
+      if (scrollContainer && leftIndicator && rightIndicator) {
+        const { scrollLeft, scrollWidth, clientWidth } = scrollContainer
+        
+        // Mostrar/ocultar indicador izquierdo
+        if (scrollLeft > 0) {
+          leftIndicator.classList.remove('d-none')
+        } else {
+          leftIndicator.classList.add('d-none')
+        }
+        
+        // Mostrar/ocultar indicador derecho
+        if (scrollLeft < scrollWidth - clientWidth - 1) {
+          rightIndicator.classList.remove('d-none')
+        } else {
+          rightIndicator.classList.add('d-none')
+        }
+      }
+    }
+
+    // Actualizar indicadores al cargar y redimensionar
+    updateScrollIndicators()
+    window.addEventListener('resize', updateScrollIndicators)
+    
+    // Agregar listener de scroll
+    const scrollContainer = document.querySelector('.nav-scroll-container')
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', updateScrollIndicators)
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateScrollIndicators)
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', updateScrollIndicators)
+      }
+    }
+  }, [])
 
   const loadData = async () => {
     try {
@@ -129,13 +172,6 @@ const TorneoDetailPage = () => {
       // Cargar equipos que descansan desde la base de datos
       setEquiposDescansan(descansosData)
       
-      // Cargar análisis del torneo
-      try {
-        const analisis = await analizarTorneo(torneoId)
-        setAnalisisTorneo(analisis)
-      } catch (error) {
-        console.error('Error al cargar análisis del torneo:', error)
-      }
       
       console.log('Equipos que descansan cargados desde BD:', descansosData)
     } catch (error) {
@@ -761,36 +797,189 @@ const TorneoDetailPage = () => {
         <Col>
           <Card>
             <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'general')}>
-              <CardHeader>
-                <Nav variant="tabs">
-                  <NavItem>
-                    <NavLink eventKey="general">Información General</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="equipos">Equipos Participantes</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="fixture">Fixture</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="tabla">Tabla de Posiciones</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="dinamico">Sistema Dinámico</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="horarios">Horarios</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="goleadores">Goleadores</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="sanciones">Sanciones</NavLink>
-                  </NavItem>
-                  <NavItem>
-                    <NavLink eventKey="analytics">Análisis</NavLink>
-                  </NavItem>
-                </Nav>
+              <CardHeader className="p-0">
+                <div className="position-relative w-100">
+                  <div 
+                    className="nav-scroll-container"
+                    style={{
+                      overflowX: 'auto',
+                      overflowY: 'hidden',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                      width: '100%',
+                      maxWidth: '100%'
+                    }}
+                  >
+                    <Nav 
+                      variant="tabs" 
+                      className="nav-tabs-mobile flex-nowrap"
+                      style={{
+                        minWidth: 'max-content',
+                        borderBottom: '1px solid #dee2e6'
+                      }}
+                    >
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="general"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <span className="d-none d-sm-inline">Información General</span>
+                          <span className="d-sm-none">General</span>
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="equipos"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <span className="d-none d-sm-inline">Equipos Participantes</span>
+                          <span className="d-sm-none">Equipos</span>
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="fixture"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          Fixture
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="tabla"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <span className="d-none d-sm-inline">Tabla de Posiciones</span>
+                          <span className="d-sm-none">Tabla</span>
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="dinamico"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <span className="d-none d-sm-inline">Sistema Dinámico</span>
+                          <span className="d-sm-none">Dinámico</span>
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="horarios"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          Horarios
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="goleadores"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          Goleadores
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="sanciones"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          Sanciones
+                        </NavLink>
+                      </NavItem>
+                    </Nav>
+                  </div>
+                  {/* Indicadores de scroll */}
+                  <div 
+                    className="scroll-indicator scroll-indicator-left d-none"
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: '20px',
+                      background: 'linear-gradient(to right, rgba(255,255,255,0.9), transparent)',
+                      pointerEvents: 'none',
+                      zIndex: 1
+                    }}
+                  />
+                  <div 
+                    className="scroll-indicator scroll-indicator-right d-none"
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: '20px',
+                      background: 'linear-gradient(to left, rgba(255,255,255,0.9), transparent)',
+                      pointerEvents: 'none',
+                      zIndex: 1
+                    }}
+                  />
+                </div>
               </CardHeader>
               <CardBody>
                 <Tab.Content>
@@ -920,41 +1109,52 @@ const TorneoDetailPage = () => {
                 {/* Tab: Fixture */}
                 <Tab.Pane eventKey="fixture">
                   {/* Botones de acciones - siempre visibles */}
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                      <h5 className="mb-1">Fixture del Torneo</h5>
-                      <p className="text-muted mb-0">Gestiona los encuentros y jornadas del torneo</p>
-                    </div>
-                    <div className="d-flex flex-wrap gap-2">
+                  <div className="d-flex justify-content-center mb-4">
+                    <div className="d-flex flex-wrap gap-2 justify-content-center w-100">
                       <Button 
                         variant="outline-success" 
                         size="sm"
                         onClick={handleDownloadFixtureExcel}
-                        disabled={encuentros.length === 0}>
+                        disabled={encuentros.length === 0}
+                        className="px-2 px-md-3 flex-fill flex-md-grow-0"
+                        style={{ minWidth: '120px', maxWidth: '200px' }}>
                         <LuDownload className="me-1" />
-                        Descargar Excel
+                        <span className="d-none d-sm-inline">Descargar Excel</span>
+                        <span className="d-sm-none">Excel</span>
                       </Button>
                       <Button 
                         variant="outline-primary" 
                         size="sm"
-                        onClick={() => setShowFixtureModal(true)}>
+                        onClick={() => setShowFixtureModal(true)}
+                        className="px-2 px-md-3 flex-fill flex-md-grow-0"
+                        style={{ minWidth: '120px', maxWidth: '200px' }}>
                         <LuSettings className="me-1" />
-                        {encuentros.length === 0 ? 'Generar Fixture' : 'Regenerar Fixture Completo'}
+                        <span className="d-none d-sm-inline">
+                          {encuentros.length === 0 ? 'Generar Fixture' : 'Regenerar Fixture'}
+                        </span>
+                        <span className="d-sm-none">
+                          {encuentros.length === 0 ? 'Generar' : 'Regenerar'}
+                        </span>
                       </Button>
                       <Button 
                         variant="outline-primary" 
                         size="sm"
                         onClick={() => handleGenerarJornadaDinamica(getJornadaActual())}
-                        className="me-2">
+                        className="px-2 px-md-3 flex-fill flex-md-grow-0"
+                        style={{ minWidth: '120px', maxWidth: '200px' }}>
                         <LuSettings className="me-1" />
-                        Sistema Dinámico
+                        <span className="d-none d-sm-inline">Sistema Dinámico</span>
+                        <span className="d-sm-none">Dinámico</span>
                       </Button>
                       <Button 
                         variant="outline-info" 
                         size="sm"
-                        onClick={() => setShowEmparejamientosModal(true)}>
+                        onClick={() => setShowEmparejamientosModal(true)}
+                        className="px-2 px-md-3 flex-fill flex-md-grow-0"
+                        style={{ minWidth: '120px', maxWidth: '200px' }}>
                         <LuUsers className="me-1" />
-                        Emparejamientos Faltantes
+                        <span className="d-none d-sm-inline">Emparejamientos</span>
+                        <span className="d-sm-none">Emparejar</span>
                       </Button>
                     </div>
                   </div>
@@ -1003,36 +1203,42 @@ const TorneoDetailPage = () => {
                                   </div>
                                 </div>
                                 
-                                {/* Equipos que descansan - diseño compacto */}
+                                {/* Equipos que descansan - diseño responsive */}
                                 {getEquiposQueDescansan(parseInt(jornadaNum)).length > 0 && (
-                                  <div className="d-flex align-items-center gap-3 bg-info bg-opacity-10 border border-info border-opacity-25 px-4 py-3 rounded">
-                                    <span className="text-info fs-4">💤</span>
-                                    <span className="text-info fw-bold fs-6">Descansan:</span>
-                                    <div className="d-flex align-items-center gap-1">
-                                      {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo, index) => (
-                                        <div key={equipo?.id} className="d-flex align-items-center gap-1">
-                                          <img 
-                                            src={equipo?.imagen_equipo || `https://ui-avatars.com/api/?name=${encodeURIComponent(equipo?.nombre || 'E')}&background=6c757d&color=fff&size=20`} 
-                                            alt={equipo?.nombre} 
-                                            className="rounded-circle"
-                                            width={20}
-                                            height={20}
-                                            onError={(e) => {
-                                              e.currentTarget.style.display = 'none'
-                                              e.currentTarget.nextElementSibling?.classList.remove('d-none')
-                                            }}
-                                          />
-                                          <div className="d-none bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" 
-                                               style={{width: '20px', height: '20px', fontSize: '10px'}}>
-                                            {equipo?.nombre?.charAt(0) || 'E'}
+                                  <div className="bg-info bg-opacity-10 border border-info border-opacity-25 px-3 px-md-4 py-2 py-md-3 rounded">
+                                    <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2 gap-md-3">
+                                      <div className="d-flex align-items-center gap-2">
+                                        <span className="text-info fs-5 fs-md-4">💤</span>
+                                        <span className="text-info fw-bold fs-6 fs-md-6">Descansan:</span>
+                                      </div>
+                                      <div className="d-flex flex-wrap align-items-center gap-1 gap-md-2">
+                                        {getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).map((equipo, index) => (
+                                          <div key={equipo?.id} className="d-flex align-items-center gap-1">
+                                            <img 
+                                              src={equipo?.imagen_equipo || `https://ui-avatars.com/api/?name=${encodeURIComponent(equipo?.nombre || 'E')}&background=6c757d&color=fff&size=18`} 
+                                              alt={equipo?.nombre} 
+                                              className="rounded-circle"
+                                              width={18}
+                                              height={18}
+                                              onError={(e) => {
+                                                e.currentTarget.style.display = 'none'
+                                                e.currentTarget.nextElementSibling?.classList.remove('d-none')
+                                              }}
+                                            />
+                                            <div className="d-none bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" 
+                                                 style={{width: '18px', height: '18px', fontSize: '9px'}}>
+                                              {equipo?.nombre?.charAt(0) || 'E'}
+                                            </div>
+                                            <span className="text-info fw-bold fs-6 text-truncate" 
+                                                  style={{maxWidth: '120px'}}
+                                                  title={equipo?.nombre}>
+                                              {equipo?.nombre}
+                                            </span>
+                                            {index < getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).length - 1 && 
+                                              <span className="text-muted d-none d-md-inline">•</span>}
                                           </div>
-                                          <span className="text-info fw-bold fs-6">
-                                            {equipo?.nombre}
-                                          </span>
-                                          {index < getEquiposQueDescansan(parseInt(jornadaNum)).filter(equipo => equipo).length - 1 && 
-                                            <span className="text-muted">•</span>}
-                                        </div>
-                                      ))}
+                                        ))}
+                                      </div>
                                     </div>
                                   </div>
                                 )}
@@ -1879,24 +2085,6 @@ const TorneoDetailPage = () => {
                   })()}
                 </Tab.Pane>
 
-                {/* Tab: Análisis */}
-                <Tab.Pane eventKey="analytics">
-                  <h5>Análisis del Torneo</h5>
-                  {analisisTorneo ? (
-                    <TorneoAnalytics 
-                      torneoId={torneoId}
-                      equipos={equiposParticipantes.map(et => et.equipo!).filter(e => e)}
-                      encuentros={encuentros}
-                      descansos={equiposDescansan as any}
-                    />
-                  ) : (
-                    <div className="text-center py-5">
-                      <div className="spinner-border" role="status">
-                        <span className="visually-hidden">Cargando análisis...</span>
-                      </div>
-                    </div>
-                  )}
-                </Tab.Pane>
 
               </Tab.Content>
             </CardBody>

@@ -1,0 +1,151 @@
+/* Estilos para pestañas móviles mejoradas */
+
+/* Contenedor de scroll de pestañas */
+.nav-scroll-container {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  min-height: 48px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+/* Contenedor de navegación */
+.nav-tabs-mobile {
+  min-height: 48px;
+  align-items: stretch;
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Ocultar scrollbar en navegadores webkit */
+.nav-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Pestañas móviles */
+.nav-tabs-mobile .nav-link {
+  border: none !important;
+  border-radius: 0 !important;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: visible !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 48px !important;
+  line-height: 1.2 !important;
+  vertical-align: middle !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+}
+
+/* Efecto hover mejorado para móviles */
+.nav-tabs-mobile .nav-link:hover {
+  background-color: rgba(0, 123, 255, 0.1) !important;
+  transform: translateY(-1px);
+}
+
+/* Pestaña activa */
+.nav-tabs-mobile .nav-link.active {
+  background-color: #007bff !important;
+  color: white !important;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+/* Indicadores de scroll */
+.scroll-indicator {
+  transition: opacity 0.3s ease;
+  opacity: 0.8;
+}
+
+.scroll-indicator:hover {
+  opacity: 1;
+}
+
+/* Mejoras para pantallas muy pequeñas */
+@media (max-width: 576px) {
+  .nav-tabs-mobile .nav-link {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8rem !important;
+    min-height: 44px !important;
+    line-height: 1.1 !important;
+  }
+  
+  .nav-tabs-mobile .nav-item {
+    margin-right: 0.25rem;
+  }
+}
+
+/* Mejoras para tablets */
+@media (min-width: 577px) and (max-width: 768px) {
+  .nav-tabs-mobile .nav-link {
+    padding: 0.6rem 1rem !important;
+    font-size: 0.85rem !important;
+    min-height: 46px !important;
+    line-height: 1.15 !important;
+  }
+}
+
+/* Animación suave para cambios de pestaña */
+.nav-tabs-mobile .nav-link {
+  position: relative;
+}
+
+.nav-tabs-mobile .nav-link::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: #007bff;
+  transition: width 0.3s ease;
+}
+
+.nav-tabs-mobile .nav-link.active::before {
+  width: 100%;
+}
+
+/* Mejora de accesibilidad */
+.nav-tabs-mobile .nav-link:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+/* Efecto de ripple para móviles */
+.nav-tabs-mobile .nav-link {
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-tabs-mobile .nav-link::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s ease, height 0.3s ease;
+}
+
+.nav-tabs-mobile .nav-link:active::after {
+  width: 200px;
+  height: 200px;
+}
+
+/* Mejoras para modo oscuro */
+@media (prefers-color-scheme: dark) {
+  .scroll-indicator-left {
+    background: linear-gradient(to right, rgba(33, 37, 41, 0.9), transparent) !important;
+  }
+  
+  .scroll-indicator-right {
+    background: linear-gradient(to left, rgba(33, 37, 41, 0.9), transparent) !important;
+  }
+}
