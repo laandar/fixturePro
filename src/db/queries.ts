@@ -1270,13 +1270,28 @@ export const estadisticasQueries = {
     return Object.values(golesPorJugador)
       .filter(item => item.jugador && item.totalGoles > 0)
       .sort((a, b) => b.totalGoles - a.totalGoles)
-      .map((item, index) => ({
-        posicion: index + 1,
-        jugador: item.jugador,
-        goles: item.goles,
-        penales: item.penales,
-        totalGoles: item.totalGoles,
-      }));
+      .map((item, index) => {
+        // Obtener el primer equipo del jugador (asumiendo que un jugador puede estar en múltiples equipos-categorías)
+        const equipoCategoria = item.jugador?.jugadoresEquipoCategoria?.[0]?.equipoCategoria;
+        const equipo = equipoCategoria?.equipo;
+        
+        return {
+          posicion: index + 1,
+          jugador: {
+            id: item.jugador.id,
+            apellido_nombre: item.jugador.apellido_nombre,
+            foto: item.jugador.foto,
+            equipo: equipo ? {
+              id: equipo.id,
+              nombre: equipo.nombre,
+              imagen_equipo: equipo.imagen_equipo
+            } : null
+          },
+          goles: item.goles,
+          penales: item.penales,
+          totalGoles: item.totalGoles,
+        };
+      });
   },
 
   // Obtener información básica del torneo para la página pública

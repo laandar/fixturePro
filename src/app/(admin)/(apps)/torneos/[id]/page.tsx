@@ -21,14 +21,8 @@ import { saveAs } from 'file-saver'
 import { exportFixtureToExcel } from '@/lib/excel-exporter'
 import { 
   getAllEstadisticas,
-  getEstadisticasGoleadores,
-  getEstadisticasGenerales,
-  getEstadisticasDetalladas,
   getEstadisticasSanciones,
-  getEstadisticasGeneralesSanciones,
-  getSancionesPorEquipo,
-  getGoleadoresPorEquipo,
-  getEstadisticasEquipos
+  getSancionesPorEquipo
 } from '@/lib/torneo-statistics'
 
 const TorneoDetailPage = () => {
@@ -76,7 +70,7 @@ const TorneoDetailPage = () => {
   const [isRegenerating, setIsRegenerating] = useState(false)
   
   // Estado para tabs
-  const [activeTab, setActiveTab] = useState('general')
+  const [activeTab, setActiveTab] = useState('equipos')
 
   // Efecto para manejar indicadores de scroll en las pestañas móviles
   useEffect(() => {
@@ -621,37 +615,12 @@ const TorneoDetailPage = () => {
     }
   }
 
-  // Función para obtener estadísticas de goleadores (ahora usa la función externa)
-  const getEstadisticasGoleadoresLocal = () => {
-    return getEstadisticasGoleadores(goles, todosJugadores)
-  }
-
-  const getEstadisticasGeneralesLocal = () => {
-    return getEstadisticasGenerales(goles, encuentros, todosJugadores)
-  }
-
-  const getEstadisticasDetalladasLocal = () => {
-    return getEstadisticasDetalladas(goles, encuentros)
-  }
-
   const getEstadisticasSancionesLocal = () => {
     return getEstadisticasSanciones(tarjetas, todosJugadores)
   }
 
-  const getEstadisticasGeneralesSancionesLocal = () => {
-    return getEstadisticasGeneralesSanciones(tarjetas, encuentros)
-  }
-
   const getSancionesPorEquipoLocal = () => {
     return getSancionesPorEquipo(tarjetas, equiposParticipantes)
-  }
-
-  const getGoleadoresPorEquipoLocal = () => {
-    return getGoleadoresPorEquipo(goles, equiposParticipantes)
-  }
-
-  const getEstadisticasEquiposLocal = () => {
-    return getEstadisticasEquipos(encuentros, goles, equiposParticipantes)
   }
 
   const getEquiposQueDescansan = (jornada: number) => {
@@ -796,7 +765,7 @@ const TorneoDetailPage = () => {
       <Row>
         <Col>
           <Card>
-            <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'general')}>
+            <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'equipos')}>
               <CardHeader className="p-0">
                 <div className="position-relative w-100">
                   <div 
@@ -818,23 +787,6 @@ const TorneoDetailPage = () => {
                         borderBottom: '1px solid #dee2e6'
                       }}
                     >
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
-                          eventKey="general"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <span className="d-none d-sm-inline">Información General</span>
-                          <span className="d-sm-none">General</span>
-                        </NavLink>
-                      </NavItem>
                       <NavItem className="flex-shrink-0">
                         <NavLink 
                           eventKey="equipos"
@@ -870,23 +822,6 @@ const TorneoDetailPage = () => {
                       </NavItem>
                       <NavItem className="flex-shrink-0">
                         <NavLink 
-                          eventKey="tabla"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <span className="d-none d-sm-inline">Tabla de Posiciones</span>
-                          <span className="d-sm-none">Tabla</span>
-                        </NavLink>
-                      </NavItem>
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
                           eventKey="dinamico"
                           className="px-2 px-md-3 py-2"
                           style={{ 
@@ -916,22 +851,6 @@ const TorneoDetailPage = () => {
                           }}
                         >
                           Horarios
-                        </NavLink>
-                      </NavItem>
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
-                          eventKey="goleadores"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          Goleadores
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -983,66 +902,6 @@ const TorneoDetailPage = () => {
               </CardHeader>
               <CardBody>
                 <Tab.Content>
-                {/* Tab: Información General */}
-                <Tab.Pane eventKey="general">
-                  <Row>
-                    <Col md={6}>
-                      <h5>Detalles del Torneo</h5>
-                      <Table borderless>
-                        <tbody>
-                          <tr>
-                            <td><strong>Nombre:</strong></td>
-                            <td>{torneo.nombre}</td>
-                          </tr>
-                          <tr>
-                            <td><strong>Descripción:</strong></td>
-                            <td>{torneo.descripcion || 'Sin descripción'}</td>
-                          </tr>
-                          <tr>
-                            <td><strong>Tipo:</strong></td>
-                            <td>
-                              <Badge bg={torneo.tipo_torneo === 'liga' ? 'primary' : 'warning'}>
-                                {torneo.tipo_torneo === 'liga' ? 'Liga' : 
-                                 torneo.tipo_torneo === 'eliminacion' ? 'Eliminación' : 'Grupos'}
-                              </Badge>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td><strong>Permite Revancha:</strong></td>
-                            <td>
-                              <Badge bg={torneo.permite_revancha ? 'success' : 'secondary'}>
-                                {torneo.permite_revancha ? 'Sí' : 'No'}
-                              </Badge>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </Table>
-                    </Col>
-                    <Col md={6}>
-                      <h5>Estadísticas</h5>
-                      <div className="d-grid gap-3">
-                        <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                          <span>Total de Equipos:</span>
-                          <Badge bg="primary">{equiposParticipantes.length}</Badge>
-                        </div>
-                        <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                          <span>Total de Encuentros:</span>
-                          <Badge bg="success">{encuentros.length}</Badge>
-                        </div>
-                        <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                          <span>Encuentros Jugados:</span>
-                          <Badge bg="info">{encuentros.filter(e => e.estado === 'finalizado').length}</Badge>
-                        </div>
-                        <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                          <span>Encuentros Pendientes:</span>
-                          <Badge bg="warning">{encuentros.filter(e => e.estado === 'programado').length}</Badge>
-                        </div>
-                      </div>
-                    </Col>
-                  </Row>
-
-
-                </Tab.Pane>
 
                 {/* Tab: Equipos Participantes */}
                 <Tab.Pane eventKey="equipos">
@@ -1286,146 +1145,6 @@ const TorneoDetailPage = () => {
                   )}
                 </Tab.Pane>
 
-                {/* Tab: Tabla de Posiciones */}
-                <Tab.Pane eventKey="tabla">
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                      <h5 className="mb-1">🏆 Tabla de Posiciones</h5>
-                      <p className="text-muted mb-0">Clasificación actual del torneo con goles reales</p>
-                    </div>
-                    <div className="d-flex gap-2">
-                      <Badge bg="primary" className="fs-6 px-3 py-2">
-                        {encuentros.filter(e => e.estado === 'finalizado').length} partidos jugados
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {equiposParticipantes.length === 0 ? (
-                    <div className="text-center py-5">
-                      <p className="text-muted">No hay equipos participantes</p>
-                    </div>
-                  ) : (
-                    <Card>
-                      <CardHeader className="bg-light">
-                        <h6 className="mb-0 fw-bold text-primary">
-                          <LuTrophy className="me-2" />
-                          Clasificación del Torneo
-                        </h6>
-                      </CardHeader>
-                      <CardBody className="p-0">
-                        <Table striped bordered hover responsive className="mb-0">
-                          <thead className="table-dark">
-                            <tr>
-                              <th className="text-center">Pos</th>
-                              <th>Equipo</th>
-                              <th className="text-center">PJ</th>
-                              <th className="text-center text-success">PG</th>
-                              <th className="text-center text-warning">PE</th>
-                              <th className="text-center text-danger">PP</th>
-                              <th className="text-center">GF</th>
-                              <th className="text-center">GC</th>
-                              <th className="text-center">DG</th>
-                              <th className="text-center fw-bold text-primary">Pts</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {getEstadisticasEquiposLocal().map((estadistica, index) => (
-                              <tr key={estadistica.equipo.id}>
-                                <td className="fw-bold text-center">
-                                  {index === 0 && <LuTrophy className="text-warning me-1" />}
-                                  {index + 1}
-                                </td>
-                                <td>
-                                  <div className="d-flex align-items-center gap-2">
-                                    <img 
-                                      src={estadistica.equipo.imagen_equipo || 'https://via.placeholder.com/24x24/fd7e14/ffffff?text=🏆'} 
-                                      alt={estadistica.equipo.nombre} 
-                                      className="rounded-circle"
-                                      width={24}
-                                      height={24}
-                                    />
-                                    <span className="fw-semibold">{estadistica.equipo.nombre}</span>
-                                  </div>
-                                </td>
-                                <td className="text-center">{estadistica.partidosJugados}</td>
-                                <td className="text-center text-success fw-bold">{estadistica.partidosGanados}</td>
-                                <td className="text-center text-warning fw-bold">{estadistica.partidosEmpatados}</td>
-                                <td className="text-center text-danger fw-bold">{estadistica.partidosPerdidos}</td>
-                                <td className="text-center">{estadistica.golesFavor}</td>
-                                <td className="text-center">{estadistica.golesContra}</td>
-                                <td className={`text-center fw-bold ${estadistica.diferenciaGoles >= 0 ? 'text-success' : 'text-danger'}`}>
-                                  {estadistica.diferenciaGoles >= 0 ? '+' : ''}{estadistica.diferenciaGoles}
-                                </td>
-                                <td className="text-center fw-bold text-primary fs-5">{estadistica.puntos}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      </CardBody>
-                    </Card>
-                  )}
-
-                  {/* Estadísticas adicionales */}
-                  {encuentros.filter(e => e.estado === 'finalizado').length > 0 && (
-                    <Row className="mt-4">
-                      <Col md={6}>
-                        <Card>
-                          <CardHeader>
-                            <h6><LuInfo className="me-2" />Estadísticas del Torneo</h6>
-                          </CardHeader>
-                          <CardBody>
-                            <div className="d-grid gap-3">
-                              <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                <span>Total de partidos jugados:</span>
-                                <Badge bg="primary">{encuentros.filter(e => e.estado === 'finalizado').length}</Badge>
-                              </div>
-                              <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                <span>Total de goles marcados:</span>
-                                <Badge bg="success">{goles.filter(g => g.tipo === 'gol' || g.tipo === 'penal').length}</Badge>
-                              </div>
-                              <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                <span>Promedio de goles por partido:</span>
-                                <Badge bg="info">
-                                  {encuentros.filter(e => e.estado === 'finalizado').length > 0 
-                                    ? (goles.filter(g => g.tipo === 'gol' || g.tipo === 'penal').length / encuentros.filter(e => e.estado === 'finalizado').length).toFixed(2)
-                                    : '0.00'}
-                                </Badge>
-                              </div>
-                            </div>
-                          </CardBody>
-                        </Card>
-                      </Col>
-                      <Col md={6}>
-                        <Card>
-                          <CardHeader>
-                            <h6><LuUsers className="me-2" />Equipos Líderes</h6>
-                          </CardHeader>
-                          <CardBody>
-                            <div className="d-grid gap-2">
-                              {getEstadisticasEquiposLocal().slice(0, 3).map((estadistica, index) => (
-                                <div key={estadistica.equipo.id} className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                  <div className="d-flex align-items-center gap-2">
-                                    <span className="fw-bold text-primary">#{index + 1}</span>
-                                    <img 
-                                      src={estadistica.equipo.imagen_equipo || 'https://via.placeholder.com/24x24/fd7e14/ffffff?text=🏆'} 
-                                      alt="" 
-                                      className="rounded-circle"
-                                      width={24}
-                                      height={24}
-                                    />
-                                    <span className="fw-semibold">{estadistica.equipo.nombre}</span>
-                                  </div>
-                                  <Badge bg="primary">{estadistica.puntos} pts</Badge>
-                                </div>
-                              ))}
-                            </div>
-                          </CardBody>
-                        </Card>
-                      </Col>
-                    </Row>
-                  )}
-                </Tab.Pane>
-
                 {/* Tab: Sistema Dinámico */}
                 <Tab.Pane eventKey="dinamico">
                   <div className="d-flex justify-content-between align-items-center mb-3">
@@ -1616,240 +1335,6 @@ const TorneoDetailPage = () => {
                   </Row>
                 </Tab.Pane>
 
-                {/* Tab: Goleadores */}
-                <Tab.Pane eventKey="goleadores">
-                  <div className="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                      <h5 className="mb-1">🏆 Tabla de Goleadores</h5>
-                      <p className="text-muted mb-0">Estadísticas de goles por jugador en el torneo</p>
-                    </div>
-                    <div className="d-flex gap-2">
-                      <Badge bg="primary" className="fs-6 px-3 py-2">
-                        {encuentros.filter(e => e.estado === 'finalizado').length} partidos jugados
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {(() => {
-                    const estadisticasGenerales = getEstadisticasGeneralesLocal()
-                    const estadisticasDetalladas = getEstadisticasDetalladasLocal()
-                    const goleadores = getEstadisticasGoleadoresLocal()
-                    const goleadoresPorEquipo = getGoleadoresPorEquipoLocal()
-
-                    if (encuentros.filter(e => e.estado === 'finalizado').length === 0) {
-                      return (
-                        <div className="text-center py-5">
-                          <div className="mb-4">
-                            <div className="d-inline-flex align-items-center justify-content-center bg-light rounded-circle mb-3" style={{width: '80px', height: '80px'}}>
-                              <LuGamepad2 className="fs-1 text-muted" />
-                            </div>
-                            <h4 className="mb-2">No hay partidos finalizados</h4>
-                            <p className="text-muted mb-4">
-                              Los goleadores aparecerán cuando se finalicen los primeros partidos del torneo
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div>
-                        {/* Estadísticas generales */}
-                        <Row className="mb-4">
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <LuTrophy className="fs-2 text-warning me-2" />
-                                  <h4 className="mb-0 text-warning">{estadisticasGenerales.totalGoles}</h4>
-                                </div>
-                                <h6 className="text-muted">Total Goles</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <LuUsers className="fs-2 text-success me-2" />
-                                  <h4 className="mb-0 text-success">{estadisticasGenerales.cantidadGoleadores}</h4>
-                                </div>
-                                <h6 className="text-muted">Goleadores</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <LuGamepad2 className="fs-2 text-info me-2" />
-                                  <h4 className="mb-0 text-info">{estadisticasGenerales.promedioPorPartido}</h4>
-                                </div>
-                                <h6 className="text-muted">Promedio por Partido</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <LuCheck className="fs-2 text-primary me-2" />
-                                  <h4 className="mb-0 text-primary">{estadisticasGenerales.hatTricks}</h4>
-                                </div>
-                                <h6 className="text-muted">Hat-tricks</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                        </Row>
-
-                        {/* Tabla de goleadores */}
-                        <Card>
-                          <CardHeader className="bg-light">
-                            <h5 className="mb-0 fw-bold text-primary">
-                              <LuTrophy className="me-2" />
-                              Ranking de Goleadores
-                            </h5>
-                          </CardHeader>
-                          <CardBody>
-                            {goleadores.length === 0 ? (
-                              <div className="text-center py-5">
-                                <div className="mb-4">
-                                  <div className="d-inline-flex align-items-center justify-content-center bg-light rounded-circle mb-3" style={{width: '80px', height: '80px'}}>
-                                    <LuTrophy className="fs-1 text-muted" />
-                                  </div>
-                                  <h4 className="mb-2">No hay goles registrados</h4>
-                                  <p className="text-muted mb-4">
-                                    Los goleadores aparecerán cuando se registren goles en los partidos finalizados
-                                  </p>
-                                </div>
-                              </div>
-                            ) : (
-                              <Table striped bordered hover responsive>
-                                <thead>
-                                  <tr>
-                                    <th>Pos</th>
-                                    <th>Jugador</th>
-                                    <th>Equipo</th>
-                                    <th>Goles</th>
-                                    <th>Penales</th>
-                                    <th>Autogoles</th>
-                                    <th>1T</th>
-                                    <th>2T</th>
-                                    <th>Hat-tricks</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {goleadores.map((goleador, index) => (
-                                    <tr key={goleador.jugador?.id || index}>
-                                      <td className="fw-bold">
-                                        {index === 0 && <LuTrophy className="text-warning me-1" />}
-                                        {index + 1}
-                                      </td>
-                                      <td>
-                                        <div className="d-flex align-items-center gap-2">
-                                          <img 
-                                            src={goleador.jugador?.foto || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(goleador.jugador?.apellido_nombre || 'Jugador') + '&background=007bff&color=fff&size=32'} 
-                                            alt={goleador.jugador?.apellido_nombre || 'Jugador'} 
-                                            className="rounded-circle"
-                                            width={32}
-                                            height={32}
-                                          />
-                                          <span className="fw-semibold">{goleador.jugador?.apellido_nombre || 'Jugador'}</span>
-                                        </div>
-                                      </td>
-                                      <td>
-                                        <Badge bg="secondary">
-                                          {equiposParticipantes.find(et => 
-                                            et.equipo?.jugadores?.some(j => j.id === goleador.jugador?.id)
-                                          )?.equipo?.nombre || 'N/A'}
-                                        </Badge>
-                                      </td>
-                                      <td className="text-success fw-bold">{goleador.goles}</td>
-                                      <td className="text-warning">{goleador.penales}</td>
-                                      <td className="text-danger">{goleador.autogoles}</td>
-                                      <td className="text-info">{goleador.golesPrimerTiempo}</td>
-                                      <td className="text-primary">{goleador.golesSegundoTiempo}</td>
-                                      <td>
-                                        {goleador.hatTricks > 0 && (
-                                          <Badge bg="warning" className="text-dark">
-                                            {goleador.hatTricks} 🎩
-                                          </Badge>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </Table>
-                            )}
-                          </CardBody>
-                        </Card>
-
-                        {/* Información adicional */}
-                        <Row className="mt-4">
-                          <Col md={6}>
-                            <Card>
-                              <CardHeader>
-                                <h6><LuInfo className="me-2" />Información sobre Goleadores</h6>
-                              </CardHeader>
-                              <CardBody>
-                                <div className="d-grid gap-3">
-                                  <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                    <span>Partidos con goles:</span>
-                                    <Badge bg="success">{estadisticasDetalladas.partidosConGoles}</Badge>
-                                  </div>
-                                  <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                    <span>Partidos sin goles:</span>
-                                    <Badge bg="warning">{estadisticasDetalladas.partidosSinGoles}</Badge>
-                                  </div>
-                                  <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                    <span>Goles en primer tiempo:</span>
-                                    <Badge bg="info">{estadisticasDetalladas.golesPrimerTiempo}</Badge>
-                                  </div>
-                                  <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                    <span>Goles en segundo tiempo:</span>
-                                    <Badge bg="primary">{estadisticasDetalladas.golesSegundoTiempo}</Badge>
-                                  </div>
-                                </div>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={6}>
-                            <Card>
-                              <CardHeader>
-                                <h6><LuUsers className="me-2" />Goleadores por Equipo</h6>
-                              </CardHeader>
-                              <CardBody>
-                                {goleadoresPorEquipo.length === 0 ? (
-                                  <p className="text-muted text-center">No hay goles registrados por equipo</p>
-                                ) : (
-                                  <div className="d-grid gap-2">
-                                    {goleadoresPorEquipo.map((item, index) => (
-                                      <div key={item.equipo.id} className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                        <div className="d-flex align-items-center gap-2">
-                                          <span className="fw-bold text-primary">#{index + 1}</span>
-                                          <img 
-                                            src={item.equipo.imagen_equipo || 'https://via.placeholder.com/24x24/fd7e14/ffffff?text=🏆'} 
-                                            alt="" 
-                                            className="rounded-circle"
-                                            width={24}
-                                            height={24}
-                                          />
-                                          <span className="fw-semibold">{item.equipo.nombre}</span>
-                                        </div>
-                                        <Badge bg="primary">{item.totalGoles} goles</Badge>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </CardBody>
-                            </Card>
-                          </Col>
-                        </Row>
-                      </div>
-                    )
-                  })()}
-                </Tab.Pane>
-
                 {/* Tab: Sanciones */}
                 <Tab.Pane eventKey="sanciones">
                   <div className="d-flex justify-content-between align-items-center mb-4">
@@ -1865,7 +1350,6 @@ const TorneoDetailPage = () => {
                   </div>
 
                   {(() => {
-                    const estadisticasGenerales = getEstadisticasGeneralesSancionesLocal()
                     const jugadoresConSanciones = getEstadisticasSancionesLocal()
                     const sancionesPorEquipo = getSancionesPorEquipoLocal()
 
@@ -1887,53 +1371,6 @@ const TorneoDetailPage = () => {
 
                     return (
                       <div>
-                        {/* Estadísticas generales */}
-                        <Row className="mb-4">
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <span className="fs-2 text-warning me-2">🟨</span>
-                                  <h4 className="mb-0 text-warning">{estadisticasGenerales.totalAmarillas}</h4>
-                                </div>
-                                <h6 className="text-muted">Tarjetas Amarillas</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <span className="fs-2 text-danger me-2">🟥</span>
-                                  <h4 className="mb-0 text-danger">{estadisticasGenerales.totalRojas}</h4>
-                                </div>
-                                <h6 className="text-muted">Tarjetas Rojas</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <LuX className="fs-2 text-danger me-2" />
-                                  <h4 className="mb-0 text-danger">{estadisticasGenerales.jugadoresSancionados}</h4>
-                                </div>
-                                <h6 className="text-muted">Jugadores Sancionados</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                          <Col md={3}>
-                            <Card className="text-center">
-                              <CardBody>
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                  <LuInfo className="fs-2 text-info me-2" />
-                                  <h4 className="mb-0 text-info">{estadisticasGenerales.promedioPorPartido}</h4>
-                                </div>
-                                <h6 className="text-muted">Promedio por Partido</h6>
-                              </CardBody>
-                            </Card>
-                          </Col>
-                        </Row>
 
                         {/* Tabla de jugadores sancionados */}
                         <Card>
@@ -2036,10 +1473,6 @@ const TorneoDetailPage = () => {
                                   <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
                                     <span>Tarjeta Roja:</span>
                                     <Badge bg="danger">1 partido de sanción</Badge>
-                                  </div>
-                                  <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded">
-                                    <span>Total de tarjetas:</span>
-                                    <Badge bg="primary">{estadisticasGenerales.totalAmarillas + estadisticasGenerales.totalRojas}</Badge>
                                   </div>
                                 </div>
                               </CardBody>

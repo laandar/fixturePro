@@ -75,23 +75,6 @@ const Page = () => {
       )
     }),
     {
-      id: 'tipo_torneo',
-      header: 'Tipo',
-      cell: ({ row }: { row: TableRow<TorneoWithRelations> }) => {
-        const tipo = row.original.tipo_torneo
-        const tipoLabels: Record<string, string> = {
-          liga: 'Liga',
-          eliminacion: 'Eliminación',
-          grupos: 'Grupos'
-        }
-        return (
-          <Badge bg={tipo === 'liga' ? 'primary' : tipo === 'eliminacion' ? 'danger' : 'warning'}>
-            {tipo ? tipoLabels[tipo] || tipo : 'Sin tipo'}
-          </Badge>
-        )
-      },
-    },
-    {
       id: 'equipos_count',
       header: 'Equipos',
       cell: ({ row }: { row: TableRow<TorneoWithRelations> }) => (
@@ -130,18 +113,29 @@ const Page = () => {
       header: 'Estado',
       cell: ({ row }: { row: TableRow<TorneoWithRelations> }) => {
         const estado = row.original.estado
-        const estadoConfig: Record<string, { bg: string; text: string; label: string }> = {
-          planificado: { bg: 'secondary', text: 'secondary', label: 'Planificado' },
-          en_curso: { bg: 'success', text: 'success', label: 'En Curso' },
-          finalizado: { bg: 'primary', text: 'primary', label: 'Finalizado' },
-          cancelado: { bg: 'danger', text: 'danger', label: 'Cancelado' }
+        const estadoConfig: Record<string, { bg: string; text: string; label: string; icon: string }> = {
+          planificado: { bg: 'warning', text: 'dark', label: 'Planificado', icon: '⏳' },
+          en_curso: { bg: 'success', text: 'white', label: 'En Curso', icon: '▶️' },
+          finalizado: { bg: 'primary', text: 'white', label: 'Finalizado', icon: '✅' },
+          cancelado: { bg: 'danger', text: 'white', label: 'Cancelado', icon: '❌' }
         }
-        const config = estado ? estadoConfig[estado] || { bg: 'secondary', text: 'secondary', label: estado } : { bg: 'secondary', text: 'secondary', label: 'Sin estado' }
+        const config = estado ? estadoConfig[estado] || { bg: 'secondary', text: 'white', label: estado, icon: '❓' } : { bg: 'secondary', text: 'white', label: 'Sin estado', icon: '❓' }
         
         return (
-          <Badge bg={config.bg} className={`text-${config.text}`}>
-            {config.label}
-          </Badge>
+          <div className="d-flex align-items-center gap-2">
+            <span className="fs-5">{config.icon}</span>
+            <Badge 
+              bg={config.bg} 
+              className={`px-3 py-2 fw-semibold text-${config.text} border-0`}
+              style={{ 
+                fontSize: '0.8rem',
+                borderRadius: '20px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+            >
+              {config.label}
+            </Badge>
+          </div>
         )
       },
     },
@@ -155,7 +149,8 @@ const Page = () => {
               size="sm" 
               className="btn-icon rounded-circle"
               title="Ver detalles del torneo">
-              <TbEye className="fs-lg" />
+              <TbEye className="fs-lg d-none d-md-inline" />
+              <TbEye className="fs-1 d-md-none" />
             </Button>
           </Link>
           {puedeEditar && (
@@ -165,7 +160,8 @@ const Page = () => {
               className="btn-icon rounded-circle"
               onClick={() => handleEditClick(row.original)}
               title="Editar torneo">
-              <TbEdit className="fs-lg" />
+              <TbEdit className="fs-lg d-none d-md-inline" />
+              <TbEdit className="fs-1 d-md-none" />
             </Button>
           )}
           {puedeEliminar && (
@@ -175,7 +171,8 @@ const Page = () => {
               className="btn-icon rounded-circle"
               onClick={() => handleDeleteSingle(row.original)}
               title="Eliminar torneo">
-              <TbTrash className="fs-lg" />
+              <TbTrash className="fs-lg d-none d-md-inline" />
+              <TbTrash className="fs-1 d-md-none" />
             </Button>
           )}
           {!puedeEditar && !puedeEliminar && (
@@ -464,31 +461,7 @@ const Page = () => {
                   <LuCalendar className="app-search-icon text-muted" />
                 </div>
 
-                <div className="app-search">
-                  <select
-                    className="form-select form-control my-1 my-md-0"
-                    value={(table.getColumn('tipo_torneo')?.getFilterValue() as string) ?? 'Todos'}
-                    onChange={(e) => table.getColumn('tipo_torneo')?.setFilterValue(e.target.value === 'Todos' ? undefined : e.target.value)}>
-                    <option value="Todos">Tipo</option>
-                    <option value="liga">Liga</option>
-                    <option value="eliminacion">Eliminación</option>
-                    <option value="grupos">Grupos</option>
-                  </select>
-                  <LuGamepad2 className="app-search-icon text-muted" />
-                </div>
 
-                <div>
-                  <select
-                    className="form-select form-control my-1 my-md-0"
-                    value={table.getState().pagination.pageSize}
-                    onChange={(e) => table.setPageSize(Number(e.target.value))}>
-                    {[5, 8, 10, 15, 20].map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
             </CardHeader>
 

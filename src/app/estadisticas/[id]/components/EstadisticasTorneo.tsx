@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button, Nav, NavItem, NavLink, TabContent, TabPane } from 'react-bootstrap'
-import { LuTrophy, LuTarget, LuUsers, LuCalendar, LuTrendingUp, LuShare2, LuDownload, LuStar, LuZap, LuCrown } from 'react-icons/lu'
+import { LuTrophy, LuTarget, LuUsers, LuCalendar, LuTrendingUp, LuShare2, LuDownload, LuStar, LuZap, LuCrown, LuMonitor, LuSmartphone } from 'react-icons/lu'
 import TablaPosiciones from './TablaPosiciones'
 import TablaGoleadores from './TablaGoleadores'
 import '@/styles/fifa-animations.css'
+import '@/styles/desktop-view-mobile.css'
 
 interface Torneo {
   id: number
@@ -65,6 +66,7 @@ interface EstadisticasTorneoProps {
 
 export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores }: EstadisticasTorneoProps) {
   const [activeTab, setActiveTab] = useState('posiciones')
+  const [isDesktopView, setIsDesktopView] = useState(false)
 
   const getEstadoBadge = (estado: string | null) => {
     const estadoConfig = {
@@ -100,8 +102,21 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
     }
   }
 
+  const toggleViewMode = () => {
+    setIsDesktopView(!isDesktopView)
+  }
+
   return (
-    <div className="min-vh-100 position-relative" style={{ background: '#f5f5f5' }}>
+    <div 
+      className={`min-vh-100 position-relative ${isDesktopView ? 'desktop-view-mobile' : ''}`} 
+      style={{ 
+        background: '#f5f5f5',
+        ...(isDesktopView && {
+          minWidth: '1200px',
+          overflowX: 'auto'
+        })
+      }}
+    >
 
       {/* Header del Torneo - Estilo Oscuro Elegante */}
       <div className="text-white py-3 position-relative" style={{ 
@@ -190,6 +205,32 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
             
             <Col xs={12} md={4} className="text-center text-md-end mt-4 mt-md-0">
               <div className="d-flex flex-column flex-md-column gap-2 gap-md-3">
+                {/* Botón de cambio de vista - Solo visible en móvil */}
+                <Button 
+                  variant="outline-light"
+                  onClick={toggleViewMode}
+                  className="d-flex align-items-center justify-content-center gap-2 px-3 py-2 rounded-pill fw-semibold d-md-none"
+                  style={{
+                    border: '2px solid rgba(255, 255, 255, 0.3)',
+                    background: isDesktopView ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    backdropFilter: 'blur(10px)',
+                    transition: 'all 0.3s ease',
+                    fontSize: '0.9rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = isDesktopView ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                  }}
+                >
+                  {isDesktopView ? <LuSmartphone /> : <LuMonitor />}
+                  <span>{isDesktopView ? 'Vista Móvil' : 'Vista Escritorio'}</span>
+                </Button>
+                
                 <Button 
                   variant="light" 
                   onClick={handleShare}
@@ -246,15 +287,44 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
       </div>
 
 
-        {/* Navegación por Pestañas - Estilo Oscuro Elegante */}
-        <Container className="py-3" style={{ background: '#f5f5f5' }}>
-          <Card className="border-0 position-relative overflow-hidden" style={{
-            background: 'rgba(26, 26, 26, 0.95)',
-            backdropFilter: 'blur(20px)',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-            borderRadius: '20px',
-            border: '1px solid rgba(255, 215, 0, 0.1)'
+        {/* Indicador de vista escritorio */}
+        {isDesktopView && (
+          <div className="d-md-none text-center py-2" style={{
+            background: 'linear-gradient(135deg, #4a4a4a 0%, #666666 100%)',
+            color: 'white',
+            fontSize: '0.85rem',
+            fontWeight: '500'
           }}>
+            <LuMonitor className="me-2" />
+            Vista Escritorio Activada - Desliza horizontalmente para ver todo el contenido
+          </div>
+        )}
+
+        {/* Navegación por Pestañas - Estilo Oscuro Elegante */}
+        <Container 
+          className={`py-3 ${isDesktopView ? 'desktop-container' : ''}`} 
+          style={{ 
+            background: '#f5f5f5',
+            ...(isDesktopView && {
+              maxWidth: 'none',
+              paddingLeft: '20px',
+              paddingRight: '20px'
+            })
+          }}
+        >
+          <Card 
+            className={`border-0 position-relative overflow-hidden ${isDesktopView ? 'desktop-card' : ''}`} 
+            style={{
+              background: 'rgba(26, 26, 26, 0.95)',
+              backdropFilter: 'blur(20px)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+              borderRadius: '20px',
+              border: '1px solid rgba(255, 215, 0, 0.1)',
+              ...(isDesktopView && {
+                minWidth: '1100px'
+              })
+            }}
+          >
           <div className="position-absolute top-0 start-0 w-100 h-100" style={{
             background: `
               radial-gradient(circle at 10% 20%, rgba(255, 215, 0, 0.1) 0%, transparent 50%),

@@ -17,7 +17,6 @@ interface Goleador {
     } | null
   }
   goles: number
-  penales: number
   totalGoles: number
 }
 
@@ -83,7 +82,6 @@ export default function TablaGoleadores({ goleadores }: TablaGoleadoresProps) {
               <th className="fw-bold py-2" style={{ fontSize: '1rem', color: '#ffffff' }}>Jugador</th>
               <th className="fw-bold py-2" style={{ fontSize: '1rem', color: '#ffffff' }}>Equipo</th>
               <th className="text-center fw-bold py-2" style={{ width: '80px', fontSize: '1rem', color: '#ffffff' }}>Goles</th>
-              <th className="text-center fw-bold py-2" style={{ width: '90px', fontSize: '1rem', color: '#ffffff' }}>Penales</th>
               <th className="text-center fw-bold py-2" style={{ width: '100px', fontSize: '1rem', color: '#ffffff' }}>Total</th>
             </tr>
           </thead>
@@ -170,19 +168,6 @@ export default function TablaGoleadores({ goleadores }: TablaGoleadoresProps) {
                     }}
                   >
                     {goleador.goles}
-                  </Badge>
-                </td>
-                <td className="text-center align-middle py-2">
-                  <Badge 
-                    className="px-3 py-2 fw-bold fs-6"
-                    style={{
-                      background: '#4a4a4a',
-                      color: '#ffffff',
-                      border: 'none',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-                    }}
-                  >
-                    {goleador.penales}
                   </Badge>
                 </td>
                 <td className="text-center align-middle py-2">

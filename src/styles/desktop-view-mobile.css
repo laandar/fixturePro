@@ -1,0 +1,181 @@
+/* Estilos para vista escritorio en dispositivos móviles */
+.desktop-view-mobile {
+  /* Forzar scroll horizontal cuando sea necesario */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.desktop-view-mobile .desktop-container {
+  /* Ancho mínimo para simular escritorio */
+  min-width: 1200px;
+  max-width: none !important;
+}
+
+.desktop-view-mobile .desktop-card {
+  /* Asegurar que la tarjeta tenga el ancho mínimo */
+  min-width: 1100px;
+}
+
+/* Mejorar la experiencia de scroll horizontal */
+.desktop-view-mobile::-webkit-scrollbar {
+  height: 8px;
+}
+
+.desktop-view-mobile::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.desktop-view-mobile::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.desktop-view-mobile::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Ajustes para las tablas en vista escritorio móvil */
+.desktop-view-mobile .table-responsive {
+  overflow-x: visible;
+}
+
+.desktop-view-mobile .table {
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+/* Reducir ancho de columna de equipos en vista escritorio */
+.desktop-view-mobile .table th:nth-child(3),
+.desktop-view-mobile .table td:nth-child(3) {
+  max-width: 160px;
+  min-width: 120px;
+  width: 140px;
+}
+
+/* Ajustar contenido de la columna de equipos */
+.desktop-view-mobile .table td:nth-child(3) .d-flex {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.desktop-view-mobile .table td:nth-child(3) .d-flex img {
+  width: 18px !important;
+  height: 18px !important;
+  flex-shrink: 0;
+}
+
+.desktop-view-mobile .table td:nth-child(3) .d-flex span {
+  font-size: 0.75rem;
+  line-height: 1.0;
+  word-break: break-word;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Ajustar el estado "Sin equipo" */
+.desktop-view-mobile .table td:nth-child(3) .text-white-75 {
+  font-size: 0.75rem;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* Asegurar que los botones de navegación se mantengan visibles */
+.desktop-view-mobile .nav-tabs {
+  min-width: 100%;
+}
+
+/* Mejorar la legibilidad en vista escritorio móvil */
+.desktop-view-mobile .table td,
+.desktop-view-mobile .table th {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+}
+
+/* Optimizar distribución de columnas en vista escritorio */
+.desktop-view-mobile .table th:nth-child(1),
+.desktop-view-mobile .table td:nth-child(1) {
+  width: 80px; /* Columna de posición */
+}
+
+.desktop-view-mobile .table th:nth-child(2),
+.desktop-view-mobile .table td:nth-child(2) {
+  min-width: 250px; /* Columna de jugador */
+  max-width: 300px;
+}
+
+.desktop-view-mobile .table th:nth-child(4),
+.desktop-view-mobile .table td:nth-child(4) {
+  width: 100px; /* Columna de goles */
+}
+
+.desktop-view-mobile .table th:nth-child(5),
+.desktop-view-mobile .table td:nth-child(5) {
+  width: 120px; /* Columna de total */
+}
+
+/* Ajustes para el header del torneo en vista escritorio */
+.desktop-view-mobile .container {
+  min-width: 1200px;
+}
+
+/* Estilos para tabla de posiciones - Unir columnas PJ y PG en móvil */
+@media (max-width: 767.98px) {
+  /* Reducir padding entre columnas PJ y PG */
+  .table-fifa th:nth-child(4),
+  .table-fifa td:nth-child(4) {
+    padding-right: 8px !important;
+  }
+  
+  .table-fifa th:nth-child(5),
+  .table-fifa td:nth-child(5) {
+    padding-left: 4px !important;
+    padding-right: 12px !important;
+  }
+  
+  /* Reducir ancho de columnas PJ y PG en móvil */
+  .table-fifa th:nth-child(4),
+  .table-fifa td:nth-child(4) {
+    width: 45px !important;
+    min-width: 45px !important;
+  }
+  
+  .table-fifa th:nth-child(5),
+  .table-fifa td:nth-child(5) {
+    width: 45px !important;
+    min-width: 45px !important;
+  }
+  
+  /* Ajustar texto en columnas PJ y PG */
+  .table-fifa td:nth-child(4) span,
+  .table-fifa td:nth-child(5) span {
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+  }
+  
+  /* Reducir tamaño del texto del nombre del equipo en móvil */
+  .table-fifa td:nth-child(2) h5 {
+    font-size: 0.8rem !important;
+  }
+  
+  .table-fifa td:nth-child(2) small {
+    font-size: 0.65rem !important;
+  }
+}
+
+/* Mejorar el espaciado en vista escritorio móvil */
+.desktop-view-mobile .row {
+  min-width: 100%;
+}
+
+.desktop-view-mobile .col {
+  flex-shrink: 0;
+}
