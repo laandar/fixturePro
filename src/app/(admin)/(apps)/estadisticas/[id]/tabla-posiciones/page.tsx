@@ -4,8 +4,8 @@ import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, CardBody, CardHeader, Col, Container, Row, Badge, Table } from 'react-bootstrap'
 import { LuTrophy, LuInfo, LuUsers } from 'react-icons/lu'
-import { getTorneoById, getEncuentrosByTorneo } from '../../torneos/actions'
-import { getGolesTorneo } from '../../gestion-jugadores/actions'
+import { getTorneoById, getEncuentrosByTorneo } from '../../../torneos/actions'
+import { getGolesTorneo } from '../../../gestion-jugadores/actions'
 import { getEstadisticasEquipos } from '@/lib/torneo-statistics'
 import type { TorneoWithRelations, EncuentroWithRelations, Gol } from '@/db/types'
 
@@ -29,8 +29,8 @@ const TablaPosicionesPage = () => {
           getGolesTorneo(torneoId)
         ])
         
-        setTorneo(torneoData)
-        setEncuentros(encuentrosData)
+        setTorneo(torneoData as unknown as TorneoWithRelations)
+        setEncuentros(encuentrosData as unknown as EncuentroWithRelations[])
         setGoles(golesData)
       } catch (err) {
         setError('Error al cargar los datos del torneo')
@@ -46,8 +46,8 @@ const TablaPosicionesPage = () => {
   }, [torneoId])
 
   const getEstadisticasEquiposLocal = () => {
-    if (!torneo?.equiposParticipantes) return []
-    return getEstadisticasEquipos(encuentros, goles, torneo.equiposParticipantes)
+    if (!torneo?.equiposTorneo) return []
+    return getEstadisticasEquipos(encuentros, goles, torneo.equiposTorneo)
   }
 
   if (loading) {
@@ -74,7 +74,7 @@ const TablaPosicionesPage = () => {
     )
   }
 
-  const equiposParticipantes = torneo.equiposParticipantes || []
+  const equiposParticipantes = torneo.equiposTorneo || []
 
   return (
     <Container fluid>
@@ -97,7 +97,7 @@ const TablaPosicionesPage = () => {
               </div>
             </CardHeader>
             <CardBody>
-              {equiposParticipantes.length === 0 ? (
+              {!equiposParticipantes || equiposParticipantes.length === 0 ? (
                 <div className="text-center py-5">
                   <p className="text-muted">No hay equipos participantes</p>
                 </div>

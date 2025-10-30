@@ -4,9 +4,9 @@ import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, CardBody, CardHeader, Col, Container, Row, Badge, Table } from 'react-bootstrap'
 import { LuTrophy, LuInfo, LuUsers, LuGamepad2 } from 'react-icons/lu'
-import { getTorneoById, getEncuentrosByTorneo } from '../../torneos/actions'
-import { getGolesTorneo, getTarjetasTorneo } from '../../gestion-jugadores/actions'
-import { getJugadores } from '../../jugadores/actions'
+import { getTorneoById, getEncuentrosByTorneo } from '../../../torneos/actions'
+import { getGolesTorneo, getTarjetasTorneo } from '../../../gestion-jugadores/actions'
+import { getJugadores } from '../../../jugadores/actions'
 import { getEstadisticasGoleadores, getEstadisticasDetalladas, getGoleadoresPorEquipo } from '@/lib/torneo-statistics'
 import type { TorneoWithRelations, EncuentroWithRelations, Gol, Tarjeta } from '@/db/types'
 
@@ -34,8 +34,8 @@ const GoleadoresPage = () => {
           getJugadores()
         ])
         
-        setTorneo(torneoData)
-        setEncuentros(encuentrosData)
+        setTorneo(torneoData as unknown as TorneoWithRelations)
+        setEncuentros(encuentrosData as unknown as EncuentroWithRelations[])
         setGoles(golesData)
         setTarjetas(tarjetasData)
         setTodosJugadores(jugadoresData)
@@ -61,8 +61,8 @@ const GoleadoresPage = () => {
   }
 
   const getGoleadoresPorEquipoLocal = () => {
-    if (!torneo?.equiposParticipantes) return []
-    return getGoleadoresPorEquipo(goles, torneo.equiposParticipantes)
+    if (!torneo?.equiposTorneo) return []
+    return getGoleadoresPorEquipo(goles, torneo.equiposTorneo)
   }
 
   if (loading) {
@@ -89,7 +89,7 @@ const GoleadoresPage = () => {
     )
   }
 
-  const equiposParticipantes = torneo.equiposParticipantes || []
+  const equiposParticipantes = torneo.equiposTorneo || []
   const estadisticasDetalladas = getEstadisticasDetalladasLocal()
   const goleadores = getEstadisticasGoleadoresLocal()
   const goleadoresPorEquipo = getGoleadoresPorEquipoLocal()
