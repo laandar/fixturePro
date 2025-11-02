@@ -1,0 +1,1 @@
+ALTER TABLE "cargos_manuales" ALTER COLUMN "jornada_aplicacion" DROP NOT NULL;

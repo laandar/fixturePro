@@ -1,0 +1,1304 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import PageBreadcrumb from '@/components/PageBreadcrumb'
+import { Container, Row, Col, Card, CardHeader, CardBody, Alert, FormSelect, Table, Badge, Button, Modal, Form, FormControl, Tabs, Tab } from 'react-bootstrap'
+import { getTorneos } from '@/app/(admin)/(apps)/torneos/actions'
+import { getResumenTarjetasPorJornadaEquipo, getValoresTarjetas, type ResumenTarjetasItem, getSaldosPorEquipo, registrarPagoTorneo, registrarCargoManual, getCargosManualesTorneo, updateCargoManual, deleteCargoManual, getTarjetasPorEquipoJornada, deleteTarjetaContabilidad, type TarjetaDetalle, getResumenGeneral, getEstadoCuentaEquipo, getPagosTorneo, updatePago, anularPago, reactivarPago, type ResumenGeneral, type EstadoCuentaEquipo, type PagoItem } from './actions'
+
+const ContabilidadTarjetasPage = () => {
+  const [torneos, setTorneos] = useState<any[]>([])
+  const [selectedTorneo, setSelectedTorneo] = useState<number | null>(null)
+  const [resumen, setResumen] = useState<ResumenTarjetasItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [valores, setValores] = useState<{ valorAmarilla: number; valorRoja: number }>({ valorAmarilla: 0, valorRoja: 0 })
+  const [saldos, setSaldos] = useState<any[]>([])
+  const [cargos, setCargos] = useState<any[]>([])
+  const [showCargoModal, setShowCargoModal] = useState(false)
+  const [editingCargo, setEditingCargo] = useState<any | null>(null)
+  const [cargoEquipoId, setCargoEquipoId] = useState<number | ''>('' as any)
+  const [cargoMonto, setCargoMonto] = useState<string>('')
+  const [cargoDesc, setCargoDesc] = useState<string>('')
+  const [filterText, setFilterText] = useState<string>('')
+  const [cargoError, setCargoError] = useState<string | null>(null)
+  const [cargoSuccess, setCargoSuccess] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [cargoToDelete, setCargoToDelete] = useState<any | null>(null)
+  const [showTarjetasModal, setShowTarjetasModal] = useState(false)
+  const [tarjetasDetalle, setTarjetasDetalle] = useState<TarjetaDetalle[]>([])
+  const [tarjetaModalEquipo, setTarjetaModalEquipo] = useState<{equipo_id: number, equipo_nombre: string, jornada: number} | null>(null)
+  const [showTarjetaDeleteConfirm, setShowTarjetaDeleteConfirm] = useState(false)
+  const [tarjetaToDelete, setTarjetaToDelete] = useState<number | null>(null)
+  
+  // Estados para reportes y filtros
+  const [activeTab, setActiveTab] = useState<string>('contabilidad')
+  const [fechaDesde, setFechaDesde] = useState<string>('')
+  const [fechaHasta, setFechaHasta] = useState<string>('')
+  const [resumenGeneral, setResumenGeneral] = useState<ResumenGeneral | null>(null)
+  const [estadoCuenta, setEstadoCuenta] = useState<EstadoCuentaEquipo | null>(null)
+  const [equipoEstadoCuenta, setEquipoEstadoCuenta] = useState<number | null>(null)
+  const [listaPagos, setListaPagos] = useState<PagoItem[]>([])
+  const [loadingReportes, setLoadingReportes] = useState(false)
+  
+  // Estados para edición de pagos
+  const [showPagoModal, setShowPagoModal] = useState(false)
+  const [editingPago, setEditingPago] = useState<PagoItem | null>(null)
+  const [pagoMonto, setPagoMonto] = useState<string>('')
+  const [pagoDescripcion, setPagoDescripcion] = useState<string>('')
+  const [pagoReferencia, setPagoReferencia] = useState<string>('')
+  const [pagoJornada, setPagoJornada] = useState<string>('')
+  const [showAnularModal, setShowAnularModal] = useState(false)
+  const [pagoToAnular, setPagoToAnular] = useState<PagoItem | null>(null)
+  const [motivoAnulacion, setMotivoAnulacion] = useState<string>('')
+  const [incluirAnulados, setIncluirAnulados] = useState<boolean>(false)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setError(null)
+        const [ts, vs] = await Promise.all([
+          getTorneos(),
+          getValoresTarjetas(),
+        ])
+        setTorneos(ts || [])
+        setValores(vs)
+        if ((ts || []).length > 0) {
+          setSelectedTorneo(ts[0].id)
+        }
+      } catch (e) {
+        setError('Error al cargar torneos o configuraciones')
+      }
+    }
+    load()
+  }, [])
+
+  useEffect(() => {
+    const loadResumen = async () => {
+      if (!selectedTorneo) return
+      try {
+        setLoading(true)
+        setError(null)
+        const [data, saldosData, cargosData] = await Promise.all([
+          getResumenTarjetasPorJornadaEquipo(selectedTorneo),
+          getSaldosPorEquipo(selectedTorneo),
+          getCargosManualesTorneo(selectedTorneo)
+        ])
+        setResumen(data)
+        setSaldos(saldosData)
+        setCargos(cargosData)
+      } catch (e) {
+        setError('Error al cargar resumen de tarjetas')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadResumen()
+  }, [selectedTorneo])
+
+  const agrupadoPorJornada = useMemo(() => {
+    const map: Record<number, ResumenTarjetasItem[]> = {}
+    for (const item of resumen) {
+      if (!map[item.jornada]) map[item.jornada] = []
+      map[item.jornada].push(item)
+    }
+    return Object.fromEntries(Object.entries(map).sort((a, b) => Number(a[0]) - Number(b[0])))
+  }, [resumen])
+
+  const calcularTotal = (amarillas: number, rojas: number) => amarillas * valores.valorAmarilla + rojas * valores.valorRoja
+
+  const totalGeneral = useMemo(() => {
+    return resumen.reduce((acc, r) => acc + calcularTotal(r.amarillas, r.rojas), 0)
+  }, [resumen, valores])
+
+  const totalSaldoGeneral = useMemo(() => {
+    return saldos.reduce((acc, s) => acc + (s.saldo_cents || 0), 0) / 100
+  }, [saldos])
+
+  const handleAbonarEquipo = async (equipoId: number, equipoNombre: string) => {
+    if (!selectedTorneo) return
+    const montoStr = typeof window !== 'undefined' ? window.prompt(`Monto a abonar para ${equipoNombre} (USD)`, '') : null
+    if (!montoStr) return
+    const monto = parseFloat(montoStr)
+    if (isNaN(monto) || monto <= 0) return
+    const desc = typeof window !== 'undefined' ? (window.prompt('Descripción (opcional):', '') || '') : ''
+    await registrarPagoTorneo(selectedTorneo, equipoId, monto, desc)
+    const saldosData = await getSaldosPorEquipo(selectedTorneo)
+    setSaldos(saldosData)
+  }
+
+  const handleCargoManualEquipo = async (equipoId: number, equipoNombre: string) => {
+    if (!selectedTorneo) return
+    const montoStr = typeof window !== 'undefined' ? window.prompt(`Monto del cargo manual para ${equipoNombre} (USD)`, '') : null
+    if (!montoStr) return
+    const monto = parseFloat(montoStr)
+    if (isNaN(monto) || monto <= 0) return
+    const desc = typeof window !== 'undefined' ? (window.prompt('Descripción (opcional):', '') || '') : ''
+    await registrarCargoManual(selectedTorneo, equipoId, monto, desc)
+    const [saldosData, cargosData] = await Promise.all([
+      getSaldosPorEquipo(selectedTorneo),
+      getCargosManualesTorneo(selectedTorneo)
+    ])
+    setSaldos(saldosData)
+    setCargos(cargosData)
+  }
+
+  const handleEditCargo = async (id: number, current: any) => {
+    setEditingCargo(current)
+    setCargoEquipoId(current.equipo_id)
+    setCargoMonto((current.monto_centavos/100).toFixed(2))
+    setCargoDesc(current.descripcion || '')
+    setShowCargoModal(true)
+  }
+
+  const handleDeleteCargo = (cargo: any) => {
+    setCargoToDelete(cargo)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteCargo = async () => {
+    if (!selectedTorneo || !cargoToDelete) return
+    try {
+      await deleteCargoManual(cargoToDelete.id)
+      const [saldosData, cargosData] = await Promise.all([
+        getSaldosPorEquipo(selectedTorneo),
+        getCargosManualesTorneo(selectedTorneo)
+      ])
+      setSaldos(saldosData)
+      setCargos(cargosData)
+      setShowDeleteConfirm(false)
+      setCargoToDelete(null)
+    } catch (e) {
+      setCargoError(e instanceof Error ? e.message : 'Error al eliminar el cargo')
+      setShowDeleteConfirm(false)
+    }
+  }
+
+  const handleVerTarjetas = async (equipoId: number, equipoNombre: string, jornada: number) => {
+    if (!selectedTorneo) return
+    try {
+      setLoading(true)
+      const tarjetas = await getTarjetasPorEquipoJornada(selectedTorneo, equipoId, jornada)
+      setTarjetasDetalle(tarjetas)
+      setTarjetaModalEquipo({ equipo_id: equipoId, equipo_nombre: equipoNombre, jornada })
+      setShowTarjetasModal(true)
+    } catch (e) {
+      setError('Error al cargar tarjetas')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEliminarTarjeta = (tarjetaId: number) => {
+    setTarjetaToDelete(tarjetaId)
+    setShowTarjetaDeleteConfirm(true)
+  }
+
+  const confirmDeleteTarjeta = async () => {
+    if (!selectedTorneo || !tarjetaToDelete || !tarjetaModalEquipo) return
+    try {
+      await deleteTarjetaContabilidad(tarjetaToDelete)
+      // Recargar tarjetas del modal
+      const tarjetas = await getTarjetasPorEquipoJornada(selectedTorneo, tarjetaModalEquipo.equipo_id, tarjetaModalEquipo.jornada)
+      setTarjetasDetalle(tarjetas)
+      // Recargar resumen
+      const [resumenData, saldosData] = await Promise.all([
+        getResumenTarjetasPorJornadaEquipo(selectedTorneo),
+        getSaldosPorEquipo(selectedTorneo)
+      ])
+      setResumen(resumenData)
+      setSaldos(saldosData)
+      setShowTarjetaDeleteConfirm(false)
+      setTarjetaToDelete(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar la tarjeta')
+      setShowTarjetaDeleteConfirm(false)
+    }
+  }
+
+  // Cargar resumen general
+  const loadResumenGeneral = async () => {
+    if (!selectedTorneo) return
+    try {
+      setLoadingReportes(true)
+      const fechaDesdeDate = fechaDesde ? new Date(fechaDesde) : undefined
+      const fechaHastaDate = fechaHasta ? new Date(fechaHasta) : undefined
+      const resumen = await getResumenGeneral(selectedTorneo, fechaDesdeDate, fechaHastaDate)
+      setResumenGeneral(resumen)
+    } catch (e) {
+      setError('Error al cargar resumen general')
+    } finally {
+      setLoadingReportes(false)
+    }
+  }
+
+  // Cargar estado de cuenta
+  const loadEstadoCuenta = async () => {
+    if (!selectedTorneo || !equipoEstadoCuenta) return
+    try {
+      setLoadingReportes(true)
+      const fechaDesdeDate = fechaDesde ? new Date(fechaDesde) : undefined
+      const fechaHastaDate = fechaHasta ? new Date(fechaHasta) : undefined
+      const estado = await getEstadoCuentaEquipo(selectedTorneo, equipoEstadoCuenta, fechaDesdeDate, fechaHastaDate)
+      setEstadoCuenta(estado)
+    } catch (e) {
+      setError('Error al cargar estado de cuenta')
+    } finally {
+      setLoadingReportes(false)
+    }
+  }
+
+  // Cargar lista de pagos
+  const loadListaPagos = async () => {
+    if (!selectedTorneo) return
+    try {
+      setLoadingReportes(true)
+      const fechaDesdeDate = fechaDesde ? new Date(fechaDesde) : undefined
+      const fechaHastaDate = fechaHasta ? new Date(fechaHasta) : undefined
+      const pagos = await getPagosTorneo(selectedTorneo, undefined, fechaDesdeDate, fechaHastaDate, incluirAnulados)
+      setListaPagos(pagos)
+    } catch (e) {
+      setError('Error al cargar lista de pagos')
+    } finally {
+      setLoadingReportes(false)
+    }
+  }
+
+  // Cargar datos según la pestaña activa
+  useEffect(() => {
+    if (!selectedTorneo) return
+    if (activeTab === 'resumen') {
+      loadResumenGeneral()
+    } else if (activeTab === 'estado-cuenta') {
+      if (equipoEstadoCuenta) loadEstadoCuenta()
+    } else if (activeTab === 'pagos') {
+      loadListaPagos()
+    }
+  }, [selectedTorneo, activeTab, fechaDesde, fechaHasta, equipoEstadoCuenta, incluirAnulados])
+
+  // Editar pago
+  const handleEditPago = (pago: PagoItem) => {
+    setEditingPago(pago)
+    setPagoMonto((pago.monto_centavos / 100).toFixed(2))
+    setPagoDescripcion(pago.descripcion || '')
+    setPagoReferencia(pago.referencia || '')
+    setPagoJornada(pago.jornada?.toString() || '')
+    setShowPagoModal(true)
+  }
+
+  const handleSubmitPago = async () => {
+    if (!selectedTorneo || !editingPago) return
+    try {
+      const monto = parseFloat(pagoMonto)
+      if (isNaN(monto) || monto <= 0) {
+        setError('Monto inválido')
+        return
+      }
+      await updatePago(
+        editingPago.id,
+        monto,
+        pagoDescripcion || undefined,
+        pagoReferencia || undefined,
+        pagoJornada ? parseInt(pagoJornada) : null
+      )
+      await loadListaPagos()
+      const [saldosData] = await Promise.all([getSaldosPorEquipo(selectedTorneo)])
+      setSaldos(saldosData)
+      setShowPagoModal(false)
+      setEditingPago(null)
+      setPagoMonto('')
+      setPagoDescripcion('')
+      setPagoReferencia('')
+      setPagoJornada('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al actualizar el pago')
+    }
+  }
+
+  // Anular pago
+  const handleAnularPago = (pago: PagoItem) => {
+    setPagoToAnular(pago)
+    setMotivoAnulacion('')
+    setShowAnularModal(true)
+  }
+
+  const confirmAnularPago = async () => {
+    if (!selectedTorneo || !pagoToAnular || !motivoAnulacion.trim()) return
+    try {
+      await anularPago(pagoToAnular.id, motivoAnulacion)
+      await loadListaPagos()
+      const [saldosData] = await Promise.all([getSaldosPorEquipo(selectedTorneo)])
+      setSaldos(saldosData)
+      setShowAnularModal(false)
+      setPagoToAnular(null)
+      setMotivoAnulacion('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al anular el pago')
+    }
+  }
+
+  // Reactivar pago
+  const handleReactivarPago = async (pagoId: number) => {
+    if (!selectedTorneo) return
+    try {
+      await reactivarPago(pagoId)
+      await loadListaPagos()
+      const [saldosData] = await Promise.all([getSaldosPorEquipo(selectedTorneo)])
+      setSaldos(saldosData)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al reactivar el pago')
+    }
+  }
+
+  const openCreateCargoModal = (equipoId?: number) => {
+    setEditingCargo(null)
+    setCargoEquipoId(equipoId || (saldos[0]?.equipo_id || ('' as any)))
+    setCargoMonto('')
+    setCargoDesc('')
+    setCargoError(null)
+    setCargoSuccess(null)
+    setShowCargoModal(true)
+  }
+
+  const handleSubmitCargo = async () => {
+    setCargoError(null)
+    setCargoSuccess(null)
+    if (!selectedTorneo) {
+      setCargoError('Debe seleccionar un torneo')
+      return
+    }
+    if (!cargoEquipoId) {
+      setCargoError('Debe seleccionar un equipo')
+      return
+    }
+    const monto = parseFloat(cargoMonto)
+    if (isNaN(monto) || monto <= 0) {
+      setCargoError('El monto debe ser mayor a 0')
+      return
+    }
+    try {
+      if (editingCargo) {
+        await updateCargoManual(editingCargo.id, monto, cargoDesc)
+        setCargoSuccess('Cargo actualizado exitosamente')
+      } else {
+        await registrarCargoManual(selectedTorneo, Number(cargoEquipoId), monto, cargoDesc)
+        setCargoSuccess('Cargo creado exitosamente')
+      }
+      const [saldosData, cargosData] = await Promise.all([
+        getSaldosPorEquipo(selectedTorneo),
+        getCargosManualesTorneo(selectedTorneo)
+      ])
+      setSaldos(saldosData)
+      setCargos(cargosData)
+      setTimeout(() => {
+        setShowCargoModal(false)
+        setCargoSuccess(null)
+      }, 1500)
+    } catch (e) {
+      setCargoError(e instanceof Error ? e.message : 'Error al guardar el cargo')
+    }
+  }
+
+  return (
+    <Container fluid>
+      <PageBreadcrumb title="Contabilidad de Tarjetas" subtitle="Apps" />
+
+      {error && (
+        <Alert variant="danger">{error}</Alert>
+      )}
+
+      <Row className="mb-3">
+        <Col md={6} lg={4}>
+          <Card>
+            <CardHeader>
+              <h6 className="mb-0">Seleccionar Torneo</h6>
+            </CardHeader>
+            <CardBody>
+              <FormSelect
+                value={selectedTorneo ?? ''}
+                onChange={(e) => setSelectedTorneo(e.target.value ? parseInt(e.target.value) : null)}
+              >
+                {torneos.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre}</option>
+                ))}
+              </FormSelect>
+              <div className="mt-3 small text-muted">
+                Valores actuales: <Badge bg="warning" className="text-dark">🟨 ${valores.valorAmarilla.toFixed(2)}</Badge>{' '}
+                <Badge bg="danger">🟥 ${valores.valorRoja.toFixed(2)}</Badge>
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={6} lg={8}>
+          <Card>
+            <CardHeader>
+              <h6 className="mb-0">Total General</h6>
+            </CardHeader>
+            <CardBody>
+              <h3 className="mb-0">${totalGeneral.toFixed(2)}</h3>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Filtros de fecha (para reportes) */}
+      {(activeTab === 'resumen' || activeTab === 'estado-cuenta' || activeTab === 'pagos') && (
+        <Row className="mb-3">
+          <Col md={12}>
+            <Card>
+              <CardBody>
+                <Row>
+                  <Col md={3}>
+                    <label className="form-label small">Fecha Desde</label>
+                    <FormControl
+                      type="date"
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                    />
+                  </Col>
+                  <Col md={3}>
+                    <label className="form-label small">Fecha Hasta</label>
+                    <FormControl
+                      type="date"
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                    />
+                  </Col>
+                  <Col md={3} className="d-flex align-items-end">
+                    <Button 
+                      variant="outline-secondary" 
+                      size="sm"
+                      onClick={() => {
+                        setFechaDesde('')
+                        setFechaHasta('')
+                      }}
+                    >
+                      Limpiar Filtros
+                    </Button>
+                  </Col>
+                </Row>
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* Sistema de pestañas */}
+      <Tabs activeKey={activeTab} onSelect={(k) => k && setActiveTab(k)} className="mb-3">
+        <Tab eventKey="contabilidad" title="Contabilidad">
+          {loading ? (
+            <div className="text-center py-5">
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Cargando...</span>
+              </div>
+            </div>
+          ) : (
+            Object.keys(agrupadoPorJornada).length === 0 ? (
+              <Alert variant="info">No hay tarjetas registradas para este torneo.</Alert>
+            ) : (
+              Object.entries(agrupadoPorJornada).map(([jornada, items]) => {
+                const totalJornada = items.reduce((acc, r) => acc + calcularTotal(r.amarillas, r.rojas), 0)
+                return (
+                  <Card key={jornada} className="mb-3">
+                    <CardHeader className="d-flex justify-content-between align-items-center">
+                      <h5 className="mb-0">Jornada {jornada}</h5>
+                      <Badge bg="primary">Total: ${totalJornada.toFixed(2)}</Badge>
+                    </CardHeader>
+                    <CardBody>
+                      <div className="table-responsive">
+                        <Table striped bordered hover size="sm">
+                          <thead>
+                            <tr>
+                              <th>Equipo</th>
+                              <th className="text-center">🟨 Amarillas</th>
+                              <th className="text-center">🟥 Rojas</th>
+                              <th className="text-end">Monto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((r) => (
+                              <tr key={`${r.equipo_id}`}> 
+                                <td>{r.equipo_nombre}</td>
+                                <td className="text-center text-warning fw-bold">
+                                  {r.amarillas}
+                                  {(r.amarillas > 0 || r.rojas > 0) && (
+                                    <Button 
+                                      size="sm" 
+                                      variant="link" 
+                                      className="p-0 ms-2 text-decoration-none"
+                                      onClick={() => handleVerTarjetas(r.equipo_id, r.equipo_nombre, parseInt(jornada))}
+                                    >
+                                      Ver/Editar
+                                    </Button>
+                                  )}
+                                </td>
+                                <td className="text-center text-danger fw-bold">{r.rojas}</td>
+                                <td className="text-end fw-semibold">${calcularTotal(r.amarillas, r.rojas).toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    </CardBody>
+                  </Card>
+                )
+              })
+            )
+          )}
+
+          {/* Saldos por equipo con opción de abonar */}
+          <Row className="mt-3">
+            <Col>
+              <Card>
+                <CardHeader className="d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">Saldos por Equipo</h5>
+                  <Badge bg={totalSaldoGeneral > 0 ? 'warning' : 'success'} className={totalSaldoGeneral > 0 ? 'text-dark' : ''}>
+                    Saldo General: ${totalSaldoGeneral.toFixed(2)}
+                  </Badge>
+                </CardHeader>
+                <CardBody>
+                  {saldos.length === 0 ? (
+                    <Alert variant="light" className="mb-0">No hay movimientos aún.</Alert>
+                  ) : (
+                    <div className="table-responsive">
+                      <Table striped bordered hover size="sm">
+                        <thead>
+                          <tr>
+                            <th>Equipo</th>
+                            <th className="text-center">🟨</th>
+                            <th className="text-center">🟥</th>
+                            <th className="text-end">Importe + Cargos</th>
+                            <th className="text-end">Pagos</th>
+                            <th className="text-end">Saldo</th>
+                            <th className="text-end">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {saldos.map((s: any) => (
+                            <tr key={s.equipo_id}>
+                              <td>{s.equipo_nombre}</td>
+                              <td className="text-center text-warning fw-bold">{s.amarillas}</td>
+                              <td className="text-center text-danger fw-bold">{s.rojas}</td>
+                              <td className="text-end">${(s.importe_cents/100).toFixed(2)}</td>
+                              <td className="text-end">${(s.pagos_cents/100).toFixed(2)}</td>
+                              <td className="text-end fw-bold">
+                                <Badge bg={s.saldo_cents > 0 ? 'warning' : 'success'} className={s.saldo_cents > 0 ? 'text-dark' : ''}>
+                                  ${(s.saldo_cents/100).toFixed(2)}
+                                </Badge>
+                              </td>
+                              <td className="text-end">
+                                <div className="d-flex justify-content-end gap-2">
+                                  <Button size="sm" variant="outline-success" onClick={() => handleAbonarEquipo(s.equipo_id, s.equipo_nombre)}>Abonar</Button>
+                                  <Button size="sm" variant="outline-warning" className="text-dark" onClick={() => openCreateCargoModal(s.equipo_id)}>Cargo manual</Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* CRUD de Cargos manuales */}
+          <Row className="mt-3">
+            <Col>
+              <Card>
+                <CardHeader className="d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">Cargos Manuales</h5>
+                  <div className="d-flex gap-2">
+                    <FormControl placeholder="Buscar..." value={filterText} onChange={(e) => setFilterText(e.target.value)} style={{ maxWidth: 220 }} />
+                    <Button size="sm" onClick={() => openCreateCargoModal()}>Nuevo</Button>
+                  </div>
+                </CardHeader>
+                <CardBody>
+                  {cargos.length === 0 ? (
+                    <Alert variant="light" className="mb-0">No hay cargos manuales.</Alert>
+                  ) : (
+                    <div className="table-responsive">
+                      <Table striped bordered hover size="sm">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>Equipo</th>
+                            <th>Descripción</th>
+                            <th className="text-end">Monto</th>
+                            <th className="text-end">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cargos.filter((c:any) => {
+                            const equipo = saldos.find(s => s.equipo_id === c.equipo_id)?.equipo_nombre || ''
+                            const text = (equipo + ' ' + (c.descripcion || '')).toLowerCase()
+                            return text.includes(filterText.toLowerCase())
+                          }).map((c: any) => {
+                            const equipo = saldos.find(s => s.equipo_id === c.equipo_id)?.equipo_nombre || c.equipo_id
+                            return (
+                              <tr key={c.id}>
+                                <td>{c.id}</td>
+                                <td>{equipo}</td>
+                                <td>{c.descripcion || '-'}</td>
+                                <td className="text-end">${(c.monto_centavos/100).toFixed(2)}</td>
+                                <td className="text-end">
+                                  <div className="d-flex justify-content-end gap-2">
+                                    <Button size="sm" variant="outline-primary" onClick={() => handleEditCargo(c.id, c)}>Editar</Button>
+                                    <Button size="sm" variant="outline-danger" onClick={() => handleDeleteCargo(c)}>Eliminar</Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </Table>
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            </Col>
+          </Row>
+        </Tab>
+        <Tab eventKey="resumen" title="Resumen General">
+          {loadingReportes ? (
+            <div className="text-center py-5">
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Cargando...</span>
+              </div>
+            </div>
+          ) : resumenGeneral ? (
+            <Row>
+              <Col md={6}>
+                <Card className="mb-3">
+                  <CardHeader>
+                    <h5 className="mb-0">Ingresos</h5>
+                  </CardHeader>
+                  <CardBody>
+                    <Table size="sm" className="mb-0">
+                      <tbody>
+                        <tr>
+                          <td>Tarjetas Amarillas ({resumenGeneral.totalTarjetasAmarillas})</td>
+                          <td className="text-end">${(resumenGeneral.totalTarjetasAmarillas * valores.valorAmarilla).toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                          <td>Tarjetas Rojas ({resumenGeneral.totalTarjetasRojas})</td>
+                          <td className="text-end">${(resumenGeneral.totalTarjetasRojas * valores.valorRoja).toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                          <td>Cargos Manuales</td>
+                          <td className="text-end">${(resumenGeneral.totalCargosManualesCents / 100).toFixed(2)}</td>
+                        </tr>
+                        <tr className="table-secondary">
+                          <td className="fw-bold">Total Ingresos</td>
+                          <td className="text-end fw-bold">${(resumenGeneral.totalIngresosCents / 100).toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </Table>
+                  </CardBody>
+                </Card>
+              </Col>
+              <Col md={6}>
+                <Card className="mb-3">
+                  <CardHeader>
+                    <h5 className="mb-0">Egresos</h5>
+                  </CardHeader>
+                  <CardBody>
+                    <Table size="sm" className="mb-0">
+                      <tbody>
+                        <tr>
+                          <td>Pagos Realizados</td>
+                          <td className="text-end">${(resumenGeneral.totalPagosCents / 100).toFixed(2)}</td>
+                        </tr>
+                        <tr className="table-secondary">
+                          <td className="fw-bold">Total Egresos</td>
+                          <td className="text-end fw-bold">${(resumenGeneral.totalEgresosCents / 100).toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </Table>
+                  </CardBody>
+                </Card>
+              </Col>
+              <Col md={12}>
+                <Card>
+                  <CardHeader>
+                    <h5 className="mb-0">Resumen Financiero</h5>
+                  </CardHeader>
+                  <CardBody>
+                    <Row>
+                      <Col md={4}>
+                        <div className="text-center">
+                          <div className="h3 text-success">${(resumenGeneral.totalIngresosCents / 100).toFixed(2)}</div>
+                          <small className="text-muted">Ingresos Totales</small>
+                        </div>
+                      </Col>
+                      <Col md={4}>
+                        <div className="text-center">
+                          <div className="h3 text-danger">${(resumenGeneral.totalEgresosCents / 100).toFixed(2)}</div>
+                          <small className="text-muted">Egresos Totales</small>
+                        </div>
+                      </Col>
+                      <Col md={4}>
+                        <div className="text-center">
+                          <div className={`h3 ${resumenGeneral.saldoNetoCents >= 0 ? 'text-success' : 'text-danger'}`}>
+                            ${(resumenGeneral.saldoNetoCents / 100).toFixed(2)}
+                          </div>
+                          <small className="text-muted">Saldo Neto</small>
+                        </div>
+                      </Col>
+                    </Row>
+                    <hr />
+                    <div className="text-center">
+                      <Badge bg={resumenGeneral.equiposConSaldo > 0 ? 'warning' : 'success'} className="fs-6 px-3 py-2">
+                        {resumenGeneral.equiposConSaldo} {resumenGeneral.equiposConSaldo === 1 ? 'equipo' : 'equipos'} con saldo pendiente
+                      </Badge>
+                    </div>
+                  </CardBody>
+                </Card>
+              </Col>
+            </Row>
+          ) : (
+            <Alert variant="info">Seleccione un torneo y filtre por fecha si desea.</Alert>
+          )}
+        </Tab>
+        <Tab eventKey="estado-cuenta" title="Estado de Cuenta">
+          <Row className="mb-3">
+            <Col md={6}>
+              <Card>
+                <CardHeader>
+                  <h6 className="mb-0">Seleccionar Equipo</h6>
+                </CardHeader>
+                <CardBody>
+                  <FormSelect
+                    value={equipoEstadoCuenta ?? ''}
+                    onChange={(e) => setEquipoEstadoCuenta(e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">Seleccione un equipo...</option>
+                    {saldos.map((s: any) => (
+                      <option key={s.equipo_id} value={s.equipo_id}>{s.equipo_nombre}</option>
+                    ))}
+                  </FormSelect>
+                </CardBody>
+              </Card>
+            </Col>
+          </Row>
+          {loadingReportes ? (
+            <div className="text-center py-5">
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Cargando...</span>
+              </div>
+            </div>
+          ) : estadoCuenta ? (
+            <Card>
+              <CardHeader>
+                <h5 className="mb-0">
+                  Estado de Cuenta - {estadoCuenta.equipo_nombre}
+                  {estadoCuenta.fecha_inicio && (
+                    <small className="ms-2 text-muted">
+                      ({estadoCuenta.fecha_inicio.toLocaleDateString()} 
+                      {estadoCuenta.fecha_fin && ` - ${estadoCuenta.fecha_fin.toLocaleDateString()}`})
+                    </small>
+                  )}
+                </h5>
+              </CardHeader>
+              <CardBody>
+                <Row className="mb-3">
+                  <Col md={4}>
+                    <div className="text-center border rounded p-3">
+                      <div className="h4">${(estadoCuenta.saldo_inicial_cents / 100).toFixed(2)}</div>
+                      <small className="text-muted">Saldo Inicial</small>
+                    </div>
+                  </Col>
+                  <Col md={4}>
+                    <div className="text-center border rounded p-3">
+                      <div className="h4">${(estadoCuenta.saldo_final_cents / 100).toFixed(2)}</div>
+                      <small className="text-muted">Saldo Final</small>
+                    </div>
+                  </Col>
+                  <Col md={4}>
+                    <div className="text-center border rounded p-3">
+                      <div className="h4">{estadoCuenta.movimientos.length}</div>
+                      <small className="text-muted">Movimientos</small>
+                    </div>
+                  </Col>
+                </Row>
+                <div className="table-responsive">
+                  <Table striped bordered hover size="sm">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Jornada</th>
+                        <th className="text-end">Monto</th>
+                        <th className="text-end">Saldo Acumulado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {estadoCuenta.movimientos.map((mov, idx) => {
+                        const saldoAcumulado = estadoCuenta.saldo_inicial_cents + 
+                          estadoCuenta.movimientos.slice(0, idx + 1).reduce((acc, m) => acc + m.monto_cents, 0)
+                        return (
+                          <tr key={idx}>
+                            <td>{mov.fecha.toLocaleDateString()}</td>
+                            <td>
+                              <Badge bg={
+                                mov.tipo === 'tarjeta_amarilla' ? 'warning' :
+                                mov.tipo === 'tarjeta_roja' ? 'danger' :
+                                mov.tipo === 'cargo_manual' ? 'info' : 'success'
+                              } className={mov.tipo === 'tarjeta_amarilla' ? 'text-dark' : ''}>
+                                {mov.tipo === 'tarjeta_amarilla' ? '🟨' :
+                                 mov.tipo === 'tarjeta_roja' ? '🟥' :
+                                 mov.tipo === 'cargo_manual' ? '➕' : '💳'}
+                              </Badge>
+                            </td>
+                            <td>{mov.descripcion}</td>
+                            <td>{mov.jornada ? `J${mov.jornada}` : '-'}</td>
+                            <td className={`text-end ${mov.monto_cents >= 0 ? 'text-danger' : 'text-success'}`}>
+                              {mov.monto_cents >= 0 ? '+' : ''}${(mov.monto_cents / 100).toFixed(2)}
+                            </td>
+                            <td className={`text-end fw-semibold ${saldoAcumulado >= 0 ? 'text-warning' : 'text-success'}`}>
+                              ${(saldoAcumulado / 100).toFixed(2)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </Table>
+                </div>
+              </CardBody>
+            </Card>
+          ) : (
+            <Alert variant="info">Seleccione un equipo para ver su estado de cuenta.</Alert>
+          )}
+        </Tab>
+        <Tab eventKey="pagos" title="Gestión de Pagos">
+          <Row className="mb-3">
+            <Col md={12}>
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={incluirAnulados}
+                  onChange={(e) => setIncluirAnulados(e.target.checked)}
+                  id="incluirAnulados"
+                />
+                <label className="form-check-label" htmlFor="incluirAnulados">
+                  Incluir pagos anulados
+                </label>
+              </div>
+            </Col>
+          </Row>
+          {loadingReportes ? (
+            <div className="text-center py-5">
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">Cargando...</span>
+              </div>
+            </div>
+          ) : listaPagos.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <h5 className="mb-0">Lista de Pagos ({listaPagos.length})</h5>
+              </CardHeader>
+              <CardBody>
+                <div className="table-responsive">
+                  <Table striped bordered hover size="sm">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Equipo</th>
+                        <th>Monto</th>
+                        <th>Descripción</th>
+                        <th>Referencia</th>
+                        <th>Jornada</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listaPagos.map((pago) => (
+                        <tr key={pago.id} className={pago.anulado ? 'opacity-50' : ''}>
+                          <td>{pago.createdAt ? new Date(pago.createdAt).toLocaleDateString() : '-'}</td>
+                          <td>{pago.equipo_nombre}</td>
+                          <td className="text-end">${(pago.monto_centavos / 100).toFixed(2)}</td>
+                          <td>{pago.descripcion || '-'}</td>
+                          <td>{pago.referencia || '-'}</td>
+                          <td>{pago.jornada ? `J${pago.jornada}` : '-'}</td>
+                          <td>
+                            {pago.anulado ? (
+                              <Badge bg="danger">Anulado</Badge>
+                            ) : (
+                              <Badge bg="success">Activo</Badge>
+                            )}
+                          </td>
+                          <td>
+                            <div className="d-flex gap-2">
+                              {!pago.anulado ? (
+                                <>
+                                  <Button size="sm" variant="outline-primary" onClick={() => handleEditPago(pago)}>
+                                    Editar
+                                  </Button>
+                                  <Button size="sm" variant="outline-danger" onClick={() => handleAnularPago(pago)}>
+                                    Anular
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Button size="sm" variant="outline-success" onClick={() => handleReactivarPago(pago.id)}>
+                                    Reactivar
+                                  </Button>
+                                  {pago.motivo_anulacion && (
+                                    <small className="text-muted d-flex align-items-center">
+                                      Motivo: {pago.motivo_anulacion}
+                                    </small>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              </CardBody>
+            </Card>
+          ) : (
+            <Alert variant="info">No hay pagos registrados.</Alert>
+          )}
+        </Tab>
+      </Tabs>
+
+      <Modal show={showCargoModal} onHide={() => setShowCargoModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>{editingCargo ? 'Editar cargo manual' : 'Nuevo cargo manual'}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {cargoError && (
+            <Alert variant="danger" dismissible onClose={() => setCargoError(null)}>
+              {cargoError}
+            </Alert>
+          )}
+          {cargoSuccess && (
+            <Alert variant="success" dismissible onClose={() => setCargoSuccess(null)}>
+              {cargoSuccess}
+            </Alert>
+          )}
+          <Form>
+            <div className="mb-3">
+              <label className="form-label">Equipo</label>
+              <FormSelect 
+                value={cargoEquipoId || ''} 
+                onChange={(e) => {
+                  setCargoEquipoId(e.target.value ? parseInt(e.target.value) : ('' as any))
+                  setCargoError(null)
+                }} 
+                disabled={!!editingCargo}
+                isInvalid={!cargoEquipoId}
+              >
+                <option value="">Selecciona equipo...</option>
+                {saldos.map((s:any) => (
+                  <option key={s.equipo_id} value={s.equipo_id}>{s.equipo_nombre}</option>
+                ))}
+              </FormSelect>
+              {!cargoEquipoId && <div className="invalid-feedback d-block">Seleccione un equipo</div>}
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Monto (USD)</label>
+              <FormControl 
+                type="number" 
+                step="0.01" 
+                min="0.01" 
+                value={cargoMonto} 
+                onChange={(e) => {
+                  setCargoMonto(e.target.value)
+                  setCargoError(null)
+                }}
+                isInvalid={!!cargoMonto && (isNaN(parseFloat(cargoMonto)) || parseFloat(cargoMonto) <= 0)}
+              />
+              {cargoMonto && (isNaN(parseFloat(cargoMonto)) || parseFloat(cargoMonto) <= 0) && (
+                <div className="invalid-feedback">El monto debe ser mayor a 0</div>
+              )}
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Descripción</label>
+              <FormControl as="textarea" rows={2} value={cargoDesc} onChange={(e) => setCargoDesc(e.target.value)} />
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowCargoModal(false)}>Cancelar</Button>
+          <Button 
+            variant="primary" 
+            onClick={handleSubmitCargo} 
+            disabled={!cargoEquipoId || !cargoMonto || isNaN(parseFloat(cargoMonto)) || parseFloat(cargoMonto) <= 0 || !!cargoSuccess}
+          >
+            {cargoSuccess ? 'Guardado' : 'Guardar'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de confirmación de eliminación */}
+      <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirmar eliminación</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {cargoToDelete && (
+            <>
+              <p>¿Está seguro que desea eliminar este cargo manual?</p>
+              <div className="border rounded p-3 bg-light">
+                <div className="d-flex justify-content-between mb-2">
+                  <strong>Equipo:</strong>
+                  <span>{saldos.find(s => s.equipo_id === cargoToDelete.equipo_id)?.equipo_nombre || cargoToDelete.equipo_id}</span>
+                </div>
+                <div className="d-flex justify-content-between mb-2">
+                  <strong>Monto:</strong>
+                  <span>${((cargoToDelete.monto_centavos || 0) / 100).toFixed(2)}</span>
+                </div>
+                {cargoToDelete.descripcion && (
+                  <div className="d-flex justify-content-between">
+                    <strong>Descripción:</strong>
+                    <span>{cargoToDelete.descripcion}</span>
+                  </div>
+                )}
+              </div>
+              <Alert variant="warning" className="mb-0 mt-3">
+                Esta acción no se puede deshacer.
+              </Alert>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => {
+            setShowDeleteConfirm(false)
+            setCargoToDelete(null)
+          }}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={confirmDeleteCargo}>
+            Eliminar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de tarjetas por equipo y jornada */}
+      <Modal show={showTarjetasModal} onHide={() => setShowTarjetasModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>
+            Tarjetas - {tarjetaModalEquipo?.equipo_nombre} - Jornada {tarjetaModalEquipo?.jornada}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {tarjetasDetalle.length === 0 ? (
+            <Alert variant="info">No hay tarjetas registradas para este equipo en esta jornada.</Alert>
+          ) : (
+            <div className="table-responsive">
+              <Table striped bordered hover size="sm">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Tipo</th>
+                    <th>Jugador ID</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tarjetasDetalle.map((t) => (
+                    <tr key={t.id}>
+                      <td>{t.id}</td>
+                      <td>
+                        <Badge bg={t.tipo === 'amarilla' ? 'warning' : 'danger'} className={t.tipo === 'amarilla' ? 'text-dark' : ''}>
+                          {t.tipo === 'amarilla' ? '🟨 Amarilla' : '🟥 Roja'}
+                        </Badge>
+                      </td>
+                      <td>{t.jugador_id || '-'}</td>
+                      <td>
+                        <Button 
+                          size="sm" 
+                          variant="outline-danger" 
+                          onClick={() => handleEliminarTarjeta(t.id)}
+                        >
+                          Eliminar
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowTarjetasModal(false)}>
+            Cerrar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de confirmación de eliminación de tarjeta */}
+      <Modal show={showTarjetaDeleteConfirm} onHide={() => setShowTarjetaDeleteConfirm(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirmar eliminación</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>¿Está seguro que desea eliminar esta tarjeta?</p>
+          <Alert variant="warning" className="mb-0 mt-3">
+            Esta acción no se puede deshacer.
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowTarjetaDeleteConfirm(false)}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={confirmDeleteTarjeta}>
+            Eliminar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de edición de pago */}
+      <Modal show={showPagoModal} onHide={() => setShowPagoModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Editar Pago</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {editingPago && (
+            <Form>
+              <div className="mb-3">
+                <label className="form-label">Equipo</label>
+                <FormControl value={editingPago.equipo_nombre} disabled />
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Monto (USD)</label>
+                <FormControl
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={pagoMonto}
+                  onChange={(e) => setPagoMonto(e.target.value)}
+                />
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Descripción</label>
+                <FormControl
+                  as="textarea"
+                  rows={2}
+                  value={pagoDescripcion}
+                  onChange={(e) => setPagoDescripcion(e.target.value)}
+                />
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Referencia</label>
+                <FormControl
+                  value={pagoReferencia}
+                  onChange={(e) => setPagoReferencia(e.target.value)}
+                  placeholder="Ej: Número de recibo"
+                />
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Jornada (opcional)</label>
+                <FormControl
+                  type="number"
+                  min="1"
+                  value={pagoJornada}
+                  onChange={(e) => setPagoJornada(e.target.value)}
+                  placeholder="Dejar vacío para pago general"
+                />
+              </div>
+            </Form>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => {
+            setShowPagoModal(false)
+            setEditingPago(null)
+            setPagoMonto('')
+            setPagoDescripcion('')
+            setPagoReferencia('')
+            setPagoJornada('')
+          }}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmitPago}
+            disabled={!pagoMonto || isNaN(parseFloat(pagoMonto)) || parseFloat(pagoMonto) <= 0}
+          >
+            Guardar Cambios
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de anulación de pago */}
+      <Modal show={showAnularModal} onHide={() => setShowAnularModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Anular Pago</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {pagoToAnular && (
+            <>
+              <p>¿Está seguro que desea anular este pago?</p>
+              <div className="border rounded p-3 mb-3">
+                <div className="d-flex justify-content-between mb-2">
+                  <strong>Equipo:</strong>
+                  <span>{pagoToAnular.equipo_nombre}</span>
+                </div>
+                <div className="d-flex justify-content-between mb-2">
+                  <strong>Monto:</strong>
+                  <span>${(pagoToAnular.monto_centavos / 100).toFixed(2)}</span>
+                </div>
+                {pagoToAnular.descripcion && (
+                  <div className="d-flex justify-content-between mb-2">
+                    <strong>Descripción:</strong>
+                    <span>{pagoToAnular.descripcion}</span>
+                  </div>
+                )}
+                {pagoToAnular.referencia && (
+                  <div className="d-flex justify-content-between">
+                    <strong>Referencia:</strong>
+                    <span>{pagoToAnular.referencia}</span>
+                  </div>
+                )}
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Motivo de anulación *</label>
+                <FormControl
+                  as="textarea"
+                  rows={3}
+                  value={motivoAnulacion}
+                  onChange={(e) => setMotivoAnulacion(e.target.value)}
+                  placeholder="Ingrese el motivo de la anulación..."
+                  required
+                />
+              </div>
+              <Alert variant="warning" className="mb-0">
+                El pago será marcado como anulado y no se considerará en los cálculos de saldos.
+              </Alert>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => {
+            setShowAnularModal(false)
+            setPagoToAnular(null)
+            setMotivoAnulacion('')
+          }}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            onClick={confirmAnularPago}
+            disabled={!motivoAnulacion.trim()}
+          >
+            Anular Pago
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </Container>
+  )
+}
+
+export default ContabilidadTarjetasPage
+
+

@@ -10,7 +10,7 @@ import {
     Row,
     Col
 } from 'react-bootstrap';
-import { TbUsers, TbCards, TbSoccerField, TbSignature } from 'react-icons/tb';
+import { TbUsers, TbCards, TbSoccerField, TbSignature, TbCurrencyDollar } from 'react-icons/tb';
 import EstadoEncuentro from './EstadoEncuentro';
 import { useGestionJugadores } from './GestionJugadoresContext';
 
@@ -19,11 +19,12 @@ interface LayoutProps {
     tabAmonestaciones: React.ReactNode;
     tabGoles: React.ReactNode;
     tabFirmas: React.ReactNode;
+    tabPagos?: React.ReactNode;
     nombreEquipoA?: string;
     nombreEquipoB?: string;
 }
 
-const Layout = ({ tabJugadores, tabAmonestaciones, tabGoles, tabFirmas, nombreEquipoA, nombreEquipoB }: LayoutProps) => {
+const Layout = ({ tabJugadores, tabAmonestaciones, tabGoles, tabFirmas, tabPagos, nombreEquipoA, nombreEquipoB }: LayoutProps) => {
     const { torneoId, equipoLocalId, equipoVisitanteId, jornada } = useGestionJugadores()
     const tituloPartido = (nombreEquipoA && nombreEquipoB) ? `${nombreEquipoA} vs ${nombreEquipoB}` : "Gestión del Partido"
     
@@ -65,6 +66,11 @@ const Layout = ({ tabJugadores, tabAmonestaciones, tabGoles, tabFirmas, nombreEq
                                 </NavLink>
                             </NavItem>
                             <NavItem as="li">
+                                <NavLink eventKey="pagos">
+                                    <TbCurrencyDollar size={20} />
+                                </NavLink>
+                            </NavItem>
+                            <NavItem as="li">
                                 <NavLink eventKey="firmas">
                                     <TbSignature size={20} />
                                 </NavLink>
@@ -79,6 +85,9 @@ const Layout = ({ tabJugadores, tabAmonestaciones, tabGoles, tabFirmas, nombreEq
                             </TabPane>
                             <TabPane eventKey="goles">
                                 {tabGoles}
+                            </TabPane>
+                            <TabPane eventKey="pagos">
+                                {tabPagos}
                             </TabPane>
                             <TabPane eventKey="firmas">
                                 {tabFirmas}

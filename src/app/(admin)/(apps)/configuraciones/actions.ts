@@ -143,6 +143,13 @@ export async function agregarConfiguracionesFaltantes() {
         categoria: 'sanciones',
         descripcion: 'Número de partidos de sanción por roja con agresión',
       },
+      {
+        clave: 'cantidad_amarillas_para_sancion',
+        valor: '5',
+        tipo: 'number',
+        categoria: 'sanciones',
+        descripcion: 'Cantidad de tarjetas amarillas acumuladas que generan 1 partido de sanción',
+      },
       // Valores económicos
       {
         clave: 'valor_tarjeta_amarilla',
@@ -164,6 +171,13 @@ export async function agregarConfiguracionesFaltantes() {
         tipo: 'number',
         categoria: 'valores_economicos',
         descripcion: 'Valor económico de multa por doble amarilla (en dólares)',
+      },
+      {
+        clave: 'valor_no_banda_capitan',
+        valor: '5.00',
+        tipo: 'number',
+        categoria: 'valores_economicos',
+        descripcion: 'Valor económico de multa por no presentar banda de capitán (en dólares)',
       },
       // Sistema de puntos
       {
@@ -273,6 +287,13 @@ export async function inicializarConfiguracionesPorDefecto() {
         categoria: 'sanciones',
         descripcion: 'Número de partidos de sanción por roja con agresión',
       },
+      {
+        clave: 'cantidad_amarillas_para_sancion',
+        valor: '5',
+        tipo: 'number',
+        categoria: 'sanciones',
+        descripcion: 'Cantidad de tarjetas amarillas acumuladas que generan 1 partido de sanción',
+      },
       // Valores económicos
       {
         clave: 'valor_tarjeta_amarilla',
@@ -294,6 +315,13 @@ export async function inicializarConfiguracionesPorDefecto() {
         tipo: 'number',
         categoria: 'valores_economicos',
         descripcion: 'Valor económico de multa por doble amarilla (en dólares)',
+      },
+      {
+        clave: 'valor_no_banda_capitan',
+        valor: '5.00',
+        tipo: 'number',
+        categoria: 'valores_economicos',
+        descripcion: 'Valor económico de multa por no presentar banda de capitán (en dólares)',
       },
       // Sistema de puntos
       {

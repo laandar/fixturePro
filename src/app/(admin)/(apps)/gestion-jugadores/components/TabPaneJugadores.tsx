@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Row,
     Col,
@@ -58,6 +58,7 @@ const TabPaneJugadores = () => {
     } | null>(null);
     const [searchFilterA, setSearchFilterA] = useState('');
     const [searchFilterB, setSearchFilterB] = useState('');
+    const [jugadoresSancionados, setJugadoresSancionados] = useState<Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }>>({});
 
     const {
         loading,
@@ -104,15 +105,28 @@ const TabPaneJugadores = () => {
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
     const shouldDisableActions = isEncuentroFinalizado && !isAdmin();
 
+    // Ordenar por número de jugador (sin número al final)
+    const sortByNumero = (jugadores: JugadorWithEquipo[]) => {
+        return jugadores.slice().sort((a, b) => {
+            const na = (a as any).numero_jugador as number | undefined
+            const nb = (b as any).numero_jugador as number | undefined
+            if (typeof na === 'number' && typeof nb === 'number') return na - nb
+            if (typeof na === 'number') return -1
+            if (typeof nb === 'number') return 1
+            return a.apellido_nombre.localeCompare(b.apellido_nombre)
+        })
+    }
+
     // Función para filtrar jugadores por búsqueda
     const filterJugadores = (jugadores: JugadorWithEquipo[], searchTerm: string) => {
         if (!searchTerm.trim()) return jugadores;
-        
         const term = searchTerm.toLowerCase().trim();
-        return jugadores.filter(jugador => 
-            jugador.apellido_nombre.toLowerCase().includes(term) ||
-            jugador.cedula.toLowerCase().includes(term)
-        );
+        return jugadores.filter(jugador => {
+            const nombreMatch = jugador.apellido_nombre.toLowerCase().includes(term)
+            const numero = (jugador as any).numero_jugador as number | undefined
+            const numeroMatch = typeof numero === 'number' && numero.toString().toLowerCase().includes(term)
+            return nombreMatch || numeroMatch
+        })
     };
 
     // Jugadores filtrados para cada equipo
@@ -145,6 +159,47 @@ const TabPaneJugadores = () => {
         );
         return !!jugadorParticipante;
     };
+
+    // Verificar si un jugador está sancionado
+    const isPlayerSancionado = (jugador: JugadorWithEquipo): boolean => {
+        const info = jugadoresSancionados[jugador.id];
+        return info?.sancionado || false;
+    };
+
+    // Obtener información de sanción del jugador
+    const getSancionInfo = (jugador: JugadorWithEquipo) => {
+        return jugadoresSancionados[jugador.id] || { sancionado: false, razon: '', partidosPendientes: 0 };
+    };
+
+    // Cargar información de sanciones de los jugadores
+    useEffect(() => {
+        const loadSancionesJugadores = async () => {
+            if (!torneoId || !jornada) return;
+
+            try {
+                const { isJugadorSancionado } = await import('../actions');
+                const sanciones: Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }> = {};
+
+                // Verificar sanciones para todos los jugadores de ambos equipos
+                const todosLosJugadores = [...jugadoresEquipoA, ...jugadoresEquipoB];
+                
+                await Promise.all(
+                    todosLosJugadores.map(async (jugador) => {
+                        const info = await isJugadorSancionado(torneoId!, jugador.id, jornada!);
+                        sanciones[jugador.id] = info;
+                    })
+                );
+
+                setJugadoresSancionados(sanciones);
+            } catch (error) {
+                console.error('Error al cargar sanciones de jugadores:', error);
+            }
+        };
+
+        if (jugadoresEquipoA.length > 0 || jugadoresEquipoB.length > 0) {
+            loadSancionesJugadores();
+        }
+    }, [torneoId, jornada, jugadoresEquipoA.length, jugadoresEquipoB.length]);
 
     const handleDesignarCapitanClick = async (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
         try {
@@ -311,7 +366,7 @@ const TabPaneJugadores = () => {
 
                         {jugadoresParticipantesA.length > 0 ? (
                             <div className="d-grid gap-2">
-                                {jugadoresParticipantesA.map((jugador: JugadorWithEquipo) => {
+                                {sortByNumero(jugadoresParticipantesA).map((jugador: JugadorWithEquipo) => {
                                     const jugadorIdStr = jugador.id.toString();
                                     const tarjetasJugador = tarjetas.filter(t => t.jugador === jugadorIdStr);
                                     const amarillas = tarjetasJugador.filter(t => t.tipo === 'amarilla').length;
@@ -347,9 +402,13 @@ const TabPaneJugadores = () => {
                                                         </span>
                                                     )}
                                                     {jugador.apellido_nombre}
+                                                    {typeof (jugador as any).numero_jugador === 'number' && (
+                                                        <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
+                                                            #{(jugador as any).numero_jugador}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className={`text-muted small ${deshabilitado ? 'text-decoration-line-through' : ''}`}>
-                                                    {jugador.cedula}
                                                     {sustituido && <span className="ms-2 badge bg-warning">SUSTITUIDO</span>}
                                                 </div>
                                             </div>
@@ -570,7 +629,7 @@ const TabPaneJugadores = () => {
 
                         {jugadoresParticipantesB.length > 0 ? (
                             <div className="d-grid gap-2">
-                                {jugadoresParticipantesB.map((jugador: JugadorWithEquipo) => {
+                                {sortByNumero(jugadoresParticipantesB).map((jugador: JugadorWithEquipo) => {
                                     const jugadorIdStr = jugador.id.toString();
                                     const tarjetasJugador = tarjetas.filter(t => t.jugador === jugadorIdStr);
                                     const amarillas = tarjetasJugador.filter(t => t.tipo === 'amarilla').length;
@@ -606,9 +665,13 @@ const TabPaneJugadores = () => {
                                                         </span>
                                                     )}
                                                     {jugador.apellido_nombre}
+                                                    {typeof (jugador as any).numero_jugador === 'number' && (
+                                                        <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
+                                                            #{(jugador as any).numero_jugador}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className={`text-muted small ${deshabilitado ? 'text-decoration-line-through' : ''}`}>
-                                                    {jugador.cedula}
                                                     {sustituido && <span className="ms-2 badge bg-warning">SUSTITUIDO</span>}
                                                 </div>
                                             </div>
@@ -836,7 +899,7 @@ const TabPaneJugadores = () => {
                     <div className="mb-3">
                         <Form.Control
                             type="text"
-                            placeholder="Buscar por nombre o cédula..."
+                            placeholder="Buscar por nombre o número..."
                             value={searchFilterA}
                             onChange={(e) => setSearchFilterA(e.target.value)}
                             className="form-control-lg"
@@ -845,12 +908,17 @@ const TabPaneJugadores = () => {
                     </div>
                     
                     <div className="row g-2">
-                        {jugadoresFiltradosA.map((jugador: JugadorWithEquipo) => (
+                        {sortByNumero(jugadoresFiltradosA).map((jugador: JugadorWithEquipo) => {
+                            const sancionado = isPlayerSancionado(jugador);
+                            const sancionInfo = getSancionInfo(jugador);
+                            const deshabilitadoPorSancion = sancionado && !shouldDisableActions;
+                            
+                            return (
                             <div key={jugador.id} className="col-12 col-sm-6 col-lg-4">
                                 <div 
-                                    className={`card h-100 border-2 ${jugadoresParticipantesA.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : 'border-light'} ${!shouldDisableActions ? 'cursor-pointer' : ''}`} 
-                                    style={{ overflow: 'hidden', cursor: shouldDisableActions ? 'not-allowed' : 'pointer' }}
-                                    onClick={() => !shouldDisableActions && handleTogglePlayerSelection(jugador, 'A')}
+                                    className={`card h-100 border-2 ${jugadoresParticipantesA.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : sancionado ? 'border-danger bg-danger-subtle' : 'border-light'} ${!shouldDisableActions && !deshabilitadoPorSancion ? 'cursor-pointer' : ''}`} 
+                                    style={{ overflow: 'hidden', cursor: shouldDisableActions || deshabilitadoPorSancion ? 'not-allowed' : 'pointer', opacity: deshabilitadoPorSancion ? 0.6 : 1 }}
+                                    onClick={() => !shouldDisableActions && !deshabilitadoPorSancion && handleTogglePlayerSelection(jugador, 'A')}
                                 >
                                     <div className="card-body p-3" style={{ overflow: 'hidden' }}>
                                         <div className="d-flex align-items-start" style={{ minWidth: 0 }}>
@@ -884,21 +952,22 @@ const TabPaneJugadores = () => {
                                                     }}
                                                 >
                                                     {jugador.apellido_nombre}
+                                                    {typeof (jugador as any).numero_jugador === 'number' && (
+                                                        <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
+                                                            #{(jugador as any).numero_jugador}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div 
-                                                    className="text-muted small"
-                                                    title={jugador.cedula}
-                                                    style={{ 
-                                                        wordWrap: 'break-word',
-                                                        wordBreak: 'break-word',
-                                                        hyphens: 'auto',
-                                                        lineHeight: '1.2',
-                                                        maxWidth: '100%',
-                                                        display: 'block'
-                                                    }}
-                                                >
-                                                    {jugador.cedula}
-                                                </div>
+                                                {sancionado && (
+                                                    <div className="mt-1">
+                                                        <Badge bg="danger" className="text-white">
+                                                            🚫 Sancionado ({sancionInfo.partidosPendientes} partido{sancionInfo.partidosPendientes !== 1 ? 's' : ''})
+                                                        </Badge>
+                                                        {sancionInfo.razon && (
+                                                            <small className="d-block text-danger mt-1">{sancionInfo.razon}</small>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                             {/* Indicador visual de selección */}
                                             {jugadoresParticipantesA.some(p => p.id === jugador.id) && (
@@ -910,7 +979,8 @@ const TabPaneJugadores = () => {
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     
                     {jugadoresFiltradosA.length === 0 && (
@@ -1009,7 +1079,7 @@ const TabPaneJugadores = () => {
                     <div className="mb-3">
                         <Form.Control
                             type="text"
-                            placeholder="Buscar por nombre o cédula..."
+                            placeholder="Buscar por nombre o número..."
                             value={searchFilterB}
                             onChange={(e) => setSearchFilterB(e.target.value)}
                             className="form-control-lg"
@@ -1018,12 +1088,17 @@ const TabPaneJugadores = () => {
                     </div>
                     
                     <div className="row g-2">
-                        {jugadoresFiltradosB.map((jugador: JugadorWithEquipo) => (
+                        {sortByNumero(jugadoresFiltradosB).map((jugador: JugadorWithEquipo) => {
+                            const sancionado = isPlayerSancionado(jugador);
+                            const sancionInfo = getSancionInfo(jugador);
+                            const deshabilitadoPorSancion = sancionado && !shouldDisableActions;
+                            
+                            return (
                             <div key={jugador.id} className="col-12 col-sm-6 col-lg-4">
                                 <div 
-                                    className={`card h-100 border-2 ${jugadoresParticipantesB.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : 'border-light'} ${!shouldDisableActions ? 'cursor-pointer' : ''}`} 
-                                    style={{ overflow: 'hidden', cursor: shouldDisableActions ? 'not-allowed' : 'pointer' }}
-                                    onClick={() => !shouldDisableActions && handleTogglePlayerSelection(jugador, 'B')}
+                                    className={`card h-100 border-2 ${jugadoresParticipantesB.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : sancionado ? 'border-danger bg-danger-subtle' : 'border-light'} ${!shouldDisableActions && !deshabilitadoPorSancion ? 'cursor-pointer' : ''}`} 
+                                    style={{ overflow: 'hidden', cursor: shouldDisableActions || deshabilitadoPorSancion ? 'not-allowed' : 'pointer', opacity: deshabilitadoPorSancion ? 0.6 : 1 }}
+                                    onClick={() => !shouldDisableActions && !deshabilitadoPorSancion && handleTogglePlayerSelection(jugador, 'B')}
                                 >
                                     <div className="card-body p-3" style={{ overflow: 'hidden' }}>
                                         <div className="d-flex align-items-start" style={{ minWidth: 0 }}>
@@ -1057,21 +1132,22 @@ const TabPaneJugadores = () => {
                                                     }}
                                                 >
                                                     {jugador.apellido_nombre}
+                                                    {typeof (jugador as any).numero_jugador === 'number' && (
+                                                        <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
+                                                            #{(jugador as any).numero_jugador}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div 
-                                                    className="text-muted small"
-                                                    title={jugador.cedula}
-                                                    style={{ 
-                                                        wordWrap: 'break-word',
-                                                        wordBreak: 'break-word',
-                                                        hyphens: 'auto',
-                                                        lineHeight: '1.2',
-                                                        maxWidth: '100%',
-                                                        display: 'block'
-                                                    }}
-                                                >
-                                                    {jugador.cedula}
-                                                </div>
+                                                {sancionado && (
+                                                    <div className="mt-1">
+                                                        <Badge bg="danger" className="text-white">
+                                                            🚫 Sancionado ({sancionInfo.partidosPendientes} partido{sancionInfo.partidosPendientes !== 1 ? 's' : ''})
+                                                        </Badge>
+                                                        {sancionInfo.razon && (
+                                                            <small className="d-block text-danger mt-1">{sancionInfo.razon}</small>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                             {/* Indicador visual de selección */}
                                             {jugadoresParticipantesB.some(p => p.id === jugador.id) && (
@@ -1083,7 +1159,8 @@ const TabPaneJugadores = () => {
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     
                     {jugadoresFiltradosB.length === 0 && (
@@ -1159,13 +1236,13 @@ const TabPaneJugadores = () => {
                             <h6 className="mb-3">Selecciona el jugador que entra:</h6>
                             
                             <div className="row">
-                                {(changeTeam === 'A' ? jugadoresEquipoA : jugadoresEquipoB)
+                                {sortByNumero((changeTeam === 'A' ? jugadoresEquipoA : jugadoresEquipoB)
                                     .filter(jugador => {
                                         // Excluir al jugador que sale y a los que ya están en el campo
                                         const participantes = changeTeam === 'A' ? jugadoresParticipantesA : jugadoresParticipantesB;
                                         return jugador.id !== selectedPlayerForChange.id && 
                                                !participantes.some(p => p.id === jugador.id);
-                                    })
+                                    }))
                                     .map(jugador => (
                                         <div key={jugador.id} className="col-md-6 mb-3">
                                             <div 
@@ -1191,8 +1268,15 @@ const TabPaneJugadores = () => {
                                                         </div>
                                                     )}
                                                     <div>
-                                                        <div className="fw-bold">{jugador.apellido_nombre}</div>
-                                                        <div className="text-muted small">{jugador.cedula}</div>
+                                                        <div className="fw-bold">
+                                                            {jugador.apellido_nombre}
+                                                            {typeof (jugador as any).numero_jugador === 'number' && (
+                                                                <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
+                                                                    #{(jugador as any).numero_jugador}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {null}
                                                     </div>
                                                 </div>
                                             </div>

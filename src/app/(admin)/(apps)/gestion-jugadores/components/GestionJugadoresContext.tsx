@@ -69,6 +69,13 @@ export interface GestionJugadoresState {
   deshacerCambioJugador: (cambioId: number, jugadorEntraId: number, encuentroId: number) => Promise<void>;
   cambiosJugadores: Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>;
   setCambiosJugadores: React.Dispatch<React.SetStateAction<Array<{id?: number, sale: JugadorWithEquipo, entra: JugadorWithEquipo, timestamp: Date, equipo: 'A' | 'B'}>>>;
+  // Saldos y pagos
+  saldoLocalCents: number;
+  saldoVisitanteCents: number;
+  reloadSaldos: () => Promise<void>;
+  registrarPago: (equipo: 'local' | 'visitante', monto: number, descripcion?: string) => Promise<void>;
+  cargosManuales: Array<{equipo_id:number,monto_centavos:number,descripcion:string|null}>;
+  detalleValores: any;
 }
 
 export const GestionJugadoresContext = createContext<GestionJugadoresState | undefined>(undefined);

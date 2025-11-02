@@ -1423,9 +1423,9 @@ const TorneoDetailPage = () => {
                                       </td>
                                       <td>
                                         <Badge bg="secondary">
-                                          {equiposParticipantes.find(et => 
-                                            et.equipo?.jugadores?.some(j => j.id === jugador.jugador?.id)
-                                          )?.equipo?.nombre || 'N/A'}
+                                          {jugador.equipo_id 
+                                            ? (equiposParticipantes.find(et => et.equipo_id === jugador.equipo_id)?.equipo?.nombre || 'N/A')
+                                            : 'N/A'}
                                         </Badge>
                                       </td>
                                       <td className="text-center text-warning fw-bold">{jugador.amarillas}</td>

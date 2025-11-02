@@ -79,8 +79,19 @@ const Page = () => {
     loadConfiguraciones()
   }, [])
 
-  // Agrupar configuraciones por categoría
-  const configsPorCategoria = configuraciones.reduce((acc, config) => {
+  // Filtrar configuraciones que no deben mostrarse en la UI
+  const clavesOcultas = new Set([
+    'puntos_por_victoria',
+    'puntos_por_empate',
+    'puntos_por_derrota',
+    'puntos_por_victoria_resolucion',
+    'valor_tarjeta_doble_amarilla',
+  ])
+
+  const configuracionesVisibles = configuraciones.filter((c) => !clavesOcultas.has(c.clave))
+
+  // Agrupar configuraciones por categoría (solo visibles)
+  const configsPorCategoria = configuracionesVisibles.reduce((acc, config) => {
     if (!acc[config.categoria]) {
       acc[config.categoria] = []
     }
@@ -106,6 +117,12 @@ const Page = () => {
       'general': '⚙️',
     }
     return iconos[categoria] || '📋'
+  }
+
+  // Overrides de etiquetas para mayor claridad en UI
+  const labelOverrides: Record<string, string> = {
+    goles_por_wo: 'Goles a favor asignados al ganador por WO',
+    goles_contra_por_wo: 'Goles en contra asignados al perdedor por WO',
   }
 
   if (loading) {
@@ -197,7 +214,7 @@ const Page = () => {
                               <div className="d-flex justify-content-between align-items-start mb-2">
                                 <div className="flex-grow-1">
                                   <label className="form-label fw-semibold mb-1">
-                                    {config.descripcion || config.clave}
+                                    {labelOverrides[config.clave] || config.descripcion || config.clave}
                                   </label>
                                   <div className="d-flex gap-2 mb-2">
                                     <Badge bg="light" text="dark" className="text-uppercase">

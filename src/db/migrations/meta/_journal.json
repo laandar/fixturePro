@@ -253,6 +253,41 @@
       "when": 1761183614754,
       "tag": "0035_lame_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1761798828537,
+      "tag": "0036_dapper_greymalkin",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1761800879031,
+      "tag": "0037_sloppy_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1761859450440,
+      "tag": "0038_soft_anita_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1761861775794,
+      "tag": "0039_real_screwball",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1761929962032,
+      "tag": "0040_burly_inhumans",
+      "breakpoints": true
     }
   ]
 }

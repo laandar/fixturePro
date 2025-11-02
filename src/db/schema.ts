@@ -450,6 +450,55 @@ export const firmasEncuentrosRelations = relations(firmasEncuentros, ({ one }) =
   }),
 }));
 
+// Tabla de pagos/abonos de multas (tarjetas)
+export const pagosMultas = pgTable('pagos_multas', {
+  id: serial('id').primaryKey(),
+  torneo_id: integer('torneo_id').references(() => torneos.id).notNull(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  jornada: integer('jornada'), // Jornada a la que se aplica el pago (opcional)
+  monto_centavos: integer('monto_centavos').notNull(), // Monto en centavos para evitar problemas de redondeo
+  descripcion: text('descripcion'),
+  referencia: text('referencia'),
+  anulado: boolean('anulado').default(false),
+  motivo_anulacion: text('motivo_anulacion'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const pagosMultasRelations = relations(pagosMultas, ({ one }) => ({
+  torneo: one(torneos, {
+    fields: [pagosMultas.torneo_id],
+    references: [torneos.id],
+  }),
+  equipo: one(equipos, {
+    fields: [pagosMultas.equipo_id],
+    references: [equipos.id],
+  }),
+}));
+
+// Tabla de cargos manuales (ajustes) a aplicar en una jornada específica
+export const cargosManuales = pgTable('cargos_manuales', {
+  id: serial('id').primaryKey(),
+  torneo_id: integer('torneo_id').references(() => torneos.id).notNull(),
+  equipo_id: integer('equipo_id').references(() => equipos.id).notNull(),
+  jornada_aplicacion: integer('jornada_aplicacion'),
+  monto_centavos: integer('monto_centavos').notNull(),
+  descripcion: text('descripcion'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const cargosManualesRelations = relations(cargosManuales, ({ one }) => ({
+  torneo: one(torneos, {
+    fields: [cargosManuales.torneo_id],
+    references: [torneos.id],
+  }),
+  equipo: one(equipos, {
+    fields: [cargosManuales.equipo_id],
+    references: [equipos.id],
+  }),
+}));
+
 // Tabla de historial de jugadores
 export const historialJugadores = pgTable('historial_jugadores', {
   id: serial('id').primaryKey(),

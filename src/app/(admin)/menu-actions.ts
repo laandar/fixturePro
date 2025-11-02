@@ -30,7 +30,6 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
   try {
     const session = await auth();
     if (!session?.user) {
-      console.log('❌ No hay sesión de usuario');
       return [];
     }
 
@@ -43,14 +42,6 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
       columns: { role: true }
     });
 
-    if (usuarioEnDB && usuarioEnDB.role !== session.user.role) {
-      console.log('⚠️ DISCREPANCIA DETECTADA:');
-      console.log('   Rol en sesión:', session.user.role);
-      console.log('   Rol en DB:', usuarioEnDB.role);
-      console.log('   🔄 El usuario necesita cerrar sesión y volver a iniciar sesión');
-      console.log('   📝 O usar la función de actualización de sesión');
-    }
-
     // 1. Obtener roles del usuario desde roles_usuarios
     const rolesDelUsuario = await db.query.rolesUsuarios.findMany({
       where: eq(rolesUsuarios.userId, userId),
@@ -59,10 +50,8 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
       },
     });
 
-    console.log('📋 Roles del usuario en DB (roles_usuarios):', rolesDelUsuario.map(r => r.rol.nombre));
 
     if (rolesDelUsuario.length === 0) {
-      console.log('⚠️ Usuario sin roles en roles_usuarios, usando rol de users.role:', session.user.role);
       
       // Fallback: usar el rol de users.role si no tiene en roles_usuarios
       const rolFallback = await db.query.roles.findFirst({
@@ -70,7 +59,6 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
       });
       
       if (rolFallback) {
-        console.log('✅ Usando rol fallback:', rolFallback.nombre);
         rolesDelUsuario.push({ 
           id: 0, 
           userId, 
@@ -86,7 +74,6 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
     }
 
     const rolesIds = rolesDelUsuario.map(r => r.rolId);
-    console.log('🔑 IDs de roles del usuario:', rolesIds);
 
     // 2. Obtener permisos del usuario
     const permisos = await db.query.rolesMenus.findMany({
@@ -99,12 +86,8 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
       },
     });
 
-    console.log('🔓 Permisos encontrados:', permisos.length);
-    console.log('📋 Menús permitidos:', permisos.map(p => p.menu.label));
-
     // 3. Obtener IDs únicos de menús permitidos
     const menusIdsPermitidos = [...new Set(permisos.map(p => p.menuId))];
-    console.log('🆔 IDs de menús permitidos:', menusIdsPermitidos);
 
     // 4. Obtener todos los menús permitidos
     const menusPermitidos = await db.query.menus.findMany({
@@ -131,10 +114,6 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
     // Combinar menús permitidos con menús padre
     const todosLosMenus = [...menusPermitidos, ...menusPadre.filter(p => !menusPermitidos.some(m => m.id === p.id))];
     
-    console.log('📋 Menús permitidos:', menusPermitidos.map(m => `${m.key} (${m.label})`));
-    console.log('📋 Menús padre:', menusPadre.map(m => `${m.key} (${m.label})`));
-    console.log('📋 Total menús para jerarquía:', todosLosMenus.map(m => `${m.key} (${m.label}) - parent: ${m.parentId}`));
-
     // 5. Construir estructura jerárquica
     const menusMap = new Map<number, MenuItemFromDB>();
     const menusRaiz: MenuItemFromDB[] = [];

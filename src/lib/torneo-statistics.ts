@@ -28,6 +28,7 @@ export interface EstadisticaDetallada {
 
 export interface EstadisticaSancion {
   jugador: any
+  equipo_id: number | null
   amarillas: number
   rojas: number
   sancionado: boolean
@@ -214,7 +215,9 @@ export const getEstadisticasSanciones = (
   todosJugadores: any[]
 ): EstadisticaSancion[] => {
   const sancionesPorJugador: Record<string, { 
-    jugador: any, 
+    jugador: any,
+    equipo_id: number | null,
+    equiposIds: number[],
     amarillas: number, 
     rojas: number,
     sancionado: boolean,
@@ -226,6 +229,8 @@ export const getEstadisticasSanciones = (
     if (!sancionesPorJugador[tarjeta.jugador_id]) {
       sancionesPorJugador[tarjeta.jugador_id] = {
         jugador: null,
+        equipo_id: null,
+        equiposIds: [],
         amarillas: 0,
         rojas: 0,
         sancionado: false,
@@ -234,6 +239,11 @@ export const getEstadisticasSanciones = (
     }
 
     const stats = sancionesPorJugador[tarjeta.jugador_id]
+    
+    // Guardar equipo_id de la tarjeta
+    if (tarjeta.equipo_id) {
+      stats.equiposIds.push(tarjeta.equipo_id)
+    }
     
     if (tarjeta.tipo === 'amarilla') {
       stats.amarillas++
@@ -248,6 +258,22 @@ export const getEstadisticasSanciones = (
   const jugadoresConSanciones = Object.entries(sancionesPorJugador).map(([jugadorId, stats]) => {
     const jugador = todosJugadores.find(j => j.id === jugadorId)
     
+    // Determinar el equipo_id más frecuente (en caso de que un jugador haya cambiado de equipo)
+    let equipo_id: number | null = null
+    if (stats.equiposIds.length > 0) {
+      // Contar frecuencia de cada equipo_id
+      const equipoCounts: Record<number, number> = {}
+      stats.equiposIds.forEach(id => {
+        equipoCounts[id] = (equipoCounts[id] || 0) + 1
+      })
+      
+      // Obtener el equipo_id más frecuente
+      const equipoMasFrecuente = Object.entries(equipoCounts).reduce((a, b) => 
+        equipoCounts[parseInt(a[0])] > equipoCounts[parseInt(b[0])] ? a : b
+      )
+      equipo_id = parseInt(equipoMasFrecuente[0])
+    }
+    
     // Calcular sanciones por acumulación de amarillas (5 amarillas = 1 partido)
     if (stats.amarillas >= 5) {
       stats.sancionado = true
@@ -256,6 +282,7 @@ export const getEstadisticasSanciones = (
 
     return {
       jugador,
+      equipo_id,
       amarillas: stats.amarillas,
       rojas: stats.rojas,
       sancionado: stats.sancionado,
