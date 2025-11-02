@@ -20,6 +20,7 @@ import { useGestionJugadores } from './GestionJugadoresContext';
 import type { JugadorWithEquipo } from '@/db/types';
 import InlineNotification from '@/components/InlineNotification';
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal';
+import { calcularEdad } from '@/lib/age-helpers';
 import './TabPaneJugadores.css';
 
 // CustomToggle component for the dropdown
@@ -164,6 +165,18 @@ const TabPaneJugadores = () => {
     const isPlayerSancionado = (jugador: JugadorWithEquipo): boolean => {
         const info = jugadoresSancionados[jugador.id];
         return info?.sancionado || false;
+    };
+
+    // Verificar si un jugador es menor de 18 años (juvenil)
+    const isJugadorJuvenil = (jugador: JugadorWithEquipo): boolean => {
+        if (!jugador.fecha_nacimiento) return false;
+        try {
+            const fechaNacimiento = new Date(jugador.fecha_nacimiento);
+            const edad = calcularEdad(fechaNacimiento);
+            return edad.anos < 18;
+        } catch (error) {
+            return false;
+        }
     };
 
     // Obtener información de sanción del jugador
@@ -402,6 +415,11 @@ const TabPaneJugadores = () => {
                                                         </span>
                                                     )}
                                                     {jugador.apellido_nombre}
+                                                    {isJugadorJuvenil(jugador) && (
+                                                        <span className="ms-1 badge bg-info text-white" style={{ fontSize: '0.7rem', padding: '2px 6px' }} title="Juvenil (menor de 18 años)">
+                                                            J
+                                                        </span>
+                                                    )}
                                                     {typeof (jugador as any).numero_jugador === 'number' && (
                                                         <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
                                                             #{(jugador as any).numero_jugador}
@@ -665,6 +683,11 @@ const TabPaneJugadores = () => {
                                                         </span>
                                                     )}
                                                     {jugador.apellido_nombre}
+                                                    {isJugadorJuvenil(jugador) && (
+                                                        <span className="ms-1 badge bg-info text-white" style={{ fontSize: '0.7rem', padding: '2px 6px' }} title="Juvenil (menor de 18 años)">
+                                                            J
+                                                        </span>
+                                                    )}
                                                     {typeof (jugador as any).numero_jugador === 'number' && (
                                                         <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
                                                             #{(jugador as any).numero_jugador}
@@ -952,6 +975,11 @@ const TabPaneJugadores = () => {
                                                     }}
                                                 >
                                                     {jugador.apellido_nombre}
+                                                    {isJugadorJuvenil(jugador) && (
+                                                        <span className="ms-1 badge bg-info text-white" style={{ fontSize: '0.7rem', padding: '2px 6px' }} title="Juvenil (menor de 18 años)">
+                                                            J
+                                                        </span>
+                                                    )}
                                                     {typeof (jugador as any).numero_jugador === 'number' && (
                                                         <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
                                                             #{(jugador as any).numero_jugador}
@@ -1132,6 +1160,11 @@ const TabPaneJugadores = () => {
                                                     }}
                                                 >
                                                     {jugador.apellido_nombre}
+                                                    {isJugadorJuvenil(jugador) && (
+                                                        <span className="ms-1 badge bg-info text-white" style={{ fontSize: '0.7rem', padding: '2px 6px' }} title="Juvenil (menor de 18 años)">
+                                                            J
+                                                        </span>
+                                                    )}
                                                     {typeof (jugador as any).numero_jugador === 'number' && (
                                                         <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
                                                             #{(jugador as any).numero_jugador}
@@ -1270,6 +1303,11 @@ const TabPaneJugadores = () => {
                                                     <div>
                                                         <div className="fw-bold">
                                                             {jugador.apellido_nombre}
+                                                            {isJugadorJuvenil(jugador) && (
+                                                                <span className="ms-1 badge bg-info text-white" style={{ fontSize: '0.7rem', padding: '2px 6px' }} title="Juvenil (menor de 18 años)">
+                                                                    J
+                                                                </span>
+                                                            )}
                                                             {typeof (jugador as any).numero_jugador === 'number' && (
                                                                 <span className="ms-2" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>
                                                                     #{(jugador as any).numero_jugador}
