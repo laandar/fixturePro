@@ -151,13 +151,37 @@ export async function createJugador(formData: FormData) {
       return value.trim();
     };
 
+    // Convertir fecha_nacimiento a string en formato YYYY-MM-DD para PostgreSQL
+    const formatFechaNacimiento = (fecha: string | null): string | null => {
+      if (!fecha) return null;
+      try {
+        const fechaObj = new Date(fecha);
+        if (isNaN(fechaObj.getTime())) return null;
+        // Convertir a formato YYYY-MM-DD
+        const year = fechaObj.getFullYear();
+        const month = String(fechaObj.getMonth() + 1).padStart(2, '0');
+        const day = String(fechaObj.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      } catch {
+        return null;
+      }
+    };
+
+    // Generar ID único para el jugador
+    const generateJugadorId = (): string => {
+      // Usar crypto de Node.js para generar UUID
+      const { randomUUID } = require('crypto');
+      return randomUUID();
+    };
+
     const jugadorData = {
+      id: generateJugadorId(),
       cedula,
       apellido_nombre,
       nacionalidad,
       liga,
       estado,
-      fecha_nacimiento: fecha_nacimiento ? new Date(fecha_nacimiento) : null,
+      fecha_nacimiento: formatFechaNacimiento(fecha_nacimiento),
       sexo: cleanString(sexo) as 'masculino' | 'femenino' | 'otro' | null,
       numero_jugador: numero_jugador ? parseInt(numero_jugador) : null,
       telefono: cleanString(telefono),
@@ -250,13 +274,29 @@ export async function updateJugador(id: number | string, formData: FormData) {
       return value.trim();
     };
 
+    // Convertir fecha_nacimiento a string en formato YYYY-MM-DD para PostgreSQL
+    const formatFechaNacimiento = (fecha: string | null): string | null => {
+      if (!fecha) return null;
+      try {
+        const fechaObj = new Date(fecha);
+        if (isNaN(fechaObj.getTime())) return null;
+        // Convertir a formato YYYY-MM-DD
+        const year = fechaObj.getFullYear();
+        const month = String(fechaObj.getMonth() + 1).padStart(2, '0');
+        const day = String(fechaObj.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      } catch {
+        return null;
+      }
+    };
+
     const jugadorData = {
       cedula,
       apellido_nombre,
       nacionalidad,
       liga,
       estado,
-      fecha_nacimiento: fecha_nacimiento ? new Date(fecha_nacimiento) : null,
+      fecha_nacimiento: formatFechaNacimiento(fecha_nacimiento),
       sexo: cleanString(sexo) as 'masculino' | 'femenino' | 'otro' | null,
       numero_jugador: numero_jugador ? parseInt(numero_jugador) : null,
       telefono: cleanString(telefono),
