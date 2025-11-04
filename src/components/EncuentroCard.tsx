@@ -118,21 +118,22 @@ export default function EncuentroCard({
     <MagicBentoCard 
       variant={variant}
       size={size}
+      style={{ padding: '8px' }}
     >
       {/* Header compacto con equipos, fecha y estado */}
-      <div className="mb-3">
-        {/* Equipos con nombres completos - Responsivo */}
-        <div className="row align-items-center justify-content-center g-2 mb-2">
-          {/* Equipo Local */}
-          <div className="col-auto d-flex align-items-center gap-1 gap-md-2">
+      <div style={{ marginBottom: '2px' }}>
+        {/* Equipos con nombres completos - Vertical (arriba y abajo) */}
+        <div className="d-flex flex-column align-items-center justify-content-center" style={{ gap: '1px' }}>
+          {/* Equipo Local - Arriba */}
+          <div className="d-flex align-items-center gap-1">
             <div 
               className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white position-relative" 
               style={{
-                width: 'clamp(28px, 4vw, 36px)', 
-                height: 'clamp(28px, 4vw, 36px)',
+                width: 'clamp(22px, 3vw, 30px)', 
+                height: 'clamp(22px, 3vw, 30px)',
                 background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-                fontSize: 'clamp(10px, 2vw, 12px)',
-                boxShadow: '0 4px 15px rgba(37, 99, 235, 0.4)',
+                fontSize: 'clamp(8px, 1.6vw, 10px)',
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)',
                 transition: 'all 0.3s ease',
                 flexShrink: 0
               }}
@@ -143,55 +144,59 @@ export default function EncuentroCard({
               className="fw-bold text-center" 
               style={{
                 color: '#1F2937',
-                fontSize: 'clamp(12px, 2.5vw, 16px)',
-                lineHeight: '1.2'
+                fontSize: 'clamp(10px, 2vw, 13px)',
+                lineHeight: '1'
               }}
             >
               {encuentro.equipoLocal?.nombre || 'Local'}
             </span>
           </div>
           
-          {/* VS */}
-          <div className="col-auto">
+          {/* Separador VS */}
+          <div className="d-flex align-items-center justify-content-center" style={{ margin: '0' }}>
             <span 
-              className="fw-semibold d-block text-center" 
-              style={{color: '#6B7280', fontSize: 'clamp(10px, 2vw, 14px)'}}
+              className="fw-semibold" 
+              style={{
+                color: '#6B7280', 
+                fontSize: 'clamp(7px, 1.6vw, 9px)',
+                opacity: 0.5
+              }}
             >
               VS
             </span>
           </div>
           
-          {/* Equipo Visitante */}
-          <div className="col-auto d-flex align-items-center gap-1 gap-md-2">
-            <span 
-              className="fw-bold text-center" 
-              style={{
-                color: '#1F2937',
-                fontSize: 'clamp(12px, 2.5vw, 16px)',
-                lineHeight: '1.2'
-              }}
-            >
-              {encuentro.equipoVisitante?.nombre || 'Visitante'}
-            </span>
+          {/* Equipo Visitante - Abajo */}
+          <div className="d-flex align-items-center gap-1">
             <div 
               className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white position-relative" 
               style={{
-                width: 'clamp(28px, 4vw, 36px)', 
-                height: 'clamp(28px, 4vw, 36px)',
+                width: 'clamp(22px, 3vw, 30px)', 
+                height: 'clamp(22px, 3vw, 30px)',
                 background: 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)',
-                fontSize: 'clamp(10px, 2vw, 12px)',
-                boxShadow: '0 4px 15px rgba(34, 197, 94, 0.4)',
+                fontSize: 'clamp(8px, 1.6vw, 10px)',
+                boxShadow: '0 2px 8px rgba(34, 197, 94, 0.4)',
                 transition: 'all 0.3s ease',
                 flexShrink: 0
               }}
             >
               {encuentro.equipoVisitante?.nombre?.substring(0, 2).toUpperCase() || 'V'}
             </div>
+            <span 
+              className="fw-bold text-center" 
+              style={{
+                color: '#1F2937',
+                fontSize: 'clamp(10px, 2vw, 13px)',
+                lineHeight: '1'
+              }}
+            >
+              {encuentro.equipoVisitante?.nombre || 'Visitante'}
+            </span>
           </div>
         </div>
         
         {/* Fecha, horario y estado - Responsivo */}
-        <div className="row align-items-center justify-content-center g-1 g-md-2">
+        <div className="row align-items-center justify-content-center g-1" style={{ marginTop: '2px' }}>
           {/* Fecha */}
           <div className="col-auto">
             <span 
@@ -201,8 +206,8 @@ export default function EncuentroCard({
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-                fontSize: 'clamp(11px, 2vw, 14px)',
-                lineHeight: '1.2'
+                fontSize: 'clamp(9px, 1.8vw, 12px)',
+                lineHeight: '1'
               }}
             >
               {encuentro.fecha_programada ? 
@@ -226,11 +231,35 @@ export default function EncuentroCard({
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',
-                    fontSize: 'clamp(10px, 2vw, 13px)',
-                    lineHeight: '1.2'
+                    fontSize: 'clamp(9px, 1.8vw, 12px)',
+                    lineHeight: '1'
                   }}
                 >
                   🕐 {encuentro.horario.hora_inicio}
+                </span>
+              </div>
+              <div className="col-auto">
+                <span style={{color: '#D1D5DB', fontSize: 'clamp(10px, 1.5vw, 12px)'}}>•</span>
+              </div>
+            </>
+          )}
+          
+          {/* Cancha */}
+          {encuentro.cancha && (
+            <>
+              <div className="col-auto">
+                <span 
+                  className="fw-semibold d-block text-center" 
+                  style={{
+                    background: 'linear-gradient(135deg, #374151 0%, #1F2937 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    fontSize: 'clamp(9px, 1.8vw, 12px)',
+                    lineHeight: '1'
+                  }}
+                >
+                  📍 {encuentro.cancha}
                 </span>
               </div>
               <div className="col-auto">
@@ -246,74 +275,51 @@ export default function EncuentroCard({
         </div>
       </div>
       
-      {/* Sección de cancha con botones alineados - Responsivo */}
-      <div className="row align-items-center g-2">
-        {/* Cancha */}
-        <div className="col">
-          {encuentro.cancha ? (
-            <div 
-              className="p-2 rounded-2" 
-              style={{
-                background: 'linear-gradient(135deg, rgba(243, 244, 246, 0.8), rgba(229, 231, 235, 0.6))',
-                border: '1px solid rgba(209, 213, 219, 0.3)',
-                backdropFilter: 'blur(5px)'
+      {/* Botones de acción en nueva línea debajo de la cancha */}
+      {actions.length > 0 && (
+        <div 
+          className="d-flex justify-content-center align-items-center"
+          style={{
+            gap: 'clamp(12px, 3vw, 8px)',
+            paddingTop: '0',
+            marginTop: '2px'
+          }}
+        >
+          {actions.map((action, index) => (
+            <button
+              key={index}
+              className={`btn btn-${action.variant?.replace('outline-', '')} btn-sm`}
+              onClick={action.onClick}
+              title={action.title}
+              style={{ 
+                borderRadius: '10px',
+                border: action.variant?.includes('outline') ? '1px solid rgba(37, 99, 235, 0.3)' : 'none',
+                background: action.variant?.includes('outline') ? 'rgba(37, 99, 235, 0.1)' : undefined,
+                backdropFilter: 'blur(5px)',
+                padding: 'clamp(12px, 3vw, 6px) clamp(16px, 4vw, 10px)',
+                fontSize: 'clamp(18px, 4vw, 12px)',
+                width: 'clamp(52px, 11vw, 36px)',
+                height: 'clamp(52px, 11vw, 36px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05)'
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)'
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)'
               }}
             >
-              <span 
-                className="fw-semibold d-block text-center" 
-                style={{
-                  background: 'linear-gradient(135deg, #374151 0%, #1F2937 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  fontSize: 'clamp(11px, 2vw, 13px)',
-                  lineHeight: '1.2'
-                }}
-              >
-                📍 {encuentro.cancha}
-              </span>
-            </div>
-          ) : (
-            <span 
-              className="text-muted d-block text-center" 
-              style={{fontSize: 'clamp(11px, 2vw, 13px)'}}
-            >
-              Sin cancha asignada
-            </span>
-          )}
+              {action.icon}
+            </button>
+          ))}
         </div>
-        
-        {/* Botones de acción alineados con la cancha */}
-        {actions.length > 0 && (
-          <div className="col-auto">
-            <div className="d-flex gap-1">
-              {actions.map((action, index) => (
-                <button
-                  key={index}
-                  className={`btn btn-${action.variant?.replace('outline-', '')} btn-sm`}
-                  onClick={action.onClick}
-                  title={action.title}
-                  style={{ 
-                    borderRadius: '8px',
-                    border: action.variant?.includes('outline') ? '1px solid rgba(37, 99, 235, 0.3)' : 'none',
-                    background: action.variant?.includes('outline') ? 'rgba(37, 99, 235, 0.1)' : undefined,
-                    backdropFilter: 'blur(5px)',
-                    padding: '4px 8px',
-                    fontSize: 'clamp(10px, 1.5vw, 12px)',
-                    width: 'clamp(28px, 5vw, 32px)',
-                    height: 'clamp(28px, 5vw, 32px)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  {action.icon}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </MagicBentoCard>
   )
 }

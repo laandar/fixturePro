@@ -39,15 +39,7 @@ const GestionJugadoresPage = () => {
     }
   }, [status, router])
 
-  // Mostrar loading mientras se verifica la sesión
-  if (status === 'loading') {
-    return <div>Cargando...</div>
-  }
-
-  // No renderizar nada si no está autenticado (se redirigirá)
-  if (status === 'unauthenticated') {
-    return null
-  }
+  // Manejo de navegación hacia atrás en móvil
   useEffect(() => {
     const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
     if (!isMobile || typeof window === 'undefined' || typeof history === 'undefined') return
@@ -86,6 +78,16 @@ const GestionJugadoresPage = () => {
         window.removeEventListener('beforeunload', handleBeforeUnload)
     }
   }, [])
+
+  // Mostrar loading mientras se verifica la sesión
+  if (status === 'loading') {
+    return <div>Cargando...</div>
+  }
+
+  // No renderizar nada si no está autenticado (se redirigirá)
+  if (status === 'unauthenticated') {
+    return null
+  }
 
   return (
     <GestionJugadoresProvider>

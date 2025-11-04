@@ -170,18 +170,11 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       
       // Actualizar estado del encuentro
       await updateEstadoEncuentro(encuentro.id, nuevoEstado)
-      const mensajeGoles = goles.length > 0 ? ' y goles guardados' : ''
-      const mensajeTarjetas = tarjetas.length > 0 ? ' y tarjetas guardadas' : ''
-      setSuccess(`Estado actualizado a: ${getEstadoLabel(nuevoEstado)}${nuevoEstado === 'finalizado' ? mensajeGoles + mensajeTarjetas : ''}`)
       
       // Recargar el encuentro para obtener el estado actualizado
       await loadEncuentro()
-      
-      // Limpiar mensaje de éxito después de 3 segundos
-      setTimeout(() => setSuccess(null), 3000)
     } catch (err) {
       console.error('Error al actualizar estado:', err)
-      setError('Error al actualizar el estado del encuentro')
     } finally {
       setUpdating(false)
     }
@@ -236,7 +229,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
     }
     
     return (
-      <Badge bg={configItem.variant} className="d-flex align-items-center gap-1">
+      <Badge bg={configItem.variant} className="d-flex align-items-center gap-1 estado-badge">
         {configItem.icon}
         {getEstadoLabel(estado)}
       </Badge>
@@ -349,39 +342,32 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
   const estadosDisponibles = getEstadosDisponibles(encuentro.estado || 'programado')
 
   return (
-    <Card>
+    <Card className="estado-encuentro-card">
       <CardBody>
-        <div className="d-flex justify-content-between align-items-center">
-          <div>
-            <h6 className="mb-1">Estado del Encuentro</h6>
-            <div className="d-flex align-items-center gap-2">
+        {/* Sección principal: Estado y controles */}
+        <div className="estado-encuentro-header">
+          {/* Información del estado */}
+          <div className="estado-info">
+            <h6 className="estado-title mb-2">Estado del Encuentro</h6>
+            <div className="d-flex flex-wrap align-items-center gap-2">
               {getEstadoBadge(encuentro.estado || 'programado')}
               {encuentro.fecha_jugada && (
-                <small className="text-muted">
+                <small className="text-muted estado-fecha">
                   Jugado: {new Date(encuentro.fecha_jugada).toLocaleDateString('es-ES')}
                 </small>
               )}
             </div>
           </div>
           
-          <div className="d-flex align-items-center gap-2">
-            {success && (
-              <NotificationCard
-                type="success"
-                message={success}
-                onClose={() => setSuccess('')}
-                className="mb-0"
-                size="sm"
-              />
-            )}
-            
-            
+          {/* Controles de acción */}
+          <div className="estado-controles">
             {estadosDisponibles.length > 0 && (
               <DropdownButton
                 title="Cambiar Estado"
                 variant="outline-primary"
                 size="sm"
                 disabled={updating}
+                className="estado-dropdown"
               >
                 {estadosDisponibles.map(estado => (
                   <Dropdown.Item
@@ -397,16 +383,18 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
 
             {/* Botones WO - Solo para administradores */}
             {isAdmin() && encuentro && (
-              <div className="d-flex gap-2">
+              <div className="wo-buttons">
                 {!isWO && encuentro.estado !== 'finalizado' && (
                   <Button
                     variant="outline-warning"
                     size="sm"
                     onClick={() => setShowWOOptions(!showWOOptions)}
                     disabled={updating}
+                    className="wo-button"
                   >
                     <LuX size={16} className="me-1" />
-                    WO
+                    <span className="d-none d-md-inline">WO</span>
+                    <span className="d-md-none">Walkover</span>
                   </Button>
                 )}
                 
@@ -416,76 +404,95 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
                     size="sm"
                     onClick={handleRevertirWO}
                     disabled={updating}
+                    className="wo-button"
                   >
                     <LuClock size={16} className="me-1" />
-                    Revertir WO
+                    <span className="d-none d-md-inline">Revertir WO</span>
+                    <span className="d-md-none">Revertir</span>
                   </Button>
                 )}
-              </div>
-            )}
-
-            {/* Opciones WO */}
-            {showWOOptions && encuentro && (
-              <div className="mt-3 p-3 border rounded bg-light">
-                <h6 className="mb-2">Aplicar WO (Walkover)</h6>
-                <p className="text-muted small mb-3">
-                  Esto eliminará todos los goles y tarjetas, y asignará el resultado configurado.
-                </p>
-                <div className="d-flex gap-2">
-                  <Button
-                    variant="success"
-                    size="sm"
-                    onClick={() => handleAplicarWO(encuentro.equipo_local_id)}
-                    disabled={updating}
-                  >
-                    {encuentro.equipoLocal?.nombre} gana por WO
-                  </Button>
-                  <Button
-                    variant="success"
-                    size="sm"
-                    onClick={() => handleAplicarWO(encuentro.equipo_visitante_id)}
-                    disabled={updating}
-                  >
-                    {encuentro.equipoVisitante?.nombre} gana por WO
-                  </Button>
-                  <Button
-                    variant="outline-secondary"
-                    size="sm"
-                    onClick={() => setShowWOOptions(false)}
-                    disabled={updating}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            )}
-            
-            {encuentro?.estado === 'finalizado' && !isAdmin() && (
-              <small className="text-muted d-block mt-2">
-                <i className="bi bi-info-circle me-1"></i>
-                Solo los administradores pueden reabrir encuentros finalizados
-              </small>
-            )}
-            
-            {encuentro?.estado === 'pendiente' && (
-              <small className="text-info d-block mt-2">
-                <i className="bi bi-clock me-1"></i>
-                Goles y tarjetas se guardan pero no afectan estadísticas hasta finalizar
-              </small>
-            )}
-
-            {isWO && (
-              <div className="alert alert-warning mt-2 mb-0">
-                <i className="bi bi-exclamation-triangle me-1"></i>
-                <strong>Resultado por WO:</strong> Este encuentro fue decidido por walkover. 
-                Los goles y tarjetas fueron eliminados y se aplicaron los puntos configurados.
               </div>
             )}
           </div>
         </div>
 
+        {/* Opciones WO - Sección expandible */}
+        {showWOOptions && encuentro && (
+          <div className="wo-options mt-3">
+            <div className="wo-options-header mb-2">
+              <h6 className="mb-1">Aplicar WO (Walkover)</h6>
+              <p className="text-muted small mb-0">
+                Esto eliminará todos los goles y tarjetas, y asignará el resultado configurado.
+              </p>
+            </div>
+            <div className="wo-options-buttons">
+              <Button
+                variant="success"
+                size="sm"
+                onClick={() => handleAplicarWO(encuentro.equipo_local_id)}
+                disabled={updating}
+                className="wo-option-button"
+              >
+                <span className="d-none d-sm-inline">{encuentro.equipoLocal?.nombre} gana por WO</span>
+                <span className="d-sm-none">Local gana por WO</span>
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={() => handleAplicarWO(encuentro.equipo_visitante_id)}
+                disabled={updating}
+                className="wo-option-button"
+              >
+                <span className="d-none d-sm-inline">{encuentro.equipoVisitante?.nombre} gana por WO</span>
+                <span className="d-sm-none">Visitante gana por WO</span>
+              </Button>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                onClick={() => setShowWOOptions(false)}
+                disabled={updating}
+                className="wo-option-button"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
         
-         
+        {/* Mensajes informativos */}
+        {(encuentro?.estado === 'finalizado' && !isAdmin()) || 
+         (encuentro?.estado === 'pendiente') || 
+         isWO ? (
+          <div className="estado-mensajes mt-3">
+            {encuentro?.estado === 'finalizado' && !isAdmin() && (
+              <div className="estado-mensaje">
+                <i className="bi bi-info-circle me-2"></i>
+                <small className="text-muted">
+                  Solo los administradores pueden reabrir encuentros finalizados
+                </small>
+              </div>
+            )}
+            
+            {encuentro?.estado === 'pendiente' && (
+              <div className="estado-mensaje">
+                <i className="bi bi-clock me-2"></i>
+                <small className="text-info">
+                  Goles y tarjetas se guardan pero no afectan estadísticas hasta finalizar
+                </small>
+              </div>
+            )}
+
+            {isWO && (
+              <div className="alert alert-warning mb-0 estado-alert">
+                <i className="bi bi-exclamation-triangle me-2"></i>
+                <div>
+                  <strong>Resultado por WO:</strong> Este encuentro fue decidido por walkover. 
+                  Los goles y tarjetas fueron eliminados y se aplicaron los puntos configurados.
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </CardBody>
     </Card>
   )
