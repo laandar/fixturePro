@@ -11,13 +11,10 @@ import './TabPaneFirmas.css'
 type SignatureField = 'vocal' | 'arbitro' | 'capitanLocal' | 'capitanVisitante'
 
 const TabPaneFirmas = () => {
-    const { firmas, setFirmas, equipos, estadoEncuentro, isAdmin, handleSaveFirmas, isSaving, jugadoresParticipantesA, jugadoresParticipantesB, jugadoresParticipantes, handleDesignarCapitan } = useGestionJugadores()
+    const { firmas, setFirmas, nombreEquipoA, nombreEquipoB, estadoEncuentro, isAdmin, handleSaveFirmas, isSaving, jugadoresParticipantesA, jugadoresParticipantesB, jugadoresParticipantes, handleDesignarCapitan } = useGestionJugadores()
     const [showSignaturePad, setShowSignaturePad] = useState(false)
     const [currentSignatureField, setCurrentSignatureField] = useState<SignatureField | null>(null)
     const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-    
-    const equipoLocal = equipos.find(e => e.id === 1)
-    const equipoVisitante = equipos.find(e => e.id === 2)
     
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado'
     const shouldDisableActions = isEncuentroFinalizado && !isAdmin()
@@ -56,9 +53,9 @@ const TabPaneFirmas = () => {
             case 'arbitro':
                 return 'Firma del Árbitro'
             case 'capitanLocal':
-                return `Firma del Capitán ${equipoLocal?.nombre || 'Local'}`
+                return `Firma del Capitán ${nombreEquipoA || 'Local'}`
             case 'capitanVisitante':
-                return `Firma del Capitán ${equipoVisitante?.nombre || 'Visitante'}`
+                return `Firma del Capitán ${nombreEquipoB || 'Visitante'}`
         }
     }
 
@@ -78,6 +75,12 @@ const TabPaneFirmas = () => {
     // Función para obtener el capitán actual de un equipo
     const getCurrentCaptain = (team: 'A' | 'B') => {
         const players = team === 'A' ? jugadoresParticipantesA : jugadoresParticipantesB
+        if (!players || !Array.isArray(players) || players.length === 0) {
+            return undefined
+        }
+        if (!jugadoresParticipantes || !Array.isArray(jugadoresParticipantes)) {
+            return undefined
+        }
         return players.find(player => {
             // Buscar en jugadoresParticipantes si es capitán
             return jugadoresParticipantes.some(jp => 
@@ -91,8 +94,12 @@ const TabPaneFirmas = () => {
 
     // Función para manejar el cambio de capitán
     const handleCaptainChange = async (team: 'A' | 'B', newCaptainId: number) => {
-        const newCaptain = (team === 'A' ? jugadoresParticipantesA : jugadoresParticipantesB)
-            .find(player => player.id === newCaptainId.toString())
+        const players = team === 'A' ? jugadoresParticipantesA : jugadoresParticipantesB
+        if (!players || !Array.isArray(players) || players.length === 0) {
+            return
+        }
+        
+        const newCaptain = players.find(player => player.id === newCaptainId.toString())
         
         if (newCaptain) {
             try {
@@ -275,7 +282,7 @@ const TabPaneFirmas = () => {
                                 <Col lg={6}>
                                     <div className="capitan-card">
                                         <h6 className="text-secondary mb-3 fw-semibold">
-                                            {equipoLocal?.nombre || 'Equipo Local'}
+                                            {nombreEquipoA || 'Equipo Local'}
                                         </h6>
                                         <Form.Group className="mb-3">
                                             <Form.Label className="fw-semibold small">Seleccionar Capitán</Form.Label>
@@ -329,7 +336,7 @@ const TabPaneFirmas = () => {
                                 <Col lg={6}>
                                     <div className="capitan-card">
                                         <h6 className="text-secondary mb-3 fw-semibold">
-                                            {equipoVisitante?.nombre || 'Equipo Visitante'}
+                                            {nombreEquipoB || 'Equipo Visitante'}
                                         </h6>
                                         <Form.Group className="mb-3">
                                             <Form.Label className="fw-semibold small">Seleccionar Capitán</Form.Label>

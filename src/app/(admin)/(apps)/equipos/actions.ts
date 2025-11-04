@@ -20,6 +20,16 @@ export async function getEquipos() {
   }
 }
 
+export async function getEquiposCount() {
+  // No requiere permiso - función auxiliar usada por otros módulos
+  try {
+    return await equipoQueries.getCount()
+  } catch (error) {
+    console.error('Error al obtener contador de equipos:', error)
+    throw new Error('Error al obtener contador de equipos')
+  }
+}
+
 export async function getEquiposByCategoria(categoriaId: number) {
   try {
     const equipos = await equipoQueries.getByCategoriaWithRelations(categoriaId)

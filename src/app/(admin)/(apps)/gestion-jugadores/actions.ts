@@ -1,5 +1,7 @@
 'use server'
 
+import { redirect } from 'next/navigation'
+
 import { db } from '@/db'
 import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, configuraciones, pagosMultas, cargosManuales } from '@/db/schema'
 import { eq, and, inArray, lte } from 'drizzle-orm'
@@ -324,6 +326,167 @@ export async function isJugadorSancionado(
   } catch (error) {
     console.error('Error al verificar sanción del jugador:', error)
     return { sancionado: false, razon: '', partidosPendientes: 0 }
+  }
+}
+
+// Obtener sanciones de múltiples jugadores en una sola llamada (optimizado)
+export async function getSancionesJugadores(
+  torneoId: number,
+  jugadorIds: string[],
+  jornadaActual: number
+): Promise<Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }>> {
+  try {
+    // Si no hay jugadores, retornar objeto vacío
+    if (jugadorIds.length === 0) {
+      return {}
+    }
+
+    // Obtener configuraciones de sanciones una sola vez
+    const [
+      configPartidosRoja,
+      configCantidadAmarillas,
+      configPartidosDobleAmarilla
+    ] = await Promise.all([
+      getConfiguracionPorClave('partidos_sancion_roja'),
+      getConfiguracionPorClave('cantidad_amarillas_para_sancion'),
+      getConfiguracionPorClave('partidos_sancion_doble_amarilla')
+    ])
+
+    // Valores por defecto si no existen configuraciones
+    const partidosPorRoja = parseInt(configPartidosRoja?.valor || '1')
+    const cantidadAmarillasParaSancion = parseInt(configCantidadAmarillas?.valor || '5')
+    const partidosPorDobleAmarilla = parseInt(configPartidosDobleAmarilla?.valor || '1')
+
+    // Obtener todas las tarjetas de todos los jugadores hasta la jornada anterior en una sola consulta
+    const tarjetasAnteriores = await db
+      .select({
+        id: tarjetas.id,
+        encuentro_id: tarjetas.encuentro_id,
+        jugador_id: tarjetas.jugador_id,
+        equipo_id: tarjetas.equipo_id,
+        tipo: tarjetas.tipo,
+        jornada: encuentros.jornada,
+        createdAt: tarjetas.createdAt,
+        updatedAt: tarjetas.updatedAt
+      })
+      .from(tarjetas)
+      .innerJoin(encuentros, eq(tarjetas.encuentro_id, encuentros.id))
+      .where(
+        and(
+          eq(encuentros.torneo_id, torneoId),
+          inArray(tarjetas.jugador_id, jugadorIds),
+          lte(encuentros.jornada, jornadaActual - 1)
+        )
+      )
+      .orderBy(encuentros.jornada)
+
+    // Inicializar resultado con todos los jugadores sin sanciones
+    const resultado: Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }> = {}
+    jugadorIds.forEach(jugadorId => {
+      resultado[jugadorId] = { sancionado: false, razon: '', partidosPendientes: 0 }
+    })
+
+    // Agrupar tarjetas por jugador
+    const tarjetasPorJugador: Record<string, typeof tarjetasAnteriores> = {}
+    tarjetasAnteriores.forEach(tarjeta => {
+      if (!tarjetasPorJugador[tarjeta.jugador_id]) {
+        tarjetasPorJugador[tarjeta.jugador_id] = []
+      }
+      tarjetasPorJugador[tarjeta.jugador_id].push(tarjeta)
+    })
+
+    // Procesar cada jugador
+    for (const jugadorId of jugadorIds) {
+      const tarjetasJugador = tarjetasPorJugador[jugadorId] || []
+
+      if (tarjetasJugador.length === 0) {
+        continue // Ya está inicializado como sin sanciones
+      }
+
+      // Contar tarjetas amarillas y rojas
+      let amarillas = 0
+      let rojas = 0
+      const sanciones: Array<{ jornada: number; tipo: 'roja' | 'acumulacion'; partidos: number }> = []
+
+      // Procesar tarjetas por jornada
+      const tarjetasPorJornada: Record<number, { amarillas: number; rojas: number }> = {}
+
+      tarjetasJugador.forEach(t => {
+        const jornada = t.jornada || 0
+        if (!tarjetasPorJornada[jornada]) {
+          tarjetasPorJornada[jornada] = { amarillas: 0, rojas: 0 }
+        }
+
+        if (t.tipo === 'amarilla') {
+          tarjetasPorJornada[jornada].amarillas++
+          amarillas++
+        } else if (t.tipo === 'roja') {
+          tarjetasPorJornada[jornada].rojas++
+          rojas++
+          // Tarjeta roja = partidos de sanción según configuración (aplica desde jornada siguiente)
+          sanciones.push({
+            jornada,
+            tipo: 'roja',
+            partidos: partidosPorRoja
+          })
+        }
+      })
+
+      // Verificar acumulación de amarillas
+      // Contar amarillas progresivamente por jornada para detectar cuándo se alcanza el límite
+      let amarillasAcumuladas = 0
+      const jornadasOrdenadas = Object.keys(tarjetasPorJornada)
+        .map(Number)
+        .sort((a, b) => a - b)
+
+      for (const jornada of jornadasOrdenadas) {
+        const amarillasJornada = tarjetasPorJornada[jornada].amarillas
+        amarillasAcumuladas += amarillasJornada
+
+        // Verificar si en esta jornada se alcanza un múltiplo de cantidadAmarillasParaSancion
+        const sancionesPorAcumulacionExistentes = sanciones.filter(s => s.tipo === 'acumulacion').length
+        const amarillasParaSiguienteSancion = (sancionesPorAcumulacionExistentes + 1) * cantidadAmarillasParaSancion
+
+        if (amarillasAcumuladas >= amarillasParaSiguienteSancion) {
+          sanciones.push({
+            jornada,
+            tipo: 'acumulacion',
+            partidos: 1 // Cada acumulación genera 1 partido de sanción
+          })
+        }
+      }
+
+      // Verificar si alguna sanción se aplica en la jornada actual
+      for (const sancion of sanciones) {
+        const jornadaInicioSancion = sancion.jornada + 1 // La sanción aplica desde la jornada siguiente
+        const jornadaFinSancion = sancion.jornada + sancion.partidos // Hasta jornada + partidos sancionados (inclusive)
+
+        // Si la jornada actual está dentro del período de sanción
+        if (jornadaActual >= jornadaInicioSancion && jornadaActual <= jornadaFinSancion) {
+          const partidosPendientes = jornadaFinSancion - jornadaActual + 1
+          let razon = sancion.tipo === 'roja'
+            ? 'Tarjeta roja'
+            : `${amarillasAcumuladas} tarjetas amarillas acumuladas`
+
+          resultado[jugadorId] = {
+            sancionado: true,
+            razon,
+            partidosPendientes
+          }
+          break // Solo la primera sanción activa es relevante
+        }
+      }
+    }
+
+    return resultado
+  } catch (error) {
+    console.error('Error al verificar sanciones de jugadores:', error)
+    // Retornar objeto vacío en caso de error
+    const resultado: Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }> = {}
+    jugadorIds.forEach(jugadorId => {
+      resultado[jugadorId] = { sancionado: false, razon: '', partidosPendientes: 0 }
+    })
+    return resultado
   }
 }
 
@@ -952,5 +1115,17 @@ export async function designarCapitan(encuentroId: number, jugadorId: number, eq
   } catch (error) {
     console.error('Error al designar capitán:', error)
     return { success: false, error: 'Error al designar capitán' }
+  }
+}
+
+// Server Action para obtener el encuentro por ID desde la BD
+export async function getEncuentroById(encuentroId: number) {
+  try {
+    const { encuentroQueries } = await import('@/db/queries')
+    const encuentro = await encuentroQueries.getByIdWithRelations(encuentroId)
+    return encuentro
+  } catch (error) {
+    console.error('Error al obtener encuentro por ID:', error)
+    throw new Error('Error al obtener encuentro')
   }
 }

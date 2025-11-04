@@ -5,7 +5,7 @@ import './EstadoEncuentro.css'
 import { Button, Card, CardBody, Badge, Dropdown, DropdownButton } from 'react-bootstrap'
 import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings, LuHourglass } from 'react-icons/lu'
 import NotificationCard from '@/components/NotificationCard'
-import { updateEstadoEncuentro, getEncuentrosByTorneo } from '../../torneos/actions'
+import { updateEstadoEncuentro } from '../../torneos/actions'
 import { saveGolesEncuentro, saveTarjetasEncuentro } from '../actions'
 import { aplicarWO, revertirWO, esEncuentroWO } from '../wo-actions'
 import { useGestionJugadores } from './GestionJugadoresContext'
@@ -19,7 +19,7 @@ interface EstadoEncuentroProps {
 }
 
 const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }: EstadoEncuentroProps) => {
-  const { goles, tarjetas, nombreEquipoA, loadEstadoEncuentro, estadoEncuentro, isAdmin, refreshAllData } = useGestionJugadores()
+  const { goles, tarjetas, nombreEquipoA, loadEstadoEncuentro, estadoEncuentro, isAdmin, refreshAllData, getEncuentroActual } = useGestionJugadores()
   const [encuentro, setEncuentro] = useState<EncuentroWithRelations | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,16 +35,8 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       setLoading(true)
       setError(null)
       
-      // Obtener todos los encuentros del torneo y filtrar por los equipos y jornada
-      const encuentros = await getEncuentrosByTorneo(torneoId)
-      console.log('Encuentros encontrados:', encuentros.length)
-      console.log('Buscando encuentro con:', { torneoId, equipoLocalId, equipoVisitanteId, jornada })
-      
-      const encuentroEncontrado = encuentros.find(e => 
-        e.equipo_local_id === equipoLocalId && 
-        e.equipo_visitante_id === equipoVisitanteId && 
-        e.jornada === jornada
-      )
+      // Obtener el encuentro desde localStorage usando el helper del contexto
+      const encuentroEncontrado = await getEncuentroActual()
       
       if (encuentroEncontrado) {
         console.log('Encuentro encontrado:', encuentroEncontrado)
@@ -60,13 +52,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           setLastKnownState(encuentroEncontrado.estado)
         }
       } else {
-        console.log('Encuentro no encontrado. Encuentros disponibles:', encuentros.map(e => ({
-          id: e.id,
-          local: e.equipo_local_id,
-          visitante: e.equipo_visitante_id,
-          jornada: e.jornada,
-          estado: e.estado
-        })))
+        console.log('Encuentro no encontrado en localStorage')
         setError('Encuentro no encontrado')
       }
     } catch (err) {

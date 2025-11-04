@@ -69,6 +69,12 @@ export const equipoQueries = {
     });
   },
 
+  // Obtener contador de equipos (optimizado)
+  getCount: async () => {
+    const result = await db.select({ count: count() }).from(equipos);
+    return result[0]?.count || 0;
+  },
+
   // Crear equipo
   create: async (equipoData: NewEquipo) => {
     const result = await db.insert(equipos).values(equipoData).returning();
@@ -302,6 +308,78 @@ export const jugadorQueries = {
     });
   },
 
+  // Obtener jugadores activos por IDs de equipos (optimizado para gestión de encuentros)
+  getActiveByEquiposIds: async (equipoIds: number[], categoriaId?: number) => {
+    // Primero obtener los equipoCategoria que corresponden a estos equipos
+    const whereConditions = categoriaId
+      ? and(
+          inArray(equipoCategoria.equipo_id, equipoIds),
+          eq(equipoCategoria.categoria_id, categoriaId)
+        )
+      : inArray(equipoCategoria.equipo_id, equipoIds);
+
+    const equipoCategorias = await db.query.equipoCategoria.findMany({
+      where: whereConditions,
+    });
+
+    if (equipoCategorias.length === 0) {
+      return [];
+    }
+
+    const equipoCategoriaIds = equipoCategorias.map(ec => ec.id);
+
+    // Obtener relaciones jugador-equipoCategoria para estos equipos
+    const jugadoresRelaciones = await db.query.jugadorEquipoCategoria.findMany({
+      where: inArray(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaIds),
+      with: {
+        jugador: true,
+        equipoCategoria: {
+          with: {
+            equipo: true,
+            categoria: true,
+          },
+        },
+      },
+    });
+
+    // Filtrar jugadores activos y obtener IDs únicos
+    const jugadorIdsSet = new Set<string>();
+    for (const rel of jugadoresRelaciones) {
+      if (rel.jugador && rel.jugador.estado === true) {
+        jugadorIdsSet.add(rel.jugador.id);
+      }
+    }
+
+    if (jugadorIdsSet.size === 0) {
+      return [];
+    }
+
+    const jugadorIdsArray = Array.from(jugadorIdsSet);
+
+    // Obtener jugadores completos con todas sus relaciones
+    const jugadoresResult = await db.query.jugadores.findMany({
+      where: and(
+        inArray(jugadores.id, jugadorIdsArray),
+        eq(jugadores.estado, true)
+      ),
+      with: {
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: true,
+                categoria: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [asc(jugadores.apellido_nombre)],
+    });
+
+    return jugadoresResult;
+  },
+
   // Obtener jugador por ID
   getById: async (id: number | string) => {
     const result = await db.select().from(jugadores).where(eq(jugadores.id, id.toString()));
@@ -324,6 +402,29 @@ export const jugadorQueries = {
           },
         },
       },
+    });
+  },
+
+  // Obtener jugadores por IDs específicos (optimizado para estadísticas)
+  getByIdsWithRelations: async (ids: string[]) => {
+    if (ids.length === 0) {
+      return [];
+    }
+    return await db.query.jugadores.findMany({
+      where: inArray(jugadores.id, ids),
+      with: {
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: true,
+                categoria: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [asc(jugadores.apellido_nombre)],
     });
   },
 
@@ -436,6 +537,12 @@ export const jugadorQueries = {
   // Eliminar jugador
   delete: async (id: number) => {
     return await db.delete(jugadores).where(eq(jugadores.id, id.toString()));
+  },
+
+  // Obtener contador de jugadores (optimizado)
+  getCount: async () => {
+    const result = await db.select({ count: count() }).from(jugadores);
+    return result[0]?.count || 0;
   },
 };
 
@@ -783,6 +890,47 @@ export const encuentroQueries = {
   // Eliminar todos los encuentros de un torneo
   deleteByTorneoId: async (torneoId: number) => {
     return await db.delete(encuentros).where(eq(encuentros.torneo_id, torneoId));
+  },
+
+  // Obtener encuentro por ID
+  getById: async (id: number) => {
+    const result = await db.select().from(encuentros).where(eq(encuentros.id, id));
+    return result[0];
+  },
+
+  // Obtener encuentro por ID con relaciones
+  getByIdWithRelations: async (id: number) => {
+    return await db.query.encuentros.findFirst({
+      where: eq(encuentros.id, id),
+      with: {
+        equipoLocal: {
+          with: {
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
+            entrenador: true,
+          },
+        },
+        equipoVisitante: {
+          with: {
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
+            entrenador: true,
+          },
+        },
+        torneo: {
+          with: {
+            categoria: true,
+          },
+        },
+        horario: true,
+      },
+    });
   },
 };
 

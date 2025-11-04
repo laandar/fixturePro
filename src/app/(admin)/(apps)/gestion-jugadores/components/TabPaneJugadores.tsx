@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Row,
     Col,
@@ -100,7 +100,8 @@ const TabPaneJugadores = () => {
         isAdmin,
         cambiosJugadores,
         setCambiosJugadores,
-        jugadoresParticipantes
+        jugadoresParticipantes,
+        getEncuentroActual
     } = useGestionJugadores();
 
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
@@ -184,35 +185,77 @@ const TabPaneJugadores = () => {
         return jugadoresSancionados[jugador.id] || { sancionado: false, razon: '', partidosPendientes: 0 };
     };
 
+    // Crear una clave estable basada en los IDs de los jugadores para evitar ejecuciones múltiples
+    const jugadoresKey = useMemo(() => {
+        const idsA = jugadoresEquipoA.map(j => j.id).sort().join(',');
+        const idsB = jugadoresEquipoB.map(j => j.id).sort().join(',');
+        return `${idsA}|${idsB}`;
+    }, [jugadoresEquipoA, jugadoresEquipoB]);
+
+    // Ref para rastrear si ya se cargaron las sanciones para esta combinación
+    const sancionesCargadasRef = useRef<string>('');
+    const isLoadingSancionesRef = useRef<boolean>(false);
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     // Cargar información de sanciones de los jugadores
     useEffect(() => {
+        if (!torneoId || !jornada) return;
+
+        const todosLosJugadores = [...jugadoresEquipoA, ...jugadoresEquipoB];
+        if (todosLosJugadores.length === 0) return;
+
+        // Crear una clave única para esta combinación
+        const key = `${torneoId}-${jornada}-${jugadoresKey}`;
+        
+        // Si ya se cargaron las sanciones para esta combinación, no hacer nada
+        if (sancionesCargadasRef.current === key) {
+            return;
+        }
+
+        // Si ya está cargando, cancelar el timeout anterior y programar uno nuevo
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+
+        // Si ya está cargando, no hacer nada
+        if (isLoadingSancionesRef.current) {
+            return;
+        }
+
         const loadSancionesJugadores = async () => {
-            if (!torneoId || !jornada) return;
+            // Marcar como cargando
+            isLoadingSancionesRef.current = true;
 
             try {
-                const { isJugadorSancionado } = await import('../actions');
-                const sanciones: Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }> = {};
-
-                // Verificar sanciones para todos los jugadores de ambos equipos
-                const todosLosJugadores = [...jugadoresEquipoA, ...jugadoresEquipoB];
+                const { getSancionesJugadores } = await import('../actions');
                 
-                await Promise.all(
-                    todosLosJugadores.map(async (jugador) => {
-                        const info = await isJugadorSancionado(torneoId!, jugador.id, jornada!);
-                        sanciones[jugador.id] = info;
-                    })
-                );
+                // Obtener IDs de todos los jugadores
+                const jugadorIds = todosLosJugadores.map(j => j.id);
+                
+                // Obtener todas las sanciones en una sola llamada (optimizado)
+                const sanciones = await getSancionesJugadores(torneoId!, jugadorIds, jornada!);
 
                 setJugadoresSancionados(sanciones);
+                sancionesCargadasRef.current = key;
             } catch (error) {
                 console.error('Error al cargar sanciones de jugadores:', error);
+            } finally {
+                // Marcar como no cargando
+                isLoadingSancionesRef.current = false;
             }
         };
 
-        if (jugadoresEquipoA.length > 0 || jugadoresEquipoB.length > 0) {
+        // Usar un debounce más largo para evitar ejecuciones múltiples durante la carga inicial
+        timeoutRef.current = setTimeout(() => {
             loadSancionesJugadores();
-        }
-    }, [torneoId, jornada, jugadoresEquipoA.length, jugadoresEquipoB.length]);
+        }, 500);
+
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, [torneoId, jornada, jugadoresKey]);
 
     const handleDesignarCapitanClick = async (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
         try {
@@ -255,14 +298,8 @@ const TabPaneJugadores = () => {
         const { cambioId, jugadorEntraId } = confirmationData;
 
         try {
-            // Obtener el encuentro actual
-            const { getEncuentrosByTorneo } = await import('../../torneos/actions')
-            const encuentros = await getEncuentrosByTorneo(torneoId)
-            const encuentro = encuentros.find(e => 
-                e.equipo_local_id === equipoLocalId && 
-                e.equipo_visitante_id === equipoVisitanteId && 
-                e.jornada === jornada
-            )
+            // Obtener el encuentro actual usando el helper del contexto
+            const encuentro = await getEncuentroActual()
             
             if (!encuentro) {
                 console.error('No se encontró el encuentro para deshacer cambio')

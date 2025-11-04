@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Collapse } from 'react-bootstrap';
@@ -9,6 +9,10 @@ import { getMenusParaUsuarioActual, type MenuItemFromDB } from '@/app/(admin)/me
 import { scrollToElement } from '@/helpers/layout';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import * as Icons from 'react-icons/tb';
+
+// Caché compartido para evitar múltiples llamadas desde diferentes instancias del componente
+let menusCache: MenuItemFromDB[] | null = null;
+let menusLoadingPromise: Promise<MenuItemFromDB[]> | null = null;
 
 type IconComponent = React.ComponentType<{ className?: string }>;
 
@@ -126,6 +130,8 @@ const DynamicAppMenu = () => {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItemFromDB[]>([]);
   const [loading, setLoading] = useState(true);
+  const menusCargadosRef = useRef<boolean>(false);
+  const isLoadingRef = useRef<boolean>(false);
 
   const scrollToActiveLink = () => {
     const activeItem: HTMLAnchorElement | null = document.querySelector('.side-nav-link.active');
@@ -139,14 +145,52 @@ const DynamicAppMenu = () => {
   };
 
   useEffect(() => {
+    // Si ya se cargaron los menús o ya está cargando, no hacer nada
+    if (menusCargadosRef.current || isLoadingRef.current) {
+      return;
+    }
+
     const loadMenus = async () => {
+      // Si hay caché, usar los menús del caché
+      if (menusCache) {
+        setMenuItems(menusCache);
+        setLoading(false);
+        menusCargadosRef.current = true;
+        return;
+      }
+
+      // Si ya hay una carga en progreso, esperar a que termine
+      if (menusLoadingPromise) {
+        try {
+          const menus = await menusLoadingPromise;
+          setMenuItems(menus);
+          setLoading(false);
+          menusCargadosRef.current = true;
+        } catch (error) {
+          console.error('Error al cargar menús desde promesa compartida:', error);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Marcar como cargando
+      isLoadingRef.current = true;
+      
+      // Crear promesa compartida para evitar múltiples llamadas simultáneas
+      menusLoadingPromise = getMenusParaUsuarioActual();
+      
       try {
-        const menus = await getMenusParaUsuarioActual();
+        const menus = await menusLoadingPromise;
+        menusCache = menus; // Guardar en caché
         setMenuItems(menus);
+        menusCargadosRef.current = true;
       } catch (error) {
         console.error('Error al cargar menús:', error);
+        menusCache = null; // Limpiar caché en caso de error
       } finally {
         setLoading(false);
+        isLoadingRef.current = false;
+        menusLoadingPromise = null; // Limpiar promesa
       }
     };
 

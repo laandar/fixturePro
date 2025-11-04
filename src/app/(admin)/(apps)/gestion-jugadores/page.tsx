@@ -1,6 +1,8 @@
 'use client'
 
 import { Suspense, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { GestionJugadoresProvider } from './components/GestionJugadoresProvider'
 import { useGestionJugadores } from './components/GestionJugadoresContext'
 import Layout from './components/Layout'
@@ -27,6 +29,25 @@ const GestionJugadoresContent = () => {
 }
 
 const GestionJugadoresPage = () => {
+  const router = useRouter()
+  const { data: session, status } = useSession()
+
+  // Protección de autenticación: redirigir a login si no está autenticado
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth-3/sign-in')
+    }
+  }, [status, router])
+
+  // Mostrar loading mientras se verifica la sesión
+  if (status === 'loading') {
+    return <div>Cargando...</div>
+  }
+
+  // No renderizar nada si no está autenticado (se redirigirá)
+  if (status === 'unauthenticated') {
+    return null
+  }
   useEffect(() => {
     const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
     if (!isMobile || typeof window === 'undefined' || typeof history === 'undefined') return

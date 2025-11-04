@@ -1,10 +1,8 @@
 import { createContext, useContext } from 'react';
-import type { JugadorWithEquipo, Equipo, Categoria, PlayerChange, CardType, Goal, Signature, JugadorParticipante, NewCambioJugador } from '@/db/types';
+import type { JugadorWithEquipo, CardType, Goal, Signature, JugadorParticipante, NewCambioJugador } from '@/db/types';
 
 export interface GestionJugadoresState {
     jugadores: JugadorWithEquipo[];
-    equipos: Equipo[];
-    categorias: Categoria[];
     loading: boolean;
     error: string | null;
     jugadoresEquipoA: JugadorWithEquipo[];
@@ -24,7 +22,6 @@ export interface GestionJugadoresState {
     setShowSelectionModalA: (show: boolean) => void;
     showSelectionModalB: boolean;
     setShowSelectionModalB: (show: boolean) => void;
-    cambios: PlayerChange[];
     tarjetas: CardType[];
     showTarjetaModal: boolean;
     setShowTarjetaModal: (show: boolean) => void;
@@ -49,10 +46,10 @@ export interface GestionJugadoresState {
     loadEstadoEncuentro: () => Promise<void>;
     refreshEstadoEncuentro: () => Promise<void>;
     refreshAllData: () => Promise<void>;
+    getEncuentroActual: () => Promise<any | null>;
     handleTogglePlayerSelection: (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => void;
     handleSelectAllPlayers: (equipo: 'A' | 'B') => void;
     handleClearAllPlayers: (equipo: 'A' | 'B') => void;
-    handleDeleteCambio: (id: string) => void;
     handleAddTarjeta: () => void;
     handleDeleteTarjeta: (id: string) => void;
     handleQuickSanction: (jugador: JugadorWithEquipo, tipo: 'amarilla' | 'roja') => void;

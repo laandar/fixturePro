@@ -9,6 +9,7 @@ import { requirePermiso } from '@/lib/auth-helpers'
 import { db } from '@/db'
 import { tarjetas, goles, equiposTorneo, jugadoresParticipantes, cambiosJugadores, firmasEncuentros } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+import { getJugadoresActivosByEquipos } from '@/app/(admin)/(apps)/jugadores/actions'
 
 export async function getTorneos() {
   // No requiere permiso - función auxiliar usada por otros módulos
@@ -24,6 +25,37 @@ export async function getTorneoById(id: number) {
     return await torneoQueries.getByIdWithRelations(id)
   } catch (error) {
     throw new Error('Error al obtener torneo')
+  }
+}
+
+export async function getJugadoresByTorneo(torneoId: number) {
+  // No requiere permiso - función auxiliar usada por otros módulos
+  try {
+    const torneo = await torneoQueries.getByIdWithRelations(torneoId)
+    if (!torneo || !torneo.categoria_id) {
+      return []
+    }
+
+    // Obtener los IDs de los equipos participantes del torneo
+    const equiposParticipantesIds: number[] = []
+    if (torneo.equiposTorneo) {
+      torneo.equiposTorneo.forEach(et => {
+        if (et.equipo_id) {
+          equiposParticipantesIds.push(et.equipo_id)
+        }
+      })
+    }
+
+    // Si no hay equipos participantes, retornar array vacío
+    if (equiposParticipantesIds.length === 0) {
+      return []
+    }
+    
+    // Cargar solo los jugadores de los equipos participantes del torneo
+    return await getJugadoresActivosByEquipos(equiposParticipantesIds, torneo.categoria_id)
+  } catch (error) {
+    console.error('Error al obtener jugadores del torneo:', error)
+    throw new Error('Error al obtener jugadores del torneo')
   }
 }
 

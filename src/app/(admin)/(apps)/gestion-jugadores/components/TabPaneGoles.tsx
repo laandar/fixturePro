@@ -3,10 +3,8 @@ import { Card, Button, Table, Badge, Alert } from 'react-bootstrap'
 import { TbSoccerField, TbPlus, TbTrash, TbTrophy } from 'react-icons/tb'
 import { useGestionJugadores } from './GestionJugadoresContext'
 import { useState, useEffect } from 'react'
-import { getEncuentrosByTorneo } from '../../torneos/actions'
-
 const TabPaneGoles = () => {
-    const { goles, setShowGolModal, handleDeleteGol, estadoEncuentro, isAdmin, torneoId, equipoLocalId, equipoVisitanteId, jornada, nombreEquipoA, nombreEquipoB } = useGestionJugadores()
+    const { goles, setShowGolModal, handleDeleteGol, estadoEncuentro, isAdmin, torneoId, equipoLocalId, equipoVisitanteId, jornada, nombreEquipoA, nombreEquipoB, getEncuentroActual } = useGestionJugadores()
     const [encuentro, setEncuentro] = useState<any>(null)
     const [isWO, setIsWO] = useState(false)
     
@@ -19,12 +17,8 @@ const TabPaneGoles = () => {
             if (!torneoId || !equipoLocalId || !equipoVisitanteId || !jornada) return
             
             try {
-                const encuentros = await getEncuentrosByTorneo(torneoId)
-                const encuentroEncontrado = encuentros.find(e => 
-                    e.equipo_local_id === equipoLocalId && 
-                    e.equipo_visitante_id === equipoVisitanteId && 
-                    e.jornada === jornada
-                )
+                // Obtener el encuentro desde localStorage usando el helper del contexto
+                const encuentroEncontrado = await getEncuentroActual()
                 
                 if (encuentroEncontrado) {
                     setEncuentro(encuentroEncontrado)
@@ -45,7 +39,7 @@ const TabPaneGoles = () => {
         }
         
         loadEncuentro()
-    }, [torneoId, equipoLocalId, equipoVisitanteId, jornada])
+    }, [torneoId, equipoLocalId, equipoVisitanteId, jornada, getEncuentroActual])
 
     return (
         <Card>

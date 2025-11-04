@@ -1,17 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { Container, Row, Col, Card } from 'react-bootstrap'
-import { TbTrophy, TbUsers, TbTournament, TbChartBar, TbSettings } from 'react-icons/tb'
-import { getTorneos } from '../torneos/actions'
-import { getJugadores } from '../jugadores/actions'
-import { getEquipos } from '../equipos/actions'
+import { TbTrophy, TbUsers, TbChartBar, TbSettings } from 'react-icons/tb'
+import { getJugadoresCount } from '../jugadores/actions'
+import { getEquiposCount } from '../equipos/actions'
 
 const DashboardPage = () => {
   const [stats, setStats] = useState({
     jugadores: 0,
-    torneos: 0,
-    equipos: 0,
-    partidos: 0
+    equipos: 0
   })
   const [loading, setLoading] = useState(true)
 
@@ -19,33 +16,14 @@ const DashboardPage = () => {
     const loadStats = async () => {
       try {
         setLoading(true)
-        const [torneosData, jugadoresData, equiposData] = await Promise.all([
-          getTorneos(),
-          getJugadores(),
-          getEquipos()
+        const [jugadoresCount, equiposCount] = await Promise.all([
+          getJugadoresCount(),
+          getEquiposCount()
         ])
 
-        // Contar partidos de todos los torneos
-        let totalPartidos = 0
-        if (torneosData.length > 0) {
-          const partidosPromises = torneosData.map(async (torneo: any) => {
-            try {
-              const { getEncuentrosByTorneo } = await import('../torneos/actions')
-              const encuentros = await getEncuentrosByTorneo(torneo.id)
-              return encuentros.length
-            } catch {
-              return 0
-            }
-          })
-          const partidosCounts = await Promise.all(partidosPromises)
-          totalPartidos = partidosCounts.reduce((sum, count) => sum + count, 0)
-        }
-
         setStats({
-          jugadores: jugadoresData.length,
-          torneos: torneosData.length,
-          equipos: equiposData.length,
-          partidos: totalPartidos
+          jugadores: jugadoresCount,
+          equipos: equiposCount
         })
       } catch (error) {
         console.error('Error al cargar estadísticas:', error)
@@ -62,11 +40,6 @@ const DashboardPage = () => {
       icon: TbUsers,
       title: 'Gestión de Jugadores',
       description: 'Administra jugadores, equipos y estadísticas completas'
-    },
-    {
-      icon: TbTournament,
-      title: 'Gestión de Torneos',
-      description: 'Crea y administra torneos con fixtures dinámicos'
     },
     {
       icon: TbChartBar,
@@ -100,7 +73,7 @@ const DashboardPage = () => {
 
       {/* Stats Cards */}
       <Row className="g-3 mb-4">
-        <Col lg={3} md={6}>
+        <Col lg={6} md={6}>
           <Card className="border-0 shadow-sm h-100" style={{ 
             borderRadius: '12px',
             borderTop: '4px solid #6366f1',
@@ -125,57 +98,7 @@ const DashboardPage = () => {
             </Card.Body>
           </Card>
         </Col>
-        <Col lg={3} md={6}>
-          <Card className="border-0 shadow-sm h-100" style={{ 
-            borderRadius: '12px',
-            borderTop: '4px solid #10b981',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-            <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-start">
-                <div>
-                  <p className="text-muted mb-2 small fw-semibold text-uppercase">Torneos</p>
-                  {loading ? (
-                    <div className="spinner-border spinner-border-sm text-success" role="status" />
-                  ) : (
-                    <h2 className="mb-0 fw-bold" style={{ color: '#1e293b', fontSize: '2rem' }}>{stats.torneos}</h2>
-                  )}
-                </div>
-                <div className="bg-success bg-opacity-10 rounded d-flex align-items-center justify-content-center" style={{ width: '48px', height: '48px' }}>
-                  <TbTrophy className="text-success" size={24} />
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={3} md={6}>
-          <Card className="border-0 shadow-sm h-100" style={{ 
-            borderRadius: '12px',
-            borderTop: '4px solid #f59e0b',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-            <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-start">
-                <div>
-                  <p className="text-muted mb-2 small fw-semibold text-uppercase">Partidos</p>
-                  {loading ? (
-                    <div className="spinner-border spinner-border-sm text-warning" role="status" />
-                  ) : (
-                    <h2 className="mb-0 fw-bold" style={{ color: '#1e293b', fontSize: '2rem' }}>{stats.partidos}</h2>
-                  )}
-                </div>
-                <div className="bg-warning bg-opacity-10 rounded d-flex align-items-center justify-content-center" style={{ width: '48px', height: '48px' }}>
-                  <TbTournament className="text-warning" size={24} />
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={3} md={6}>
+        <Col lg={6} md={6}>
           <Card className="border-0 shadow-sm h-100" style={{ 
             borderRadius: '12px',
             borderTop: '4px solid #8b5cf6',

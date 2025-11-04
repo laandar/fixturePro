@@ -53,6 +53,16 @@ export async function getJugadores() {
   }
 }
 
+export async function getJugadoresCount() {
+  // No requiere permiso - función auxiliar usada por otros módulos
+  try {
+    return await jugadorQueries.getCount()
+  } catch (error) {
+    console.error('Error al obtener contador de jugadores:', error)
+    throw new Error('Error al obtener contador de jugadores')
+  }
+}
+
 export async function getJugadoresActivos() {
   // Obtener solo jugadores activos para gestión de encuentros
   try {
@@ -60,6 +70,19 @@ export async function getJugadoresActivos() {
   } catch (error) {
     console.error('Error al obtener jugadores activos:', error)
     throw new Error('Error al obtener jugadores activos')
+  }
+}
+
+export async function getJugadoresActivosByEquipos(equipoIds: number[], categoriaId?: number) {
+  // Obtener solo jugadores activos de equipos específicos (optimizado para gestión de encuentros)
+  try {
+    if (equipoIds.length === 0) {
+      return []
+    }
+    return await jugadorQueries.getActiveByEquiposIds(equipoIds, categoriaId)
+  } catch (error) {
+    console.error('Error al obtener jugadores activos por equipos:', error)
+    throw new Error('Error al obtener jugadores activos por equipos')
   }
 }
 
@@ -86,6 +109,19 @@ export async function getJugadorById(id: number | string) {
   } catch (error) {
     console.error('Error al obtener jugador:', error)
     throw new Error('Error al obtener jugador')
+  }
+}
+
+export async function getJugadoresByIds(ids: string[]) {
+  // No requiere permiso - función auxiliar usada por otros módulos
+  try {
+    if (ids.length === 0) {
+      return []
+    }
+    return await jugadorQueries.getByIdsWithRelations(ids)
+  } catch (error) {
+    console.error('Error al obtener jugadores por IDs:', error)
+    throw new Error('Error al obtener jugadores por IDs')
   }
 }
 

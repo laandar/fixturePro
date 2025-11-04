@@ -5,14 +5,13 @@ import PageBreadcrumb from '@/components/PageBreadcrumb'
 import '@/styles/mobile-tabs.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos } from '../actions'
-import { getGolesTorneo, getTarjetasTorneo } from '../../gestion-jugadores/actions'
-import { generarPropuestaJornada, confirmarJornada, regenerarJornadaDinamica, confirmarRegeneracionJornada } from '../dynamic-actions'
-import { getCategorias, getEquipos, getEquiposByCategoria } from '../../equipos/actions'
-import { getJugadores } from '../../jugadores/actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo } from '../actions'
+import { getTarjetasTorneo } from '../../gestion-jugadores/actions'
+import { confirmarJornada,  confirmarRegeneracionJornada } from '../dynamic-actions'
+import { getEquiposByCategoria } from '../../equipos/actions'
 import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada, generarTablaDistribucionHorarios } from '../horarios-actions'
 import { getCanchas } from '@/app/(admin)/(apps)/canchas/actions'
-import type { TorneoWithRelations, EquipoWithRelations, Categoria, EncuentroWithRelations, Horario, Gol, Tarjeta } from '@/db/types'
+import type { TorneoWithRelations, EquipoWithRelations, EncuentroWithRelations, Horario, Tarjeta } from '@/db/types'
 import type { DynamicFixtureResult, JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
 import DynamicFixtureModal from '@/components/DynamicFixtureModal'
 import EmparejamientosFaltantesModal from '@/components/EmparejamientosFaltantesModal'
@@ -20,7 +19,6 @@ import EncuentroCard from '@/components/EncuentroCard'
 import { saveAs } from 'file-saver'
 import { exportFixtureToExcel } from '@/lib/excel-exporter'
 import { 
-  getAllEstadisticas,
   getEstadisticasSanciones,
   getSancionesPorEquipo
 } from '@/lib/torneo-statistics'
@@ -32,11 +30,9 @@ const TorneoDetailPage = () => {
   
   const [torneo, setTorneo] = useState<TorneoWithRelations | null>(null)
   const [equiposDisponibles, setEquiposDisponibles] = useState<EquipoWithRelations[]>([])
-  const [categorias, setCategorias] = useState<Categoria[]>([])
   const [encuentros, setEncuentros] = useState<EncuentroWithRelations[]>([])
   const [horarios, setHorarios] = useState<Horario[]>([])
   const [canchas, setCanchas] = useState<any[]>([])
-  const [goles, setGoles] = useState<Gol[]>([])
   const [tarjetas, setTarjetas] = useState<Tarjeta[]>([])
   const [todosJugadores, setTodosJugadores] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -126,40 +122,24 @@ const TorneoDetailPage = () => {
       setTorneo((torneoData ?? null) as TorneoWithRelations | null)
       
       // Luego cargar el resto de datos en paralelo, incluyendo solo equipos de la categoría del torneo
-      const [equiposData, categoriasData, encuentrosData, descansosData, horariosData, canchasData, jugadoresData] = await Promise.all([
+      const [equiposData, encuentrosData, descansosData, horariosData, canchasData] = await Promise.all([
         torneoData?.categoria_id ? getEquiposByCategoria(torneoData.categoria_id) : [],
-        getCategorias(),
         getEncuentrosByTorneo(torneoId),
         getEquiposDescansan(torneoId),
         getHorarios(),
-        getCanchas(),
-        getJugadores()
+        getCanchas()
       ])
       
-      // Cargar goles del torneo
-      let golesData: Gol[] = []
-      try {
-        golesData = await getGolesTorneo(torneoId)
-        console.log('Goles cargados del torneo:', golesData.length)
-      } catch (error) {
-        console.error('Error al cargar goles del torneo:', error)
-      }
-
-      // Cargar tarjetas del torneo
-      let tarjetasData: Tarjeta[] = []
-      try {
-        tarjetasData = await getTarjetasTorneo(torneoId)
-        console.log('Tarjetas cargadas del torneo:', tarjetasData.length)
-      } catch (error) {
-        console.error('Error al cargar tarjetas del torneo:', error)
-      }
+      // Cargar tarjetas y jugadores en paralelo (optimización)
+      const [tarjetasData, jugadoresData] = await Promise.all([
+        getTarjetasTorneo(torneoId).catch(() => [] as Tarjeta[]),
+        getJugadoresByTorneo(torneoId).catch(() => [])
+      ])
       
       setEquiposDisponibles(equiposData)
-      setCategorias(categoriasData)
       setEncuentros(encuentrosData as any)
       setHorarios(horariosData)
       setCanchas(canchasData)
-      setGoles(golesData)
       setTarjetas(tarjetasData)
       setTodosJugadores(jugadoresData)
       
@@ -266,16 +246,8 @@ const TorneoDetailPage = () => {
   }
 
   const navigateToGestionJugadores = (encuentro: EncuentroWithRelations) => {
-    // Almacenar parámetros en localStorage
-    localStorage.setItem('gestion-jugadores-torneo', torneoId.toString())
-    localStorage.setItem('gestion-jugadores-jornada', (encuentro.jornada || 1).toString())
-    localStorage.setItem('gestion-jugadores-equipoLocalId', encuentro.equipo_local_id.toString())
-    localStorage.setItem('gestion-jugadores-equipoVisitanteId', encuentro.equipo_visitante_id.toString())
-    localStorage.setItem('gestion-jugadores-nombreEquipoLocal', encuentro.equipoLocal?.nombre || '')
-    localStorage.setItem('gestion-jugadores-nombreEquipoVisitante', encuentro.equipoVisitante?.nombre || '')
-    
-    // Navegar a la página de gestión de jugadores
-    router.push('/gestion-jugadores')
+    // Pasar solo el encuentroId, la página consultará la BD directamente
+    router.push(`/gestion-jugadores?encuentroId=${encuentro.id}`)
   }
 
 

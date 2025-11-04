@@ -34,13 +34,6 @@ export async function getMenusParaUsuarioActual(): Promise<MenuItemFromDB[]> {
     }
 
     const userId = session.user.id;
-    console.log('👤 Usuario ID:', userId, '| Email:', session.user.email, '| Rol en sesión:', session.user.role);
-
-    // Verificar si hay discrepancia entre el rol en sesión y el rol en la base de datos
-    const usuarioEnDB = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: { role: true }
-    });
 
     // 1. Obtener roles del usuario desde roles_usuarios
     const rolesDelUsuario = await db.query.rolesUsuarios.findMany({
