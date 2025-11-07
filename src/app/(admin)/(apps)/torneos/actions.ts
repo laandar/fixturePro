@@ -8,7 +8,7 @@ import type { NewTorneo, NewEquipoTorneo, EquipoWithRelations } from '@/db/types
 import { requirePermiso } from '@/lib/auth-helpers'
 import { db } from '@/db'
 import { tarjetas, goles, equiposTorneo, jugadoresParticipantes, cambiosJugadores, firmasEncuentros } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, count, inArray } from 'drizzle-orm'
 import { getJugadoresActivosByEquipos } from '@/app/(admin)/(apps)/jugadores/actions'
 
 export async function getTorneos() {
@@ -260,8 +260,68 @@ export async function generateFixtureForTorneo(
       throw new Error('Torneo no encontrado')
     }
 
-    // Eliminar encuentros existentes si los hay
-    await encuentroQueries.deleteByTorneoId(torneoId)
+    // Verificar si hay encuentros existentes
+    const encuentrosExistentes = await encuentroQueries.getByTorneoId(torneoId)
+    
+    if (encuentrosExistentes.length > 0) {
+      // Verificar si hay dependencias asociadas a los encuentros
+      const encuentrosIds = encuentrosExistentes.map(e => e.id)
+      
+      // Verificar tarjetas
+      const tarjetasExistentes = await db.select({ count: count() })
+        .from(tarjetas)
+        .where(inArray(tarjetas.encuentro_id, encuentrosIds))
+      
+      // Verificar goles
+      const golesExistentes = await db.select({ count: count() })
+        .from(goles)
+        .where(inArray(goles.encuentro_id, encuentrosIds))
+      
+      // Verificar jugadores participantes
+      const jugadoresParticipantesExistentes = await db.select({ count: count() })
+        .from(jugadoresParticipantes)
+        .where(inArray(jugadoresParticipantes.encuentro_id, encuentrosIds))
+      
+      // Verificar cambios de jugadores
+      const cambiosJugadoresExistentes = await db.select({ count: count() })
+        .from(cambiosJugadores)
+        .where(inArray(cambiosJugadores.encuentro_id, encuentrosIds))
+      
+      // Verificar firmas
+      const firmasExistentes = await db.select({ count: count() })
+        .from(firmasEncuentros)
+        .where(inArray(firmasEncuentros.encuentro_id, encuentrosIds))
+      
+      // Construir lista de dependencias encontradas
+      const dependenciasEncontradas: string[] = []
+      if (tarjetasExistentes.length > 0 && tarjetasExistentes[0].count > 0) {
+        dependenciasEncontradas.push('tarjetas')
+      }
+      if (golesExistentes.length > 0 && golesExistentes[0].count > 0) {
+        dependenciasEncontradas.push('goles')
+      }
+      if (jugadoresParticipantesExistentes.length > 0 && jugadoresParticipantesExistentes[0].count > 0) {
+        dependenciasEncontradas.push('jugadores participantes')
+      }
+      if (cambiosJugadoresExistentes.length > 0 && cambiosJugadoresExistentes[0].count > 0) {
+        dependenciasEncontradas.push('cambios de jugadores')
+      }
+      if (firmasExistentes.length > 0 && firmasExistentes[0].count > 0) {
+        dependenciasEncontradas.push('firmas')
+      }
+      
+      // Si hay dependencias, bloquear la generación
+      if (dependenciasEncontradas.length > 0) {
+        const dependenciasTexto = dependenciasEncontradas.join(', ')
+        throw new Error(
+          `No se puede generar el fixture porque hay dependencias asociadas a los encuentros existentes: ${dependenciasTexto}. ` +
+          'Por favor, elimina manualmente estas dependencias antes de regenerar el fixture.'
+        )
+      }
+
+      // Si no hay dependencias, eliminar encuentros existentes
+      await encuentroQueries.deleteByTorneoId(torneoId)
+    }
 
     // Generar nuevo fixture
     const fixtureResult = await generateFixture(equipos, torneoId, {
@@ -284,7 +344,25 @@ export async function generateFixtureForTorneo(
       equiposDescansan: fixtureResult.equiposDescansan
     }
   } catch (error) {
-    throw new Error('Error al generar fixture')
+    console.error('❌ Error al generar fixture:', {
+      torneoId,
+      equiposCount: equipos.length,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      options
+    })
+    
+    // Si el error ya tiene un mensaje descriptivo sobre dependencias, lanzarlo tal cual
+    if (error instanceof Error && error.message.includes('dependencias')) {
+      throw error
+    }
+    
+    // Si es otro tipo de error, agregar información sobre dependencias
+    const errorMessage = error instanceof Error 
+      ? `Error al generar fixture: ${error.message}. Si el problema persiste, verifica que no haya dependencias (tarjetas, goles, jugadores participantes, cambios o firmas) asociadas a los encuentros existentes.`
+      : 'Error al generar fixture: Error desconocido. Verifica que no haya dependencias asociadas a los encuentros existentes.'
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -694,6 +772,61 @@ export async function deleteJornada(
       throw new Error(`La jornada ${jornada} está cerrada (ya fue jugada) y no se puede eliminar`)
     }
 
+    // Verificar si hay dependencias asociadas a los encuentros
+    const encuentrosIds = encuentrosJornada.map(e => e.id)
+    
+    // Verificar tarjetas
+    const tarjetasExistentes = await db.select({ count: count() })
+      .from(tarjetas)
+      .where(inArray(tarjetas.encuentro_id, encuentrosIds))
+    
+    // Verificar goles
+    const golesExistentes = await db.select({ count: count() })
+      .from(goles)
+      .where(inArray(goles.encuentro_id, encuentrosIds))
+    
+    // Verificar jugadores participantes
+    const jugadoresParticipantesExistentes = await db.select({ count: count() })
+      .from(jugadoresParticipantes)
+      .where(inArray(jugadoresParticipantes.encuentro_id, encuentrosIds))
+    
+    // Verificar cambios de jugadores
+    const cambiosJugadoresExistentes = await db.select({ count: count() })
+      .from(cambiosJugadores)
+      .where(inArray(cambiosJugadores.encuentro_id, encuentrosIds))
+    
+    // Verificar firmas
+    const firmasExistentes = await db.select({ count: count() })
+      .from(firmasEncuentros)
+      .where(inArray(firmasEncuentros.encuentro_id, encuentrosIds))
+    
+    // Construir lista de dependencias encontradas
+    const dependenciasEncontradas: string[] = []
+    if (tarjetasExistentes.length > 0 && tarjetasExistentes[0].count > 0) {
+      dependenciasEncontradas.push('tarjetas')
+    }
+    if (golesExistentes.length > 0 && golesExistentes[0].count > 0) {
+      dependenciasEncontradas.push('goles')
+    }
+    if (jugadoresParticipantesExistentes.length > 0 && jugadoresParticipantesExistentes[0].count > 0) {
+      dependenciasEncontradas.push('jugadores participantes')
+    }
+    if (cambiosJugadoresExistentes.length > 0 && cambiosJugadoresExistentes[0].count > 0) {
+      dependenciasEncontradas.push('cambios de jugadores')
+    }
+    if (firmasExistentes.length > 0 && firmasExistentes[0].count > 0) {
+      dependenciasEncontradas.push('firmas')
+    }
+    
+    // Si hay dependencias, bloquear la eliminación
+    if (dependenciasEncontradas.length > 0) {
+      const dependenciasTexto = dependenciasEncontradas.join(', ')
+      throw new Error(
+        `No se puede eliminar la jornada ${jornada} porque hay dependencias asociadas a los encuentros: ${dependenciasTexto}. ` +
+        'Por favor, elimina manualmente estas dependencias antes de eliminar la jornada.'
+      )
+    }
+
     // Eliminar todos los encuentros de la jornada
     let encuentrosEliminados = 0
     for (const encuentro of encuentrosJornada) {
@@ -717,7 +850,23 @@ export async function deleteJornada(
       mensaje: `Jornada ${jornada} eliminada exitosamente`
     }
   } catch (error) {
-    throw new Error(`Error al eliminar jornada ${jornada}: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+    console.error('❌ Error al eliminar jornada:', {
+      torneoId,
+      jornada,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    
+    // Si el error ya tiene un mensaje descriptivo sobre dependencias, lanzarlo tal cual
+    if (error instanceof Error && error.message.includes('dependencias')) {
+      throw error
+    }
+    
+    const errorMessage = error instanceof Error 
+      ? `Error al eliminar jornada ${jornada}: ${error.message}`
+      : `Error al eliminar jornada ${jornada}: Error desconocido`
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -792,5 +941,32 @@ export async function crearJornadaConEmparejamientos(
     }
   } catch (error) {
     throw new Error(`Error al crear jornada con emparejamientos: ${error instanceof Error ? error.message : 'Error desconocido'}`)
+  }
+}
+
+export async function updateFechaJornada(
+  torneoId: number,
+  jornada: number,
+  fecha: Date
+) {
+  try {
+    await requirePermiso('torneos', 'editar')
+    
+    const encuentrosActualizados = await encuentroQueries.updateFechaByJornada(
+      torneoId,
+      jornada,
+      fecha
+    )
+
+    revalidatePath(`/torneos/${torneoId}`)
+    revalidatePath('/fixture')
+
+    return {
+      success: true,
+      mensaje: `Fecha de la jornada ${jornada} actualizada correctamente`,
+      encuentrosActualizados: encuentrosActualizados.length
+    }
+  } catch (error) {
+    throw new Error(`Error al actualizar fecha de jornada: ${error instanceof Error ? error.message : 'Error desconocido'}`)
   }
 }

@@ -15,14 +15,14 @@ export default auth((req) => {
     '/auth-3',
     '/landing',
     '/estadisticas',
-    '/api',
+    '/api/auth',
     '/_next',
     '/favicon.ico',
     '/uploads',
     '/iconpattern.png',
   ];
   
-  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
+  const isPublicPath = publicPaths.some(path => pathname.startsWith(path)) || pathname.startsWith('/api/');
   const isOnAuth = pathname.startsWith('/auth-3');
 
   // Si no es una ruta pública y no está logueado, redirigir a login
@@ -44,11 +44,12 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * - /api/auth (NextAuth routes)
+     * - /_next/static (static files)
+     * - /_next/image (image optimization files)
+     * - /favicon.ico (favicon file)
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.).*)',
   ],
 };
 

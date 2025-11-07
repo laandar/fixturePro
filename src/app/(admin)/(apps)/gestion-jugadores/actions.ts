@@ -541,13 +541,14 @@ export async function getSaldosEquiposHastaJornada(
   const importeLocal = Math.round((acum[equipoLocalId]?.amarillas || 0) * valorAmarilla * 100 + (acum[equipoLocalId]?.rojas || 0) * valorRoja * 100)
   const importeVisitante = Math.round((acum[equipoVisitanteId]?.amarillas || 0) * valorAmarilla * 100 + (acum[equipoVisitanteId]?.rojas || 0) * valorRoja * 100)
 
-  // Pagos
+  // Pagos (excluyendo anulados)
   const pagosRows = await db
     .select({ equipo_id: pagosMultas.equipo_id, monto_centavos: pagosMultas.monto_centavos })
     .from(pagosMultas)
     .where(and(
       eq(pagosMultas.torneo_id, torneoId),
       inArray(pagosMultas.equipo_id, [equipoLocalId, equipoVisitanteId]),
+      eq(pagosMultas.anulado, false), // Excluir pagos anulados
       // considerar pagos hasta la jornada (si jornada es null se considera general -> también cuenta)
       // no hay operador OR directo a null en el builder, sumamos todos y el cliente filtra por hastaJornada al insertar
       // simplificamos: contamos todos los pagos registrados hasta el momento (comportamiento esperado para saldo acumulado)
@@ -610,6 +611,7 @@ export async function getDetalleValoresEquiposHastaJornada(
   equipoLocalId: number,
   equipoVisitanteId: number,
   hastaJornada: number,
+  jornadaActual?: number,
 ) {
   const { valorAmarilla, valorRoja } = await getValoresTarjetasInterno()
 
@@ -635,7 +637,9 @@ export async function getDetalleValoresEquiposHastaJornada(
     if (t.tipo === 'roja') agg[e].rojas += 1
   }
 
-  // Cargos manuales hasta la jornada (incluir cargos globales - jornada null)
+  // Cargos manuales: incluir cargos globales (jornada null) o con jornada <= jornadaActual (si se proporciona) o hastaJornada
+  // Si se proporciona jornadaActual, los cargos se muestran en la jornada para la cual se parametrizaron
+  const jornadaCargos = jornadaActual !== undefined ? jornadaActual : hastaJornada
   const cargosRowsAll = await db
     .select({ equipo_id: cargosManuales.equipo_id, monto_centavos: cargosManuales.monto_centavos, descripcion: cargosManuales.descripcion, jornada: cargosManuales.jornada_aplicacion })
     .from(cargosManuales)
@@ -644,16 +648,17 @@ export async function getDetalleValoresEquiposHastaJornada(
       inArray(cargosManuales.equipo_id, [equipoLocalId, equipoVisitanteId])
     ))
   
-  // Filtrar: incluir cargos globales (jornada null) o con jornada <= hasta
-  const cargosRows = cargosRowsAll.filter(c => c.jornada == null || (c.jornada as number) <= hastaJornada)
+  // Filtrar: incluir cargos globales (jornada null) o con jornada <= jornadaCargos
+  const cargosRows = cargosRowsAll.filter(c => c.jornada == null || (c.jornada as number) <= jornadaCargos)
 
-  // Pagos (acumulados)
+  // Pagos (acumulados) - excluyendo anulados
   const pagosRows = await db
-    .select({ equipo_id: pagosMultas.equipo_id, monto_centavos: pagosMultas.monto_centavos, jornada: pagosMultas.jornada, descripcion: pagosMultas.descripcion })
+    .select({ equipo_id: pagosMultas.equipo_id, monto_centavos: pagosMultas.monto_centavos, jornada: pagosMultas.jornada, descripcion: pagosMultas.descripcion, referencia: pagosMultas.referencia })
     .from(pagosMultas)
     .where(and(
       eq(pagosMultas.torneo_id, torneoId),
-      inArray(pagosMultas.equipo_id, [equipoLocalId, equipoVisitanteId])
+      inArray(pagosMultas.equipo_id, [equipoLocalId, equipoVisitanteId]),
+      eq(pagosMultas.anulado, false) // Excluir pagos anulados
     ))
 
   function buildDetalle(equipoId: number) {
@@ -749,14 +754,16 @@ export async function saveJugadoresParticipantes(encuentroId: number, jugadoresD
       jugadoresData
     })
 
-    if (jugadoresData.length === 0) {
-      console.log('No hay jugadores para guardar')
-      return { success: true, jugadores: [] }
-    }
-
-    // Eliminar jugadores participantes existentes del encuentro
+    // Siempre eliminar jugadores participantes existentes del encuentro
+    // Esto permite eliminar todos los jugadores cuando jugadoresData está vacío
     console.log('Eliminando jugadores participantes existentes para encuentro:', encuentroId)
     await db.delete(jugadoresParticipantes).where(eq(jugadoresParticipantes.encuentro_id, encuentroId))
+
+    // Si no hay jugadores para insertar, solo retornar éxito
+    if (jugadoresData.length === 0) {
+      console.log('No hay jugadores para guardar, todos los jugadores participantes han sido eliminados')
+      return { success: true, jugadores: [] }
+    }
 
     // Insertar nuevos jugadores participantes
     console.log('Insertando nuevos jugadores participantes:', jugadoresData)

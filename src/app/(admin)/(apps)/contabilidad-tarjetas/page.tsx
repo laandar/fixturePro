@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Container, Row, Col, Card, CardHeader, CardBody, Alert, FormSelect, Table, Badge, Button, Modal, Form, FormControl, Tabs, Tab } from 'react-bootstrap'
 import { getTorneos } from '@/app/(admin)/(apps)/torneos/actions'
-import { getResumenTarjetasPorJornadaEquipo, getValoresTarjetas, type ResumenTarjetasItem, getSaldosPorEquipo, registrarPagoTorneo, registrarCargoManual, getCargosManualesTorneo, updateCargoManual, deleteCargoManual, getTarjetasPorEquipoJornada, deleteTarjetaContabilidad, type TarjetaDetalle, getResumenGeneral, getEstadoCuentaEquipo, getPagosTorneo, updatePago, anularPago, reactivarPago, type ResumenGeneral, type EstadoCuentaEquipo, type PagoItem } from './actions'
+import { getResumenTarjetasPorJornadaEquipo, getValoresTarjetas, type ResumenTarjetasItem, getSaldosPorEquipo, registrarPagoTorneo, registrarCargoManual, getCargosManualesTorneo, updateCargoManual, deleteCargoManual, getTarjetasPorEquipoJornada, deleteTarjetaContabilidad, type TarjetaDetalle, getResumenGeneral, getEstadoCuentaEquipo, getPagosTorneo, updatePago, anularPago, reactivarPago, getJornadaFechaFuturaMasCercana, type ResumenGeneral, type EstadoCuentaEquipo, type PagoItem } from './actions'
 
 const ContabilidadTarjetasPage = () => {
   const [torneos, setTorneos] = useState<any[]>([])
@@ -20,6 +20,8 @@ const ContabilidadTarjetasPage = () => {
   const [cargoEquipoId, setCargoEquipoId] = useState<number | ''>('' as any)
   const [cargoMonto, setCargoMonto] = useState<string>('')
   const [cargoDesc, setCargoDesc] = useState<string>('')
+  const [cargoJornada, setCargoJornada] = useState<string>('')
+  const [aplicarATodosEquipos, setAplicarATodosEquipos] = useState<boolean>(false)
   const [filterText, setFilterText] = useState<string>('')
   const [cargoError, setCargoError] = useState<string | null>(null)
   const [cargoSuccess, setCargoSuccess] = useState<string | null>(null)
@@ -52,6 +54,24 @@ const ContabilidadTarjetasPage = () => {
   const [pagoToAnular, setPagoToAnular] = useState<PagoItem | null>(null)
   const [motivoAnulacion, setMotivoAnulacion] = useState<string>('')
   const [incluirAnulados, setIncluirAnulados] = useState<boolean>(false)
+  
+  // Estados para modal de pago
+  const [showPagoEquipoModal, setShowPagoEquipoModal] = useState(false)
+  const [equipoPagoId, setEquipoPagoId] = useState<number | null>(null)
+  const [equipoPagoNombre, setEquipoPagoNombre] = useState<string>('')
+  const [montoPagoEquipo, setMontoPagoEquipo] = useState<string>('')
+  const [descripcionPagoEquipo, setDescripcionPagoEquipo] = useState<string>('')
+  const [errorPagoEquipo, setErrorPagoEquipo] = useState<string | null>(null)
+  
+  // Estados para modal de cargo manual (desde botón directo)
+  const [showCargoManualModal, setShowCargoManualModal] = useState(false)
+  const [equipoCargoId, setEquipoCargoId] = useState<number | null>(null)
+  const [equipoCargoNombre, setEquipoCargoNombre] = useState<string>('')
+  const [montoCargoManual, setMontoCargoManual] = useState<string>('')
+  const [descripcionCargoManual, setDescripcionCargoManual] = useState<string>('')
+  const [jornadaCargoManual, setJornadaCargoManual] = useState<string>('')
+  const [aplicarATodosEquiposManual, setAplicarATodosEquiposManual] = useState<boolean>(false)
+  const [errorCargoManual, setErrorCargoManual] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -115,32 +135,119 @@ const ContabilidadTarjetasPage = () => {
     return saldos.reduce((acc, s) => acc + (s.saldo_cents || 0), 0) / 100
   }, [saldos])
 
-  const handleAbonarEquipo = async (equipoId: number, equipoNombre: string) => {
-    if (!selectedTorneo) return
-    const montoStr = typeof window !== 'undefined' ? window.prompt(`Monto a abonar para ${equipoNombre} (USD)`, '') : null
-    if (!montoStr) return
-    const monto = parseFloat(montoStr)
-    if (isNaN(monto) || monto <= 0) return
-    const desc = typeof window !== 'undefined' ? (window.prompt('Descripción (opcional):', '') || '') : ''
-    await registrarPagoTorneo(selectedTorneo, equipoId, monto, desc)
-    const saldosData = await getSaldosPorEquipo(selectedTorneo)
-    setSaldos(saldosData)
+  const abrirModalPagoEquipo = (equipoId: number, equipoNombre: string) => {
+    setEquipoPagoId(equipoId)
+    setEquipoPagoNombre(equipoNombre)
+    setMontoPagoEquipo('')
+    setDescripcionPagoEquipo('')
+    setErrorPagoEquipo(null)
+    setShowPagoEquipoModal(true)
   }
 
-  const handleCargoManualEquipo = async (equipoId: number, equipoNombre: string) => {
+  const cerrarModalPagoEquipo = () => {
+    setShowPagoEquipoModal(false)
+    setEquipoPagoId(null)
+    setEquipoPagoNombre('')
+    setMontoPagoEquipo('')
+    setDescripcionPagoEquipo('')
+    setErrorPagoEquipo(null)
+  }
+
+  const confirmarPagoEquipo = async () => {
+    if (!selectedTorneo || !equipoPagoId) return
+    
+    setErrorPagoEquipo(null)
+    const monto = parseFloat(montoPagoEquipo)
+    if (isNaN(monto) || monto <= 0) {
+      setErrorPagoEquipo('El monto debe ser mayor a 0')
+      return
+    }
+    
+    try {
+      await registrarPagoTorneo(selectedTorneo, equipoPagoId, monto, descripcionPagoEquipo)
+      const saldosData = await getSaldosPorEquipo(selectedTorneo)
+      setSaldos(saldosData)
+      cerrarModalPagoEquipo()
+    } catch (error) {
+      setErrorPagoEquipo(error instanceof Error ? error.message : 'Error al registrar el pago')
+    }
+  }
+
+  const abrirModalCargoManual = async (equipoId: number, equipoNombre: string) => {
+    setEquipoCargoId(equipoId)
+    setEquipoCargoNombre(equipoNombre)
+    setMontoCargoManual('')
+    setDescripcionCargoManual('')
+    setAplicarATodosEquiposManual(false)
+    setErrorCargoManual(null)
+    
+    // Obtener la jornada con la fecha futura más cercana
+    if (selectedTorneo) {
+      try {
+        const jornadaFutura = await getJornadaFechaFuturaMasCercana(selectedTorneo)
+        setJornadaCargoManual(jornadaFutura ? jornadaFutura.toString() : '')
+      } catch (e) {
+        setJornadaCargoManual('')
+      }
+    } else {
+      setJornadaCargoManual('')
+    }
+    
+    setShowCargoManualModal(true)
+  }
+
+  const cerrarModalCargoManual = () => {
+    setShowCargoManualModal(false)
+    setEquipoCargoId(null)
+    setEquipoCargoNombre('')
+    setMontoCargoManual('')
+    setDescripcionCargoManual('')
+    setJornadaCargoManual('')
+    setAplicarATodosEquiposManual(false)
+    setErrorCargoManual(null)
+  }
+
+  const confirmarCargoManual = async () => {
     if (!selectedTorneo) return
-    const montoStr = typeof window !== 'undefined' ? window.prompt(`Monto del cargo manual para ${equipoNombre} (USD)`, '') : null
-    if (!montoStr) return
-    const monto = parseFloat(montoStr)
-    if (isNaN(monto) || monto <= 0) return
-    const desc = typeof window !== 'undefined' ? (window.prompt('Descripción (opcional):', '') || '') : ''
-    await registrarCargoManual(selectedTorneo, equipoId, monto, desc)
-    const [saldosData, cargosData] = await Promise.all([
-      getSaldosPorEquipo(selectedTorneo),
-      getCargosManualesTorneo(selectedTorneo)
-    ])
-    setSaldos(saldosData)
-    setCargos(cargosData)
+    
+    setErrorCargoManual(null)
+    const monto = parseFloat(montoCargoManual)
+    if (isNaN(monto) || monto <= 0) {
+      setErrorCargoManual('El monto debe ser mayor a 0')
+      return
+    }
+    
+    const jornada = jornadaCargoManual ? parseInt(jornadaCargoManual) : null
+    if (jornadaCargoManual && (isNaN(parseInt(jornadaCargoManual)) || parseInt(jornadaCargoManual) <= 0)) {
+      setErrorCargoManual('La jornada debe ser un número mayor a 0')
+      return
+    }
+    
+    try {
+      if (aplicarATodosEquiposManual) {
+        // Aplicar cargo a todos los equipos del torneo
+        const equiposIds = saldos.map(s => s.equipo_id)
+        for (const equipoId of equiposIds) {
+          await registrarCargoManual(selectedTorneo, equipoId, monto, descripcionCargoManual, jornada)
+        }
+        setErrorCargoManual(null)
+      } else {
+        if (!equipoCargoId) {
+          setErrorCargoManual('Debe seleccionar un equipo o marcar "Aplicar a todos los equipos"')
+          return
+        }
+        await registrarCargoManual(selectedTorneo, equipoCargoId, monto, descripcionCargoManual, jornada)
+      }
+      const [saldosData, cargosData] = await Promise.all([
+        getSaldosPorEquipo(selectedTorneo),
+        getCargosManualesTorneo(selectedTorneo)
+      ])
+      setSaldos(saldosData)
+      setCargos(cargosData)
+      cerrarModalCargoManual()
+    } catch (error) {
+      setErrorCargoManual(error instanceof Error ? error.message : 'Error al registrar el cargo manual')
+    }
   }
 
   const handleEditCargo = async (id: number, current: any) => {
@@ -148,6 +255,7 @@ const ContabilidadTarjetasPage = () => {
     setCargoEquipoId(current.equipo_id)
     setCargoMonto((current.monto_centavos/100).toFixed(2))
     setCargoDesc(current.descripcion || '')
+    setCargoJornada(current.jornada_aplicacion ? current.jornada_aplicacion.toString() : '')
     setShowCargoModal(true)
   }
 
@@ -350,13 +458,27 @@ const ContabilidadTarjetasPage = () => {
     }
   }
 
-  const openCreateCargoModal = (equipoId?: number) => {
+  const openCreateCargoModal = async (equipoId?: number) => {
     setEditingCargo(null)
     setCargoEquipoId(equipoId || (saldos[0]?.equipo_id || ('' as any)))
     setCargoMonto('')
     setCargoDesc('')
+    setAplicarATodosEquipos(false)
     setCargoError(null)
     setCargoSuccess(null)
+    
+    // Obtener la jornada con la fecha futura más cercana
+    if (selectedTorneo) {
+      try {
+        const jornadaFutura = await getJornadaFechaFuturaMasCercana(selectedTorneo)
+        setCargoJornada(jornadaFutura ? jornadaFutura.toString() : '')
+      } catch (e) {
+        setCargoJornada('')
+      }
+    } else {
+      setCargoJornada('')
+    }
+    
     setShowCargoModal(true)
   }
 
@@ -367,8 +489,8 @@ const ContabilidadTarjetasPage = () => {
       setCargoError('Debe seleccionar un torneo')
       return
     }
-    if (!cargoEquipoId) {
-      setCargoError('Debe seleccionar un equipo')
+    if (!aplicarATodosEquipos && !cargoEquipoId) {
+      setCargoError('Debe seleccionar un equipo o marcar "Aplicar a todos los equipos"')
       return
     }
     const monto = parseFloat(cargoMonto)
@@ -376,13 +498,27 @@ const ContabilidadTarjetasPage = () => {
       setCargoError('El monto debe ser mayor a 0')
       return
     }
+    const jornada = cargoJornada ? parseInt(cargoJornada) : null
+    if (cargoJornada && (isNaN(parseInt(cargoJornada)) || parseInt(cargoJornada) <= 0)) {
+      setCargoError('La jornada debe ser un número mayor a 0')
+      return
+    }
     try {
       if (editingCargo) {
-        await updateCargoManual(editingCargo.id, monto, cargoDesc)
+        await updateCargoManual(editingCargo.id, monto, cargoDesc, jornada)
         setCargoSuccess('Cargo actualizado exitosamente')
       } else {
-        await registrarCargoManual(selectedTorneo, Number(cargoEquipoId), monto, cargoDesc)
-        setCargoSuccess('Cargo creado exitosamente')
+        if (aplicarATodosEquipos) {
+          // Aplicar cargo a todos los equipos del torneo
+          const equiposIds = saldos.map(s => s.equipo_id)
+          for (const equipoId of equiposIds) {
+            await registrarCargoManual(selectedTorneo, equipoId, monto, cargoDesc, jornada)
+          }
+          setCargoSuccess(`Cargo creado exitosamente para ${equiposIds.length} equipos`)
+        } else {
+          await registrarCargoManual(selectedTorneo, Number(cargoEquipoId), monto, cargoDesc, jornada)
+          setCargoSuccess('Cargo creado exitosamente')
+        }
       }
       const [saldosData, cargosData] = await Promise.all([
         getSaldosPorEquipo(selectedTorneo),
@@ -393,6 +529,7 @@ const ContabilidadTarjetasPage = () => {
       setTimeout(() => {
         setShowCargoModal(false)
         setCargoSuccess(null)
+        setAplicarATodosEquipos(false)
       }, 1500)
     } catch (e) {
       setCargoError(e instanceof Error ? e.message : 'Error al guardar el cargo')
@@ -588,8 +725,8 @@ const ContabilidadTarjetasPage = () => {
                               </td>
                               <td className="text-end">
                                 <div className="d-flex justify-content-end gap-2">
-                                  <Button size="sm" variant="outline-success" onClick={() => handleAbonarEquipo(s.equipo_id, s.equipo_nombre)}>Abonar</Button>
-                                  <Button size="sm" variant="outline-warning" className="text-dark" onClick={() => openCreateCargoModal(s.equipo_id)}>Cargo manual</Button>
+                                  <Button size="sm" variant="outline-success" onClick={() => abrirModalPagoEquipo(s.equipo_id, s.equipo_nombre)}>Abonar</Button>
+                                  <Button size="sm" variant="outline-warning" className="text-dark" onClick={() => abrirModalCargoManual(s.equipo_id, s.equipo_nombre)}>Cargo manual</Button>
                                 </div>
                               </td>
                             </tr>
@@ -624,6 +761,7 @@ const ContabilidadTarjetasPage = () => {
                           <tr>
                             <th>ID</th>
                             <th>Equipo</th>
+                            <th>Jornada</th>
                             <th>Descripción</th>
                             <th className="text-end">Monto</th>
                             <th className="text-end">Acciones</th>
@@ -640,6 +778,13 @@ const ContabilidadTarjetasPage = () => {
                               <tr key={c.id}>
                                 <td>{c.id}</td>
                                 <td>{equipo}</td>
+                                <td>
+                                  {c.jornada_aplicacion ? (
+                                    <Badge bg="info">J{c.jornada_aplicacion}</Badge>
+                                  ) : (
+                                    <Badge bg="secondary">Global</Badge>
+                                  )}
+                                </td>
                                 <td>{c.descripcion || '-'}</td>
                                 <td className="text-end">${(c.monto_centavos/100).toFixed(2)}</td>
                                 <td className="text-end">
@@ -985,24 +1130,26 @@ const ContabilidadTarjetasPage = () => {
             </Alert>
           )}
           <Form>
-            <div className="mb-3">
-              <label className="form-label">Equipo</label>
-              <FormSelect 
-                value={cargoEquipoId || ''} 
-                onChange={(e) => {
-                  setCargoEquipoId(e.target.value ? parseInt(e.target.value) : ('' as any))
-                  setCargoError(null)
-                }} 
-                disabled={!!editingCargo}
-                isInvalid={!cargoEquipoId}
-              >
-                <option value="">Selecciona equipo...</option>
-                {saldos.map((s:any) => (
-                  <option key={s.equipo_id} value={s.equipo_id}>{s.equipo_nombre}</option>
-                ))}
-              </FormSelect>
-              {!cargoEquipoId && <div className="invalid-feedback d-block">Seleccione un equipo</div>}
-            </div>
+            {!editingCargo && (
+              <div className="mb-3">
+                <label className="form-label">Equipo</label>
+                <FormSelect 
+                  value={cargoEquipoId || ''} 
+                  onChange={(e) => {
+                    setCargoEquipoId(e.target.value ? parseInt(e.target.value) : ('' as any))
+                    setCargoError(null)
+                  }} 
+                  disabled={aplicarATodosEquipos}
+                  isInvalid={!aplicarATodosEquipos && !cargoEquipoId}
+                >
+                  <option value="">Selecciona equipo...</option>
+                  {saldos.map((s:any) => (
+                    <option key={s.equipo_id} value={s.equipo_id}>{s.equipo_nombre}</option>
+                  ))}
+                </FormSelect>
+                {!aplicarATodosEquipos && !cargoEquipoId && <div className="invalid-feedback d-block">Seleccione un equipo o marque "Aplicar a todos los equipos"</div>}
+              </div>
+            )}
             <div className="mb-3">
               <label className="form-label">Monto (USD)</label>
               <FormControl 
@@ -1021,9 +1168,48 @@ const ContabilidadTarjetasPage = () => {
               )}
             </div>
             <div className="mb-3">
+              <label className="form-label">Jornada (opcional)</label>
+              <FormControl
+                type="number"
+                min="1"
+                value={cargoJornada}
+                onChange={(e) => {
+                  setCargoJornada(e.target.value)
+                  setCargoError(null)
+                }}
+                placeholder="Dejar vacío para cargo global"
+                isInvalid={!!cargoJornada && (isNaN(parseInt(cargoJornada)) || parseInt(cargoJornada) <= 0)}
+              />
+              {cargoJornada && (isNaN(parseInt(cargoJornada)) || parseInt(cargoJornada) <= 0) && (
+                <div className="invalid-feedback">La jornada debe ser un número mayor a 0</div>
+              )}
+              <small className="form-text text-muted">Dejar vacío para aplicar el cargo a todo el torneo</small>
+            </div>
+            <div className="mb-3">
               <label className="form-label">Descripción</label>
               <FormControl as="textarea" rows={2} value={cargoDesc} onChange={(e) => setCargoDesc(e.target.value)} />
             </div>
+            {!editingCargo && (
+              <div className="mb-3">
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    checked={aplicarATodosEquipos}
+                    onChange={(e) => {
+                      setAplicarATodosEquipos(e.target.checked)
+                      if (e.target.checked) {
+                        setCargoEquipoId('' as any)
+                      }
+                    }}
+                    id="aplicarATodosEquipos"
+                  />
+                  <label className="form-check-label" htmlFor="aplicarATodosEquipos">
+                    Aplicar este cargo a todos los equipos
+                  </label>
+                </div>
+              </div>
+            )}
           </Form>
         </Modal.Body>
         <Modal.Footer>
@@ -1031,7 +1217,7 @@ const ContabilidadTarjetasPage = () => {
           <Button 
             variant="primary" 
             onClick={handleSubmitCargo} 
-            disabled={!cargoEquipoId || !cargoMonto || isNaN(parseFloat(cargoMonto)) || parseFloat(cargoMonto) <= 0 || !!cargoSuccess}
+            disabled={(!aplicarATodosEquipos && !cargoEquipoId) || !cargoMonto || isNaN(parseFloat(cargoMonto)) || parseFloat(cargoMonto) <= 0 || !!cargoSuccess}
           >
             {cargoSuccess ? 'Guardado' : 'Guardar'}
           </Button>
@@ -1226,6 +1412,150 @@ const ContabilidadTarjetasPage = () => {
             disabled={!pagoMonto || isNaN(parseFloat(pagoMonto)) || parseFloat(pagoMonto) <= 0}
           >
             Guardar Cambios
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de pago para equipo */}
+      <Modal show={showPagoEquipoModal} onHide={cerrarModalPagoEquipo}>
+        <Modal.Header closeButton>
+          <Modal.Title>Registrar Pago - {equipoPagoNombre}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {errorPagoEquipo && (
+            <Alert variant="danger" dismissible onClose={() => setErrorPagoEquipo(null)}>
+              {errorPagoEquipo}
+            </Alert>
+          )}
+          <Form>
+            <div className="mb-3">
+              <label className="form-label">Monto (USD) *</label>
+              <FormControl
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={montoPagoEquipo}
+                onChange={(e) => {
+                  setMontoPagoEquipo(e.target.value)
+                  setErrorPagoEquipo(null)
+                }}
+                placeholder="Ingrese el monto a abonar"
+                isInvalid={!!montoPagoEquipo && (isNaN(parseFloat(montoPagoEquipo)) || parseFloat(montoPagoEquipo) <= 0)}
+              />
+              {montoPagoEquipo && (isNaN(parseFloat(montoPagoEquipo)) || parseFloat(montoPagoEquipo) <= 0) && (
+                <div className="invalid-feedback">El monto debe ser mayor a 0</div>
+              )}
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Descripción (opcional)</label>
+              <FormControl
+                as="textarea"
+                rows={3}
+                value={descripcionPagoEquipo}
+                onChange={(e) => setDescripcionPagoEquipo(e.target.value)}
+                placeholder="Ingrese una descripción del pago"
+              />
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={cerrarModalPagoEquipo}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={confirmarPagoEquipo}
+            disabled={!montoPagoEquipo || isNaN(parseFloat(montoPagoEquipo)) || parseFloat(montoPagoEquipo) <= 0}
+          >
+            Registrar Pago
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de cargo manual desde botón directo */}
+      <Modal show={showCargoManualModal} onHide={cerrarModalCargoManual}>
+        <Modal.Header closeButton>
+          <Modal.Title>Nuevo Cargo Manual - {equipoCargoNombre}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {errorCargoManual && (
+            <Alert variant="danger" dismissible onClose={() => setErrorCargoManual(null)}>
+              {errorCargoManual}
+            </Alert>
+          )}
+          <Form>
+            <div className="mb-3">
+              <label className="form-label">Monto (USD) *</label>
+              <FormControl
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={montoCargoManual}
+                onChange={(e) => {
+                  setMontoCargoManual(e.target.value)
+                  setErrorCargoManual(null)
+                }}
+                placeholder="Ingrese el monto del cargo"
+                isInvalid={!!montoCargoManual && (isNaN(parseFloat(montoCargoManual)) || parseFloat(montoCargoManual) <= 0)}
+              />
+              {montoCargoManual && (isNaN(parseFloat(montoCargoManual)) || parseFloat(montoCargoManual) <= 0) && (
+                <div className="invalid-feedback">El monto debe ser mayor a 0</div>
+              )}
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Jornada (opcional)</label>
+              <FormControl
+                type="number"
+                min="1"
+                value={jornadaCargoManual}
+                onChange={(e) => {
+                  setJornadaCargoManual(e.target.value)
+                  setErrorCargoManual(null)
+                }}
+                placeholder="Dejar vacío para cargo global"
+                isInvalid={!!jornadaCargoManual && (isNaN(parseInt(jornadaCargoManual)) || parseInt(jornadaCargoManual) <= 0)}
+              />
+              {jornadaCargoManual && (isNaN(parseInt(jornadaCargoManual)) || parseInt(jornadaCargoManual) <= 0) && (
+                <div className="invalid-feedback">La jornada debe ser un número mayor a 0</div>
+              )}
+              <small className="form-text text-muted">Dejar vacío para aplicar el cargo a todo el torneo</small>
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Descripción (opcional)</label>
+              <FormControl
+                as="textarea"
+                rows={3}
+                value={descripcionCargoManual}
+                onChange={(e) => setDescripcionCargoManual(e.target.value)}
+                placeholder="Ingrese una descripción del cargo"
+              />
+            </div>
+            <div className="mb-3">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={aplicarATodosEquiposManual}
+                  onChange={(e) => setAplicarATodosEquiposManual(e.target.checked)}
+                  id="aplicarATodosEquiposManual"
+                />
+                <label className="form-check-label" htmlFor="aplicarATodosEquiposManual">
+                  Aplicar este cargo a todos los equipos
+                </label>
+              </div>
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={cerrarModalCargoManual}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={confirmarCargoManual}
+            disabled={!montoCargoManual || isNaN(parseFloat(montoCargoManual)) || parseFloat(montoCargoManual) <= 0}
+          >
+            Registrar Cargo
           </Button>
         </Modal.Footer>
       </Modal>

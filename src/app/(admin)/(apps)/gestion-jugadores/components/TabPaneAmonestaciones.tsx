@@ -42,29 +42,10 @@ const TabPaneAmonestaciones = () => {
                         <TbSquare className="me-2" /> Amonestaciones
                     </h5>
                 </div>
-                <div className="d-flex align-items-center gap-2">
-                    <Button size="sm" variant="primary" onClick={() => setShowTarjetaModal(true)} disabled={shouldDisableActions}>
-                        <TbPlus className="me-1" /> Agregar Tarjeta
-                    </Button>
-                </div>
+                
             </Card.Header>
             <Card.Body>
-                {cargosManuales && cargosManuales.length > 0 && (
-                    <div className="alert alert-warning d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>Cargos manuales aplicados a esta jornada:</strong>
-                            <ul className="mb-0">
-                                {cargosManuales.map((c: any, idx: number) => (
-                                    <li key={idx}>
-                                        {(c.equipo_id === equipoLocalId ? nombreEquipoA : nombreEquipoB)}: ${ (c.monto_centavos/100).toFixed(2) }
-                                        {c.jornada != null ? ` (J${c.jornada})` : ' (Global)'}
-                                        {c.descripcion ? ` - ${c.descripcion}` : ''}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
-                )}
+               
                 {tarjetas.length > 0 ? (
                     <>
                         {/* Tabla detallada de tarjetas */}

@@ -1,6 +1,7 @@
 'use client'
-import { Card, CardBody, CardHeader, Row, Col, Button } from 'react-bootstrap'
-import { LuGamepad2, LuSettings, LuTrash, LuDownload, LuUsers } from 'react-icons/lu'
+import { useState } from 'react'
+import { Card, CardBody, CardHeader, Row, Col, Button, Form } from 'react-bootstrap'
+import { LuGamepad2, LuSettings, LuTrash, LuDownload, LuUsers, LuCalendar } from 'react-icons/lu'
 import EncuentroCard from '@/components/EncuentroCard'
 import type { TorneoWithRelations, EncuentroWithRelations, EquipoTorneo } from '@/db/types'
 
@@ -16,6 +17,7 @@ interface TorneoFixtureSectionProps {
   onEliminarJornada?: (jornada: number) => void
   onManagePlayers?: (encuentro: EncuentroWithRelations) => void
   onEditHorario?: (encuentro: EncuentroWithRelations) => void
+  onUpdateFechaJornada?: (torneoId: number, jornada: number, fecha: Date) => Promise<void>
   showActions?: boolean
 }
 
@@ -31,8 +33,11 @@ export default function TorneoFixtureSection({
   onEliminarJornada,
   onManagePlayers,
   onEditHorario,
+  onUpdateFechaJornada,
   showActions = true
 }: TorneoFixtureSectionProps) {
+  const [editandoFecha, setEditandoFecha] = useState<Record<number, boolean>>({})
+  const [fechaTemporal, setFechaTemporal] = useState<Record<number, string>>({})
   const getEncuentrosPorJornada = () => {
     const jornadas: Record<number, EncuentroWithRelations[]> = {}
     encuentros.forEach(encuentro => {
@@ -73,6 +78,53 @@ export default function TorneoFixtureSection({
   }
 
   const jornadas = getEncuentrosPorJornada()
+
+  // Obtener la fecha de la jornada (del primer encuentro)
+  const getFechaJornada = (jornada: number): string => {
+    const encuentrosJornada = jornadas[jornada] || []
+    if (encuentrosJornada.length > 0 && encuentrosJornada[0].fecha_programada) {
+      const fecha = new Date(encuentrosJornada[0].fecha_programada)
+      return fecha.toISOString().split('T')[0]
+    }
+    return ''
+  }
+
+  // Iniciar edición de fecha
+  const iniciarEdicionFecha = (jornada: number) => {
+    const fechaActual = getFechaJornada(jornada)
+    setFechaTemporal({ ...fechaTemporal, [jornada]: fechaActual || '' })
+    setEditandoFecha({ ...editandoFecha, [jornada]: true })
+  }
+
+  // Cancelar edición de fecha
+  const cancelarEdicionFecha = (jornada: number) => {
+    const nuevoEstado = { ...editandoFecha }
+    delete nuevoEstado[jornada]
+    setEditandoFecha(nuevoEstado)
+    const nuevasFechas = { ...fechaTemporal }
+    delete nuevasFechas[jornada]
+    setFechaTemporal(nuevasFechas)
+  }
+
+  // Guardar fecha de jornada
+  const guardarFechaJornada = async (jornada: number) => {
+    if (!torneo?.id || !onUpdateFechaJornada) return
+
+    const fechaStr = fechaTemporal[jornada]
+    if (!fechaStr) {
+      cancelarEdicionFecha(jornada)
+      return
+    }
+
+    try {
+      const fecha = new Date(fechaStr + 'T00:00:00')
+      await onUpdateFechaJornada(torneo.id, jornada, fecha)
+      cancelarEdicionFecha(jornada)
+    } catch (error) {
+      console.error('Error al actualizar fecha de jornada:', error)
+      alert('Error al actualizar la fecha de la jornada')
+    }
+  }
 
   return (
     <>
@@ -162,7 +214,51 @@ export default function TorneoFixtureSection({
         </div>
       ) : (
         <div>
-          {Object.keys(jornadas).sort((a, b) => parseInt(a) - parseInt(b)).map(jornadaNum => (
+          {Object.keys(jornadas).sort((a, b) => {
+            const jornadaA = parseInt(a)
+            const jornadaB = parseInt(b)
+            
+            // Obtener fechas de las jornadas
+            const fechaA = getFechaJornada(jornadaA)
+            const fechaB = getFechaJornada(jornadaB)
+            
+            // Si ambas tienen fecha, ordenar por fecha (fecha futura más cercana primero)
+            if (fechaA && fechaB) {
+              const fechaAObj = new Date(fechaA + 'T00:00:00')
+              const fechaBObj = new Date(fechaB + 'T00:00:00')
+              const ahora = new Date()
+              
+              // Separar fechas pasadas y futuras
+              const esFuturaA = fechaAObj >= ahora
+              const esFuturaB = fechaBObj >= ahora
+              
+              // Las fechas futuras van primero
+              if (esFuturaA && !esFuturaB) return -1
+              if (!esFuturaA && esFuturaB) return 1
+              
+              // Si ambas son futuras o ambas son pasadas, ordenar por proximidad
+              if (esFuturaA && esFuturaB) {
+                // Fechas futuras: más cercana primero
+                return fechaAObj.getTime() - fechaBObj.getTime()
+              } else {
+                // Fechas pasadas: más reciente primero
+                return fechaBObj.getTime() - fechaAObj.getTime()
+              }
+            }
+            
+            // Si solo una tiene fecha, la que tiene fecha va primero si es futura
+            if (fechaA && !fechaB) {
+              const fechaAObj = new Date(fechaA + 'T00:00:00')
+              return fechaAObj >= new Date() ? -1 : 1
+            }
+            if (!fechaA && fechaB) {
+              const fechaBObj = new Date(fechaB + 'T00:00:00')
+              return fechaBObj >= new Date() ? 1 : -1
+            }
+            
+            // Si ninguna tiene fecha, ordenar por número de jornada
+            return jornadaA - jornadaB
+          }).map(jornadaNum => (
             <Card key={jornadaNum} className="mb-2 shadow-sm overflow-hidden" style={{ borderRadius: '15px' }}>
               <CardHeader className="bg-light border-bottom" style={{ borderRadius: '15px 15px 0 0' }}>
                 <div className="d-flex justify-content-between align-items-center">
@@ -174,10 +270,54 @@ export default function TorneoFixtureSection({
                         {jornadaNum}
                       </div>
                       <div>
-                        <h5 className="mb-0 fw-bold text-primary">Jornada {jornadaNum}</h5>
+                        <div className="d-flex align-items-center gap-2">
+                          <h5 className="mb-0 fw-bold text-primary">Jornada {jornadaNum}</h5>
+                          {!editandoFecha[parseInt(jornadaNum)] && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="p-0 text-primary"
+                              onClick={() => iniciarEdicionFecha(parseInt(jornadaNum))}
+                              title="Cambiar fecha de la jornada"
+                              style={{ fontSize: '0.875rem' }}
+                            >
+                              <LuCalendar size={14} />
+                            </Button>
+                          )}
+                        </div>
                         <small className="text-muted">
                           <strong>{jornadas[parseInt(jornadaNum)].length}</strong> encuentro{jornadas[parseInt(jornadaNum)].length !== 1 ? 's' : ''}
+                          {!editandoFecha[parseInt(jornadaNum)] && getFechaJornada(parseInt(jornadaNum)) && (
+                            <> • {new Date(getFechaJornada(parseInt(jornadaNum)) + 'T00:00:00').toLocaleDateString('es-ES')}</>
+                          )}
                         </small>
+                        {editandoFecha[parseInt(jornadaNum)] && (
+                          <div className="d-flex align-items-center gap-2 mt-2">
+                            <Form.Control
+                              type="date"
+                              size="sm"
+                              value={fechaTemporal[parseInt(jornadaNum)] || ''}
+                              onChange={(e) => setFechaTemporal({ ...fechaTemporal, [parseInt(jornadaNum)]: e.target.value })}
+                              style={{ width: 'auto', minWidth: '150px' }}
+                            />
+                            <Button
+                              variant="success"
+                              size="sm"
+                              onClick={() => guardarFechaJornada(parseInt(jornadaNum))}
+                              title="Guardar fecha"
+                            >
+                              Guardar
+                            </Button>
+                            <Button
+                              variant="outline-secondary"
+                              size="sm"
+                              onClick={() => cancelarEdicionFecha(parseInt(jornadaNum))}
+                              title="Cancelar"
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     

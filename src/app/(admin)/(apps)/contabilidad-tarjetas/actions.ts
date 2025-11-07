@@ -182,13 +182,14 @@ export async function registrarCargoManual(
   equipoId: number,
   montoUSD: number,
   descripcion?: string,
+  jornada?: number | null,
 ) {
   if (!torneoId || !equipoId || !montoUSD || montoUSD <= 0) throw new Error('Datos de cargo manual inválidos')
   const cents = Math.round(montoUSD * 100)
   const [row] = await db.insert(cargosManuales).values({
     torneo_id: torneoId,
     equipo_id: equipoId,
-    jornada_aplicacion: null,
+    jornada_aplicacion: jornada || null,
     monto_centavos: cents,
     descripcion: descripcion || null,
   }).returning()
@@ -197,17 +198,28 @@ export async function registrarCargoManual(
 
 export async function getCargosManualesTorneo(torneoId: number) {
   const rows = await db
-    .select({ id: cargosManuales.id, equipo_id: cargosManuales.equipo_id, monto_centavos: cargosManuales.monto_centavos, descripcion: cargosManuales.descripcion })
+    .select({ 
+      id: cargosManuales.id, 
+      equipo_id: cargosManuales.equipo_id, 
+      monto_centavos: cargosManuales.monto_centavos, 
+      descripcion: cargosManuales.descripcion,
+      jornada_aplicacion: cargosManuales.jornada_aplicacion
+    })
     .from(cargosManuales)
     .where(eq(cargosManuales.torneo_id, torneoId))
   return rows
 }
 
-export async function updateCargoManual(id: number, montoUSD: number, descripcion?: string) {
+export async function updateCargoManual(id: number, montoUSD: number, descripcion?: string, jornada?: number | null) {
   const cents = Math.round((montoUSD || 0) * 100)
   const [row] = await db
     .update(cargosManuales)
-    .set({ monto_centavos: cents, descripcion: descripcion || null, updatedAt: new Date() })
+    .set({ 
+      monto_centavos: cents, 
+      descripcion: descripcion || null, 
+      jornada_aplicacion: jornada !== undefined ? (jornada || null) : undefined,
+      updatedAt: new Date() 
+    })
     .where(eq(cargosManuales.id, id))
     .returning()
   return { success: true, cargo: row }
@@ -717,6 +729,48 @@ export async function reactivarPago(pagoId: number) {
     .where(eq(pagosMultas.id, pagoId))
     .returning()
   return { success: true, pago: row }
+}
+
+// Obtener la jornada con la fecha futura más cercana
+export async function getJornadaFechaFuturaMasCercana(torneoId: number): Promise<number | null> {
+  const ahora = new Date()
+  ahora.setHours(0, 0, 0, 0) // Normalizar a inicio del día
+  
+  // Obtener todos los encuentros del torneo con jornada y fecha_programada
+  const encuentrosRows = await db
+    .select({
+      jornada: encuentros.jornada,
+      fecha_programada: encuentros.fecha_programada,
+    })
+    .from(encuentros)
+    .where(
+      and(
+        eq(encuentros.torneo_id, torneoId),
+        sql`${encuentros.fecha_programada} IS NOT NULL`
+      )
+    )
+    .orderBy(asc(encuentros.fecha_programada))
+  
+  // Encontrar la jornada con la fecha futura más cercana
+  let jornadaMasCercana: number | null = null
+  let fechaMasCercana: Date | null = null
+  
+  for (const row of encuentrosRows) {
+    if (!row.fecha_programada || !row.jornada) continue
+    
+    const fechaEncuentro = new Date(row.fecha_programada)
+    fechaEncuentro.setHours(0, 0, 0, 0)
+    
+    // Si la fecha es futura o es hoy
+    if (fechaEncuentro >= ahora) {
+      if (!fechaMasCercana || fechaEncuentro < fechaMasCercana) {
+        fechaMasCercana = fechaEncuentro
+        jornadaMasCercana = row.jornada
+      }
+    }
+  }
+  
+  return jornadaMasCercana
 }
 
 

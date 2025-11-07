@@ -1,5 +1,6 @@
 'use client'
-import { Card, CardHeader, CardBody, Row, Col, Badge, Button, Table } from 'react-bootstrap'
+import { useState } from 'react'
+import { Card, CardHeader, CardBody, Row, Col, Badge, Button, Table, Modal, Form, FormControl } from 'react-bootstrap'
 import { useGestionJugadores } from './GestionJugadoresContext'
 
 const TabPanePagos = () => {
@@ -7,15 +8,47 @@ const TabPanePagos = () => {
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado'
     const disabled = isEncuentroFinalizado && !isAdmin()
 
-    const abonar = async (equipo: 'local' | 'visitante') => {
-        const nombre = equipo === 'local' ? nombreEquipoA : nombreEquipoB
-        const montoStr = typeof window !== 'undefined' ? window.prompt(`Monto a abonar para ${nombre} (USD)`, '') : null
-        if (!montoStr) return
-        const monto = parseFloat(montoStr)
-        if (isNaN(monto) || monto <= 0) return
-        const desc = typeof window !== 'undefined' ? (window.prompt('Descripción (opcional):', '') || '') : ''
-        await registrarPago(equipo, monto, desc)
+    const [showPagoModal, setShowPagoModal] = useState(false)
+    const [equipoSeleccionado, setEquipoSeleccionado] = useState<'local' | 'visitante' | null>(null)
+    const [montoPago, setMontoPago] = useState<string>('')
+    const [descripcionPago, setDescripcionPago] = useState<string>('')
+    const [errorPago, setErrorPago] = useState<string | null>(null)
+
+    const abrirModalPago = (equipo: 'local' | 'visitante') => {
+        setEquipoSeleccionado(equipo)
+        setMontoPago('')
+        setDescripcionPago('')
+        setErrorPago(null)
+        setShowPagoModal(true)
     }
+
+    const cerrarModalPago = () => {
+        setShowPagoModal(false)
+        setEquipoSeleccionado(null)
+        setMontoPago('')
+        setDescripcionPago('')
+        setErrorPago(null)
+    }
+
+    const confirmarPago = async () => {
+        if (!equipoSeleccionado) return
+        
+        setErrorPago(null)
+        const monto = parseFloat(montoPago)
+        if (isNaN(monto) || monto <= 0) {
+            setErrorPago('El monto debe ser mayor a 0')
+            return
+        }
+        
+        try {
+            await registrarPago(equipoSeleccionado, monto, descripcionPago)
+            cerrarModalPago()
+        } catch (error) {
+            setErrorPago(error instanceof Error ? error.message : 'Error al registrar el pago')
+        }
+    }
+
+    const nombreEquipoSeleccionado = equipoSeleccionado === 'local' ? nombreEquipoA : nombreEquipoB
 
     const totalCents = (saldoLocalCents || 0) + (saldoVisitanteCents || 0)
 
@@ -31,7 +64,7 @@ const TabPanePagos = () => {
                             </Badge>
                         </CardHeader>
                         <CardBody>
-                            <Button variant="outline-success" size="sm" onClick={() => abonar('local')} disabled={disabled}>
+                            <Button variant="outline-success" size="sm" onClick={() => abrirModalPago('local')} disabled={disabled}>
                                 Abonar {nombreEquipoA}
                             </Button>
                         </CardBody>
@@ -46,7 +79,7 @@ const TabPanePagos = () => {
                             </Badge>
                         </CardHeader>
                         <CardBody>
-                            <Button variant="outline-success" size="sm" onClick={() => abonar('visitante')} disabled={disabled}>
+                            <Button variant="outline-success" size="sm" onClick={() => abrirModalPago('visitante')} disabled={disabled}>
                                 Abonar {nombreEquipoB}
                             </Button>
                         </CardBody>
@@ -203,37 +236,10 @@ const TabPanePagos = () => {
                                             </div>
                                         )}
 
-                                        {/* Detalle de pagos */}
-                                        {det.pagos.length > 0 && (
-                                            <div>
-                                                <small className="text-muted d-block mb-2 fw-semibold">Pagos registrados:</small>
-                                                <div className="border rounded p-2">
-                                                    {det.pagos.map((p: any, idx: number) => (
-                                                        <div key={idx} className="d-flex justify-content-between align-items-start mb-1 pb-1 border-bottom">
-                                                            <div>
-                                                                <span className="small text-muted">
-                                                                    J{p.jornada ?? '-'}
-                                                                </span>
-                                                                {p.descripcion && (
-                                                                    <span className="small text-muted ms-2">- {p.descripcion}</span>
-                                                                )}
-                                                                {p.referencia && (
-                                                                    <span className="small text-muted ms-2">Ref: {p.referencia}</span>
-                                                                )}
-                                                            </div>
-                                                            <span className="small fw-semibold">
-                                                                ${((p.monto_centavos||0)/100).toFixed(2)}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
                                         {/* Mensaje si no hay detalles */}
-                                        {det.cargos.length === 0 && det.pagos.length === 0 && (
+                                        {det.cargos.length === 0 && (
                                             <div className="text-center text-muted py-3">
-                                                <small>No hay cargos o pagos registrados</small>
+                                                <small>No hay cargos registrados</small>
                                             </div>
                                         )}
                                     </CardBody>
@@ -243,6 +249,62 @@ const TabPanePagos = () => {
                     })}
                 </Row>
             )}
+
+            {/* Modal de pago */}
+            <Modal show={showPagoModal} onHide={cerrarModalPago}>
+                <Modal.Header closeButton>
+                    <Modal.Title>Registrar Pago - {nombreEquipoSeleccionado}</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    {errorPago && (
+                        <div className="alert alert-danger" role="alert">
+                            {errorPago}
+                        </div>
+                    )}
+                    <Form>
+                        <div className="mb-3">
+                            <label className="form-label">Monto (USD) *</label>
+                            <FormControl
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={montoPago}
+                                onChange={(e) => {
+                                    setMontoPago(e.target.value)
+                                    setErrorPago(null)
+                                }}
+                                placeholder="Ingrese el monto a abonar"
+                                isInvalid={!!montoPago && (isNaN(parseFloat(montoPago)) || parseFloat(montoPago) <= 0)}
+                            />
+                            {montoPago && (isNaN(parseFloat(montoPago)) || parseFloat(montoPago) <= 0) && (
+                                <div className="invalid-feedback">El monto debe ser mayor a 0</div>
+                            )}
+                        </div>
+                        <div className="mb-3">
+                            <label className="form-label">Descripción (opcional)</label>
+                            <FormControl
+                                as="textarea"
+                                rows={3}
+                                value={descripcionPago}
+                                onChange={(e) => setDescripcionPago(e.target.value)}
+                                placeholder="Ingrese una descripción del pago"
+                            />
+                        </div>
+                    </Form>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={cerrarModalPago}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        variant="primary"
+                        onClick={confirmarPago}
+                        disabled={!montoPago || isNaN(parseFloat(montoPago)) || parseFloat(montoPago) <= 0}
+                    >
+                        Registrar Pago
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </div>
     )
 }

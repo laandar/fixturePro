@@ -1,11 +1,15 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import '@/styles/mobile-tabs.css'
+import { Toast } from 'primereact/toast'
+import 'primereact/resources/themes/lara-light-cyan/theme.css'
+import 'primereact/resources/primereact.min.css'
+import 'primeicons/primeicons.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo } from '../actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada } from '../actions'
 import { getTarjetasTorneo } from '../../gestion-jugadores/actions'
 import { confirmarJornada,  confirmarRegeneracionJornada } from '../dynamic-actions'
 import { getEquiposByCategoria } from '../../equipos/actions'
@@ -39,6 +43,7 @@ const TorneoDetailPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const toast = useRef<any>(null)
   
   // Estados para modales
   const [showAddEquiposModal, setShowAddEquiposModal] = useState(false)
@@ -150,7 +155,9 @@ const TorneoDetailPage = () => {
       
       console.log('Equipos que descansan cargados desde BD:', descansosData)
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al cargar datos')
+      const errorMessage = error instanceof Error ? error.message : 'Error al cargar datos'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     } finally {
       setLoading(false)
     }
@@ -164,34 +171,46 @@ const TorneoDetailPage = () => {
 
   const handleAddEquipos = async () => {
     if (selectedEquipos.length === 0) {
-      setError('Debes seleccionar al menos un equipo')
+      const errorMessage = 'Debes seleccionar al menos un equipo'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
       return
     }
 
     try {
       await addEquiposToTorneo(torneoId, selectedEquipos)
-      setSuccess('Equipos agregados exitosamente')
+      const successMessage = 'Equipos agregados exitosamente'
+      setSuccess(successMessage)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: successMessage, life: 5000 })
       setSelectedEquipos([])
       setShowAddEquiposModal(false)
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al agregar equipos')
+      const errorMessage = error instanceof Error ? error.message : 'Error al agregar equipos'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     }
   }
 
   const handleRemoveEquipo = async (equipoId: number) => {
     try {
       await removeEquipoFromTorneo(torneoId, equipoId)
-      setSuccess('Equipo removido exitosamente')
+      const successMessage = 'Equipo removido exitosamente'
+      setSuccess(successMessage)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: successMessage, life: 5000 })
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al remover equipo')
+      const errorMessage = error instanceof Error ? error.message : 'Error al remover equipo'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     }
   }
 
   const handleGenerateFixture = async () => {
     if (!torneo?.equiposTorneo || torneo.equiposTorneo.length < 2) {
-      setError('Se necesitan al menos 2 equipos para generar un fixture')
+      const errorMessage = 'Se necesitan al menos 2 equipos para generar un fixture'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
       return
     }
 
@@ -209,11 +228,15 @@ const TorneoDetailPage = () => {
         setEquiposDescansan(equiposDescansanFormato)
       }
       
-      setSuccess(`Fixture generado exitosamente con ${result.encuentrosCreados} encuentros`)
+      const successMessage = `Fixture generado exitosamente con ${result.encuentrosCreados} encuentros`
+      setSuccess(successMessage)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: successMessage, life: 5000 })
       setShowFixtureModal(false)
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al generar fixture')
+      const errorMessage = error instanceof Error ? error.message : 'Error al generar fixture'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 7000 })
     }
   }
 
@@ -224,12 +247,16 @@ const TorneoDetailPage = () => {
 
     try {
       await updateEncuentro(editingEncuentro.id, formData)
-      setSuccess('Encuentro actualizado exitosamente')
+      const successMessage = 'Encuentro actualizado exitosamente'
+      setSuccess(successMessage)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: successMessage, life: 5000 })
       setShowEncuentroModal(false)
       setEditingEncuentro(null)
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al actualizar encuentro')
+      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar encuentro'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     }
   }
 
@@ -258,11 +285,20 @@ const TorneoDetailPage = () => {
     try {
       const result = await deleteJornada(torneoId, jornadaAEliminar)
       
-      setSuccess(result.mensaje)
+      const successMessage = result.mensaje
+      setSuccess(successMessage)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: successMessage, life: 5000 })
       setShowDeleteJornadaModal(false)
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al eliminar jornada')
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar jornada'
+      setError(errorMessage)
+      toast.current?.show({ 
+        severity: 'error', 
+        summary: 'Error', 
+        detail: errorMessage, 
+        life: 7000 
+      })
     }
   }
 
@@ -662,17 +698,6 @@ const TorneoDetailPage = () => {
     <Container fluid style={{ backgroundColor: '#FCFCFC', minHeight: '100vh' }}>
       <PageBreadcrumb title={torneo.nombre} subtitle="Apps" />
 
-      {error && (
-        <Alert variant="danger" dismissible onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert variant="success" dismissible onClose={() => setSuccess(null)}>
-          {success}
-        </Alert>
-      )}
 
       {/* Información general del torneo */}
       <Row className="mb-4">
@@ -955,6 +980,21 @@ const TorneoDetailPage = () => {
                     }}
                     onManagePlayers={navigateToGestionJugadores}
                     onEditHorario={handleSeleccionarHorario}
+                    onUpdateFechaJornada={async (torneoId, jornada, fecha) => {
+                      try {
+                        const resultado = await updateFechaJornada(torneoId, jornada, fecha)
+                        setSuccess(resultado.mensaje)
+                        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: resultado.mensaje, life: 5000 })
+                        setError(null)
+                        // Recargar datos del torneo
+                        await loadData()
+                      } catch (err: any) {
+                        const errorMessage = err.message || 'Error al actualizar la fecha de la jornada'
+                        setError(errorMessage)
+                        toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
+                        setSuccess(null)
+                      }
+                    }}
                     showActions={true}
                   />
                 </Tab.Pane>
@@ -1852,6 +1892,9 @@ const TorneoDetailPage = () => {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* Toast de PrimeReact */}
+      <Toast ref={toast} position="top-right" />
 
     </Container>
   )

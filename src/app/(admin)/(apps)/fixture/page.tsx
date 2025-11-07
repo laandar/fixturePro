@@ -342,12 +342,22 @@ const FixturePage = () => {
                     encuentros={encuentros}
                     equiposParticipantes={equiposParticipantes}
                     equiposDescansan={equiposDescansan}
-                    onEliminarJornada={(jornada) => {
-                      setJornadaAEliminar(jornada)
-                      setShowDeleteJornadaModal(true)
-                    }}
                     onManagePlayers={navigateToGestionJugadores}
-                    onEditHorario={handleSeleccionarHorario}
+                    onUpdateFechaJornada={async (torneoId, jornada, fecha) => {
+                      try {
+                        const { updateFechaJornada } = await import('../torneos/actions')
+                        const resultado = await updateFechaJornada(torneoId, jornada, fecha)
+                        setSuccess(resultado.mensaje)
+                        setError(null)
+                        // Recargar datos del torneo
+                        if (selectedTorneoId) {
+                          await loadTorneoData(selectedTorneoId)
+                        }
+                      } catch (err: any) {
+                        setError(err.message || 'Error al actualizar la fecha de la jornada')
+                        setSuccess(null)
+                      }
+                    }}
                     showActions={true}
                   />
                 </CardBody>

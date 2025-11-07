@@ -297,13 +297,34 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     const reloadSaldos = useCallback(async () => {
         try {
             if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) return
-            const { localCents, visitanteCents } = await getSaldosEquiposHastaJornada(torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum)
+            // Las tarjetas de la jornada actual no se suman, se suman para la siguiente jornada
+            // Por lo tanto, calculamos hasta la jornada anterior (si es jornada 1, no hay jornadas anteriores)
+            const hastaJornada = Math.max(0, jornadaNum - 1)
+            const { localCents, visitanteCents } = await getSaldosEquiposHastaJornada(torneoId, equipoLocalIdNum, equipoVisitanteIdNum, hastaJornada)
             setSaldoLocalCents(localCents)
             setSaldoVisitanteCents(visitanteCents)
         } catch (e) {
             // silencioso
         }
     }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
+
+    const reloadDetalle = useCallback(async () => {
+        try {
+            if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) return
+            // Las tarjetas de la jornada actual no se suman, se suman para la siguiente jornada
+            // Por lo tanto, calculamos hasta la jornada anterior (si es jornada 1, no hay jornadas anteriores)
+            const hastaJornada = Math.max(0, jornadaNum - 1)
+            // Los cargos manuales se muestran en la jornada para la cual se parametrizaron
+            // Por lo tanto, pasamos jornadaNum como jornadaActual para los cargos
+            const det = await getDetalleValoresEquiposHastaJornada(torneoId, equipoLocalIdNum, equipoVisitanteIdNum, hastaJornada, jornadaNum)
+            setDetalleValores(det)
+            // Actualizar la clave de caché para que el useEffect no se ejecute de nuevo
+            const key = `detalle-${torneoId}-${equipoLocalIdNum}-${equipoVisitanteIdNum}-${jornadaNum}-${tarjetas.length}`
+            detalleCargadoRef.current = key
+        } catch (e) {
+            // silencioso
+        }
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, tarjetas.length])
 
     useEffect(() => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -405,7 +426,12 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
 
         const loadDetalle = async () => {
             try {
-                const det = await getDetalleValoresEquiposHastaJornada(torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum)
+                // Las tarjetas de la jornada actual no se suman, se suman para la siguiente jornada
+                // Por lo tanto, calculamos hasta la jornada anterior (si es jornada 1, no hay jornadas anteriores)
+                const hastaJornada = Math.max(0, jornadaNum - 1)
+                // Los cargos manuales se muestran en la jornada para la cual se parametrizaron
+                // Por lo tanto, pasamos jornadaNum como jornadaActual para los cargos
+                const det = await getDetalleValoresEquiposHastaJornada(torneoId, equipoLocalIdNum, equipoVisitanteIdNum, hastaJornada, jornadaNum)
                 setDetalleValores(det)
                 detalleCargadoRef.current = key
             } catch (err) {
@@ -861,7 +887,8 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         const cents = Math.round(monto * 100)
         await registrarPagoMulta(torneoId, equipoId, jornadaNum, cents, descripcion || '')
         await reloadSaldos()
-    }, [torneoId, jornadaNum, equipoLocalIdNum, equipoVisitanteIdNum, reloadSaldos])
+        await reloadDetalle()
+    }, [torneoId, jornadaNum, equipoLocalIdNum, equipoVisitanteIdNum, reloadSaldos, reloadDetalle])
 
     const handleDeleteTarjeta = useCallback((id: string) => {
         const numericId = parseInt(id)
