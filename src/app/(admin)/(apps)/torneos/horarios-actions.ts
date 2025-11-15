@@ -2,14 +2,31 @@
 
 import { db } from '@/db'
 import { horarios, encuentros, equipos, torneos, equiposTorneo } from '@/db/schema'
-import { eq, and, asc, isNotNull } from 'drizzle-orm'
+import { eq, and, asc, isNotNull, sql } from 'drizzle-orm'
+
+const DIAS_VALIDOS = ['viernes', 'sabado', 'domingo'] as const
+type DiaSemana = (typeof DIAS_VALIDOS)[number]
+
+const ordenarDiaSemana = sql`
+  CASE ${horarios.dia_semana}
+    WHEN 'viernes' THEN 1
+    WHEN 'sabado' THEN 2
+    WHEN 'domingo' THEN 3
+    ELSE 4
+  END
+`
+
+const normalizarDiaSemana = (dia: string | null): DiaSemana => {
+  if (!dia) return 'viernes'
+  return (DIAS_VALIDOS.find(d => d === dia) ?? 'viernes') as DiaSemana
+}
 
 export async function getHorarios() {
   try {
     const horariosData = await db
       .select()
       .from(horarios)
-      .orderBy(asc(horarios.orden), asc(horarios.hora_inicio))
+      .orderBy(ordenarDiaSemana, asc(horarios.orden), asc(horarios.hora_inicio))
     
     return horariosData
   } catch (error) {
@@ -23,6 +40,7 @@ export async function createHorario(formData: FormData) {
     const horaInicio = formData.get('hora_inicio') as string
     const color = formData.get('color') as string || '#007bff'
     const orden = parseInt(formData.get('orden') as string) || 0
+    const diaSemana = normalizarDiaSemana(formData.get('dia_semana') as string | null)
 
     if (!horaInicio) {
       throw new Error('La hora de inicio es obligatoria')
@@ -32,6 +50,7 @@ export async function createHorario(formData: FormData) {
       .insert(horarios)
       .values({
         hora_inicio: horaInicio,
+        dia_semana: diaSemana,
         color,
         orden
       })
@@ -49,6 +68,7 @@ export async function updateHorario(id: number, formData: FormData) {
     const horaInicio = formData.get('hora_inicio') as string
     const color = formData.get('color') as string || '#007bff'
     const orden = parseInt(formData.get('orden') as string) || 0
+    const diaSemana = normalizarDiaSemana(formData.get('dia_semana') as string | null)
 
     if (!horaInicio) {
       throw new Error('La hora de inicio es obligatoria')
@@ -58,6 +78,7 @@ export async function updateHorario(id: number, formData: FormData) {
       .update(horarios)
       .set({
         hora_inicio: horaInicio,
+        dia_semana: diaSemana,
         color,
         orden,
         updatedAt: new Date()
@@ -118,7 +139,7 @@ async function evaluarCalidadAsignacion(torneoId: number): Promise<number> {
     const horariosDisponibles = await db
       .select()
       .from(horarios)
-      .orderBy(asc(horarios.orden), asc(horarios.hora_inicio))
+      .orderBy(ordenarDiaSemana, asc(horarios.orden), asc(horarios.hora_inicio))
 
     if (horariosDisponibles.length === 0) {
       return Infinity // Sin horarios disponibles
@@ -1069,13 +1090,14 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
     const horariosData = await db
       .select({
         id: horarios.id,
-        hora: horarios.hora_inicio
+        hora: horarios.hora_inicio,
+        dia: horarios.dia_semana
       })
       .from(horarios)
       .innerJoin(encuentros, eq(horarios.id, encuentros.horario_id))
       .where(eq(encuentros.torneo_id, torneoId))
-      .groupBy(horarios.id, horarios.hora_inicio)
-      .orderBy(horarios.hora_inicio)
+      .groupBy(horarios.id, horarios.hora_inicio, horarios.dia_semana)
+      .orderBy(ordenarDiaSemana, asc(horarios.hora_inicio))
 
     console.log('Horarios encontrados:', horariosData.length)
 
@@ -1112,13 +1134,25 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
     const vecesMaximas = Math.ceil(vecesPorHorario)
 
     // Generar tabla
+    const formatearDia = (dia?: string | null) => {
+      switch (dia) {
+        case 'sabado':
+          return 'Sábado'
+        case 'domingo':
+          return 'Domingo'
+        case 'viernes':
+        default:
+          return 'Viernes'
+      }
+    }
+
     const tabla = {
       equipos: equiposData.map(equipo => ({
         id: equipo.id,
         nombre: equipo.nombre,
         distribucion: horariosData.map(horario => ({
           horario_id: horario.id,
-          horario_nombre: horario.hora,
+          horario_nombre: `${formatearDia(horario.dia)} ${horario.hora}`,
           horario_hora: horario.hora,
           veces: distribucion[equipo.id][horario.id] || 0
         })),
@@ -1126,8 +1160,8 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
       })),
       horarios: horariosData.map(horario => ({
         id: horario.id,
-        nombre: horario.hora,
-        hora: horario.hora,
+        nombre: `${formatearDia(horario.dia)} ${horario.hora}`,
+        hora: `${formatearDia(horario.dia)} ${horario.hora}`,
         totalUsos: equiposData.reduce((sum, equipo) => 
           sum + (distribucion[equipo.id][horario.id] || 0), 0
         )

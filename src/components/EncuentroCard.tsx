@@ -20,6 +20,18 @@ export default function EncuentroCard({
   size = 'sm'
 }: EncuentroCardProps) {
   
+  const getDiaLabel = (dia?: string | null) => {
+    switch ((dia || '').toLowerCase()) {
+      case 'sabado':
+        return 'Sábado'
+      case 'domingo':
+        return 'Domingo'
+      case 'viernes':
+      default:
+        return 'Viernes'
+    }
+  }
+  
   // Función para generar badge de estado
   const getEstadoBadge = (estado: string | null) => {
     const config: Record<string, { 
@@ -235,7 +247,7 @@ export default function EncuentroCard({
                     lineHeight: '1'
                   }}
                 >
-                  🕐 {encuentro.horario.hora_inicio}
+                  🕐 {getDiaLabel(encuentro.horario.dia_semana)} · {encuentro.horario.hora_inicio}
                 </span>
               </div>
               <div className="col-auto">

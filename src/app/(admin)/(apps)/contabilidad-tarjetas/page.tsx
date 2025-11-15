@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Container, Row, Col, Card, CardHeader, CardBody, Alert, FormSelect, Table, Badge, Button, Modal, Form, FormControl, Tabs, Tab } from 'react-bootstrap'
 import { getTorneos } from '@/app/(admin)/(apps)/torneos/actions'
-import { getResumenTarjetasPorJornadaEquipo, getValoresTarjetas, type ResumenTarjetasItem, getSaldosPorEquipo, registrarPagoTorneo, registrarCargoManual, getCargosManualesTorneo, updateCargoManual, deleteCargoManual, getTarjetasPorEquipoJornada, deleteTarjetaContabilidad, type TarjetaDetalle, getResumenGeneral, getEstadoCuentaEquipo, getPagosTorneo, updatePago, anularPago, reactivarPago, getJornadaFechaFuturaMasCercana, type ResumenGeneral, type EstadoCuentaEquipo, type PagoItem } from './actions'
+import { getResumenTarjetasPorJornadaEquipo, getValoresTarjetas, type ResumenTarjetasItem, getSaldosPorEquipo, registrarPagoTorneo, registrarCargoManual, getCargosManualesTorneo, updateCargoManual, deleteCargoManual, getTarjetasPorEquipoJornada, deleteTarjetaContabilidad, type TarjetaDetalle, getResumenGeneral, getEstadoCuentaEquipo, getPagosTorneo, updatePago, anularPago, reactivarPago, getJornadaFechaFuturaMasCercana, getJornadasDisponibles, type ResumenGeneral, type EstadoCuentaEquipo, type PagoItem } from './actions'
 
 const ContabilidadTarjetasPage = () => {
   const [torneos, setTorneos] = useState<any[]>([])
@@ -40,6 +40,8 @@ const ContabilidadTarjetasPage = () => {
   const [resumenGeneral, setResumenGeneral] = useState<ResumenGeneral | null>(null)
   const [estadoCuenta, setEstadoCuenta] = useState<EstadoCuentaEquipo | null>(null)
   const [equipoEstadoCuenta, setEquipoEstadoCuenta] = useState<number | null>(null)
+  const [jornadaEstadoCuenta, setJornadaEstadoCuenta] = useState<number | null>(null)
+  const [jornadasDisponibles, setJornadasDisponibles] = useState<number[]>([])
   const [listaPagos, setListaPagos] = useState<PagoItem[]>([])
   const [loadingReportes, setLoadingReportes] = useState(false)
   
@@ -99,14 +101,16 @@ const ContabilidadTarjetasPage = () => {
       try {
         setLoading(true)
         setError(null)
-        const [data, saldosData, cargosData] = await Promise.all([
+        const [data, saldosData, cargosData, jornadas] = await Promise.all([
           getResumenTarjetasPorJornadaEquipo(selectedTorneo),
           getSaldosPorEquipo(selectedTorneo),
-          getCargosManualesTorneo(selectedTorneo)
+          getCargosManualesTorneo(selectedTorneo),
+          getJornadasDisponibles(selectedTorneo)
         ])
         setResumen(data)
         setSaldos(saldosData)
         setCargos(cargosData)
+        setJornadasDisponibles(jornadas)
       } catch (e) {
         setError('Error al cargar resumen de tarjetas')
       } finally {
@@ -329,9 +333,7 @@ const ContabilidadTarjetasPage = () => {
     if (!selectedTorneo) return
     try {
       setLoadingReportes(true)
-      const fechaDesdeDate = fechaDesde ? new Date(fechaDesde) : undefined
-      const fechaHastaDate = fechaHasta ? new Date(fechaHasta) : undefined
-      const resumen = await getResumenGeneral(selectedTorneo, fechaDesdeDate, fechaHastaDate)
+      const resumen = await getResumenGeneral(selectedTorneo)
       setResumenGeneral(resumen)
     } catch (e) {
       setError('Error al cargar resumen general')
@@ -345,9 +347,7 @@ const ContabilidadTarjetasPage = () => {
     if (!selectedTorneo || !equipoEstadoCuenta) return
     try {
       setLoadingReportes(true)
-      const fechaDesdeDate = fechaDesde ? new Date(fechaDesde) : undefined
-      const fechaHastaDate = fechaHasta ? new Date(fechaHasta) : undefined
-      const estado = await getEstadoCuentaEquipo(selectedTorneo, equipoEstadoCuenta, fechaDesdeDate, fechaHastaDate)
+      const estado = await getEstadoCuentaEquipo(selectedTorneo, equipoEstadoCuenta, undefined, undefined, jornadaEstadoCuenta)
       setEstadoCuenta(estado)
     } catch (e) {
       setError('Error al cargar estado de cuenta')
@@ -361,9 +361,7 @@ const ContabilidadTarjetasPage = () => {
     if (!selectedTorneo) return
     try {
       setLoadingReportes(true)
-      const fechaDesdeDate = fechaDesde ? new Date(fechaDesde) : undefined
-      const fechaHastaDate = fechaHasta ? new Date(fechaHasta) : undefined
-      const pagos = await getPagosTorneo(selectedTorneo, undefined, fechaDesdeDate, fechaHastaDate, incluirAnulados)
+      const pagos = await getPagosTorneo(selectedTorneo, undefined, undefined, undefined, incluirAnulados)
       setListaPagos(pagos)
     } catch (e) {
       setError('Error al cargar lista de pagos')
@@ -382,7 +380,7 @@ const ContabilidadTarjetasPage = () => {
     } else if (activeTab === 'pagos') {
       loadListaPagos()
     }
-  }, [selectedTorneo, activeTab, fechaDesde, fechaHasta, equipoEstadoCuenta, incluirAnulados])
+  }, [selectedTorneo, activeTab, equipoEstadoCuenta, jornadaEstadoCuenta, incluirAnulados])
 
   // Editar pago
   const handleEditPago = (pago: PagoItem) => {
@@ -578,47 +576,6 @@ const ContabilidadTarjetasPage = () => {
         </Col>
       </Row>
 
-      {/* Filtros de fecha (para reportes) */}
-      {(activeTab === 'resumen' || activeTab === 'estado-cuenta' || activeTab === 'pagos') && (
-        <Row className="mb-3">
-          <Col md={12}>
-            <Card>
-              <CardBody>
-                <Row>
-                  <Col md={3}>
-                    <label className="form-label small">Fecha Desde</label>
-                    <FormControl
-                      type="date"
-                      value={fechaDesde}
-                      onChange={(e) => setFechaDesde(e.target.value)}
-                    />
-                  </Col>
-                  <Col md={3}>
-                    <label className="form-label small">Fecha Hasta</label>
-                    <FormControl
-                      type="date"
-                      value={fechaHasta}
-                      onChange={(e) => setFechaHasta(e.target.value)}
-                    />
-                  </Col>
-                  <Col md={3} className="d-flex align-items-end">
-                    <Button 
-                      variant="outline-secondary" 
-                      size="sm"
-                      onClick={() => {
-                        setFechaDesde('')
-                        setFechaHasta('')
-                      }}
-                    >
-                      Limpiar Filtros
-                    </Button>
-                  </Col>
-                </Row>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       {/* Sistema de pestañas */}
       <Tabs activeKey={activeTab} onSelect={(k) => k && setActiveTab(k)} className="mb-3">
@@ -903,7 +860,7 @@ const ContabilidadTarjetasPage = () => {
               </Col>
             </Row>
           ) : (
-            <Alert variant="info">Seleccione un torneo y filtre por fecha si desea.</Alert>
+            <Alert variant="info">Seleccione un torneo para ver el resumen general.</Alert>
           )}
         </Tab>
         <Tab eventKey="estado-cuenta" title="Estado de Cuenta">
@@ -926,6 +883,24 @@ const ContabilidadTarjetasPage = () => {
                 </CardBody>
               </Card>
             </Col>
+            <Col md={6}>
+              <Card>
+                <CardHeader>
+                  <h6 className="mb-0">Filtrar por Jornada</h6>
+                </CardHeader>
+                <CardBody>
+                  <FormSelect
+                    value={jornadaEstadoCuenta ?? ''}
+                    onChange={(e) => setJornadaEstadoCuenta(e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">Todas las jornadas</option>
+                    {jornadasDisponibles.map((j) => (
+                      <option key={j} value={j}>Jornada {j}</option>
+                    ))}
+                  </FormSelect>
+                </CardBody>
+              </Card>
+            </Col>
           </Row>
           {loadingReportes ? (
             <div className="text-center py-5">
@@ -938,10 +913,9 @@ const ContabilidadTarjetasPage = () => {
               <CardHeader>
                 <h5 className="mb-0">
                   Estado de Cuenta - {estadoCuenta.equipo_nombre}
-                  {estadoCuenta.fecha_inicio && (
+                  {jornadaEstadoCuenta && (
                     <small className="ms-2 text-muted">
-                      ({estadoCuenta.fecha_inicio.toLocaleDateString()} 
-                      {estadoCuenta.fecha_fin && ` - ${estadoCuenta.fecha_fin.toLocaleDateString()}`})
+                      (Jornada {jornadaEstadoCuenta})
                     </small>
                   )}
                 </h5>

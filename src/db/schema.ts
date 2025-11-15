@@ -117,6 +117,7 @@ export const equiposTorneo = pgTable('equipos_torneo', {
 export const horarios = pgTable('horarios', {
   id: serial('id').primaryKey(),
   hora_inicio: text('hora_inicio').notNull(), // Formato HH:MM (24h)
+  dia_semana: text('dia_semana', { enum: ['viernes', 'sabado', 'domingo'] }).default('viernes').notNull(),
   color: text('color').default('#007bff'), // Color para identificar el horario
   orden: integer('orden').default(0), // Orden de aparición
   createdAt: timestamp('created_at').defaultNow(),

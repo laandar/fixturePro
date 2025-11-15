@@ -1,0 +1,1 @@
+ALTER TABLE "horarios" ADD COLUMN "dia_semana" text DEFAULT 'viernes' NOT NULL;

@@ -9,12 +9,12 @@ import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada } from '../actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada, asignarCanchasAutomaticamente, generarTablaDistribucionCanchas } from '../actions'
 import { getTarjetasTorneo } from '../../gestion-jugadores/actions'
 import { confirmarJornada,  confirmarRegeneracionJornada } from '../dynamic-actions'
 import { getEquiposByCategoria } from '../../equipos/actions'
 import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada, generarTablaDistribucionHorarios } from '../horarios-actions'
-import { getCanchas } from '@/app/(admin)/(apps)/canchas/actions'
+import { getCanchas, getCanchasByCategoriaId } from '@/app/(admin)/(apps)/canchas/actions'
 import type { TorneoWithRelations, EquipoWithRelations, EncuentroWithRelations, Horario, Tarjeta } from '@/db/types'
 import type {  JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
 import DynamicFixtureModal from '@/components/DynamicFixtureModal'
@@ -27,6 +27,25 @@ import {
   getEstadisticasSanciones,
   getSancionesPorEquipo
 } from '@/lib/torneo-statistics'
+
+const DIAS_HORARIOS = [
+  { value: 'viernes', label: 'Viernes', badge: 'info' },
+  { value: 'sabado', label: 'Sábado', badge: 'warning' },
+  { value: 'domingo', label: 'Domingo', badge: 'success' }
+] as const
+
+type DiaHorarioValue = typeof DIAS_HORARIOS[number]['value']
+
+const normalizarDiaHorario = (dia?: string | null): DiaHorarioValue => {
+  const valor = (dia || '').toLowerCase()
+  const encontrado = DIAS_HORARIOS.find(diaItem => diaItem.value === valor)
+  return encontrado ? encontrado.value : 'viernes'
+}
+
+const obtenerEtiquetaDia = (dia?: string | null) => {
+  const valorNormalizado = normalizarDiaHorario(dia)
+  return DIAS_HORARIOS.find(d => d.value === valorNormalizado)?.label || 'Viernes'
+}
 
 const TorneoDetailPage = () => {
   const params = useParams()
@@ -64,6 +83,11 @@ const TorneoDetailPage = () => {
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
   const [selectedHorarioId, setSelectedHorarioId] = useState<number | null>(null)
   const [selectedCancha, setSelectedCancha] = useState<string>('')
+  const [soloEncuentrosSinCancha, setSoloEncuentrosSinCancha] = useState(false)
+  const [reiniciarAsignacionesCanchas, setReiniciarAsignacionesCanchas] = useState(true)
+  const [canchaPrioritariaId, setCanchaPrioritariaId] = useState<number | null>(null)
+  const [showTablaDistribucionCanchas, setShowTablaDistribucionCanchas] = useState(false)
+  const [tablaDistribucionCanchas, setTablaDistribucionCanchas] = useState<any>(null)
   
   // Estados para el sistema dinámico
   const [showDynamicFixtureModal, setShowDynamicFixtureModal] = useState(false)
@@ -133,7 +157,7 @@ const TorneoDetailPage = () => {
         getEncuentrosByTorneo(torneoId),
         getEquiposDescansan(torneoId),
         getHorarios(),
-        getCanchas()
+        torneoData?.categoria_id ? getCanchasByCategoriaId(torneoData.categoria_id) : getCanchas()
       ])
       
       // Cargar tarjetas y jugadores en paralelo (optimización)
@@ -142,10 +166,13 @@ const TorneoDetailPage = () => {
         getJugadoresByTorneo(torneoId).catch(() => [])
       ])
       
+      // Mapear canchas si vienen del join (estructura { canchas: {...}, canchas_categorias: {...} })
+      const canchasMapeadas = canchasData.map((item: any) => item.canchas || item)
+      
       setEquiposDisponibles(equiposData)
       setEncuentros(encuentrosData as any)
       setHorarios(horariosData)
-      setCanchas(canchasData)
+      setCanchas(canchasMapeadas)
       setTarjetas(tarjetasData)
       setTodosJugadores(jugadoresData)
       
@@ -168,6 +195,18 @@ const TorneoDetailPage = () => {
       loadData()
     }
   }, [torneoId])
+
+  // Opcionalmente inicializar cancha prioritaria cuando se cargan las canchas
+  // Solo si no hay ninguna seleccionada (el usuario puede dejarla vacía para distribución equitativa)
+  // Comentado para que el usuario decida explícitamente si quiere una cancha prioritaria
+  // useEffect(() => {
+  //   if (canchas.length > 0 && !canchaPrioritariaId) {
+  //     const primeraCanchaActiva = canchas.find(c => c.estado)
+  //     if (primeraCanchaActiva) {
+  //       setCanchaPrioritariaId(primeraCanchaActiva.id)
+  //     }
+  //   }
+  // }, [canchas, canchaPrioritariaId])
 
   const handleAddEquipos = async () => {
     if (selectedEquipos.length === 0) {
@@ -505,6 +544,59 @@ const TorneoDetailPage = () => {
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error en la asignación automática')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleMostrarTablaDistribucionCanchas = async () => {
+    try {
+      setLoading(true)
+      const resultado = await generarTablaDistribucionCanchas(torneoId)
+      if (resultado.success) {
+        setTablaDistribucionCanchas(resultado.tabla)
+        setShowTablaDistribucionCanchas(true)
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al generar tabla de distribución')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error instanceof Error ? error.message : 'Error al generar tabla de distribución', life: 5000 })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEjecutarAsignacionCanchas = async () => {
+    try {
+      setLoading(true)
+      
+      // Ejecutar asignación automática de canchas con configuración seleccionada
+      const resultadoAsignacion = await asignarCanchasAutomaticamente(torneoId, {
+        reiniciarAsignaciones: reiniciarAsignacionesCanchas,
+        soloEncuentrosSinCancha: soloEncuentrosSinCancha,
+        ordenPorJornada: true,
+        canchaPrioritariaId: canchaPrioritariaId || null
+      })
+
+      if (resultadoAsignacion?.success) {
+        const mensaje = resultadoAsignacion.mensaje || `Asignación automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros actualizados`
+        setSuccess(mensaje)
+        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: mensaje, life: 5000 })
+        
+        // Recargar datos
+        await loadData()
+        
+        // Actualizar tabla de distribución si está abierta
+        if (showTablaDistribucionCanchas) {
+          const resultadoTabla = await generarTablaDistribucionCanchas(torneoId)
+          if (resultadoTabla.success) {
+            setTablaDistribucionCanchas(resultadoTabla.tabla)
+          }
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error en la asignación automática de canchas'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     } finally {
       setLoading(false)
     }
@@ -853,6 +945,23 @@ const TorneoDetailPage = () => {
                       </NavItem>
                       <NavItem className="flex-shrink-0">
                         <NavLink 
+                          eventKey="canchas"
+                          className="px-2 px-md-3 py-2"
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <span className="d-none d-sm-inline">Asignar Canchas</span>
+                          <span className="d-sm-none">Canchas</span>
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
                           eventKey="sanciones"
                           className="px-2 px-md-3 py-2"
                           style={{ 
@@ -1137,52 +1246,285 @@ const TorneoDetailPage = () => {
                               </Button>
                             </div>
                           ) : (
-                            <div className="row g-3">
-                              {horarios.map(horario => (
-                                <div key={horario.id} className="col-md-6 col-lg-4">
-                                  <div className="card h-100 border-0 shadow-sm">
-                                    <div className="card-body p-3">
-                                      <div className="d-flex align-items-center justify-content-between mb-2">
-                                        <div 
-                                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          style={{
-                                            width: '40px', 
-                                            height: '40px', 
-                                            backgroundColor: horario.color || '#007bff',
-                                            fontSize: '14px'
-                                          }}
-                                        >
-                                          {horario.orden}
-                                        </div>
-                                        <div className="d-flex gap-1">
-                                          <Button 
-                                            variant="outline-primary" 
-                                            size="sm"
-                                            onClick={() => handleEditHorario(horario)}
-                                            title="Editar horario"
-                                            className="p-2">
-                                            <LuSettings size={14} />
-                                          </Button>
-                                          <Button 
-                                            variant="outline-danger" 
-                                            size="sm"
-                                            onClick={() => handleDeleteHorario(horario.id)}
-                                            title="Eliminar horario"
-                                            className="p-2">
-                                            <LuTrash size={14} />
-                                          </Button>
-                                        </div>
+                            <div className="d-flex flex-column gap-4">
+                              {DIAS_HORARIOS.map(dia => {
+                                const horariosPorDia = horarios.filter(
+                                  horario => normalizarDiaHorario(horario.dia_semana) === dia.value
+                                )
+                                
+                                return (
+                                  <div key={dia.value}>
+                                    <div className="d-flex align-items-center justify-content-between mb-2">
+                                      <div className="d-flex align-items-center gap-2">
+                                        <Badge bg={dia.badge} pill className="text-uppercase">
+                                          {dia.label}
+                                        </Badge>
+                                        <small className="text-muted">
+                                          {horariosPorDia.length === 0
+                                            ? 'Sin horarios configurados'
+                                            : `${horariosPorDia.length} horario${horariosPorDia.length > 1 ? 's' : ''}`}
+                                        </small>
                                       </div>
-                                      <h5 className="mb-1 fw-bold text-primary">{horario.hora_inicio}</h5>
-                                      <small className="text-muted">
-                                        Orden: {horario.orden}
-                                      </small>
+                                      {horariosPorDia.length > 0 && (
+                                        <small className="text-muted">
+                                          Ordenados por hora y prioridad
+                                        </small>
+                                      )}
                                     </div>
+                                    
+                                    {horariosPorDia.length === 0 ? (
+                                      <div className="py-2 text-muted fst-italic">
+                                        No hay horarios configurados para este día.
+                                      </div>
+                                    ) : (
+                                      <div className="row g-3">
+                                        {horariosPorDia.map(horario => (
+                                          <div key={horario.id} className="col-md-6 col-lg-4">
+                                            <div className="card h-100 border-0 shadow-sm">
+                                              <div className="card-body p-3">
+                                                <div className="d-flex align-items-center justify-content-between mb-2">
+                                                  <div 
+                                                    className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                                                    style={{
+                                                      width: '40px', 
+                                                      height: '40px', 
+                                                      backgroundColor: horario.color || '#007bff',
+                                                      fontSize: '14px'
+                                                    }}
+                                                  >
+                                                    {horario.orden}
+                                                  </div>
+                                                  <div className="d-flex gap-1">
+                                                    <Button 
+                                                      variant="outline-primary" 
+                                                      size="sm"
+                                                      onClick={() => handleEditHorario(horario)}
+                                                      title="Editar horario"
+                                                      className="p-2">
+                                                      <LuSettings size={14} />
+                                                    </Button>
+                                                    <Button 
+                                                      variant="outline-danger" 
+                                                      size="sm"
+                                                      onClick={() => handleDeleteHorario(horario.id)}
+                                                      title="Eliminar horario"
+                                                      className="p-2">
+                                                      <LuTrash size={14} />
+                                                    </Button>
+                                                  </div>
+                                                </div>
+                                                <h5 className="mb-1 fw-bold text-primary">{horario.hora_inicio}</h5>
+                                                <small className="text-muted d-block">
+                                                  Orden: {horario.orden}
+                                                </small>
+                                                <small className="text-muted">
+                                                  Día: {obtenerEtiquetaDia(horario.dia_semana)}
+                                                </small>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </CardBody>
+                      </Card>
+                    </Col>
+                  </Row>
+                </Tab.Pane>
+
+                {/* Tab: Asignar Canchas */}
+                <Tab.Pane eventKey="canchas">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h4 className="fw-bold text-primary mb-0">🏟️ Asignación Automática de Canchas</h4>
+                    <div className="d-flex gap-2">
+                      <Button 
+                        variant="info" 
+                        size="sm"
+                        onClick={handleMostrarTablaDistribucionCanchas}
+                        disabled={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0}
+                        className="px-3">
+                        <LuInfo className="me-1" size={16} />
+                        Ver Distribución
+                      </Button>
+                      <Button 
+                        variant="success" 
+                        size="sm"
+                        onClick={handleEjecutarAsignacionCanchas}
+                        disabled={loading || canchas.filter(c => c.estado).length === 0}
+                        className="px-3">
+                        {loading ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                            Ejecutando...
+                          </>
+                        ) : (
+                          <>
+                            <LuSettings className="me-1" size={16} />
+                            Ejecutar Asignación
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Alert variant="info" className="mb-3 py-2">
+                    <div className="d-flex align-items-center">
+                      <LuInfo className="me-2" size={16} />
+                      <small className="mb-0">
+                        <strong>Asignación Automática:</strong> Opcionalmente selecciona una cancha prioritaria que recibirá los primeros partidos hasta completar su capacidad (número de horarios disponibles). Si no seleccionas una cancha prioritaria, los partidos se distribuirán equitativamente entre todas las canchas disponibles.
+                      </small>
+                    </div>
+                  </Alert>
+
+                  <Row>
+                    <Col md={8}>
+                      <Card>
+                        <CardHeader className="bg-light py-3">
+                          <h5 className="mb-0 fw-bold text-primary">
+                            ⚙️ Configuración de Asignación
+                          </h5>
+                        </CardHeader>
+                        <CardBody>
+                          <div className="row g-3">
+                            <div className="col-md-12 mb-3">
+                              <label htmlFor="canchaPrioritaria" className="form-label fw-semibold">
+                                🏆 Cancha Prioritaria <span className="text-muted">(Opcional)</span>
+                              </label>
+                              <FormSelect
+                                id="canchaPrioritaria"
+                                value={canchaPrioritariaId || ''}
+                                onChange={(e) => setCanchaPrioritariaId(e.target.value ? parseInt(e.target.value) : null)}
+                              >
+                                <option value="">Sin cancha prioritaria (distribución equitativa)</option>
+                                {canchas.filter(c => c.estado).map((cancha) => (
+                                  <option key={cancha.id} value={cancha.id}>
+                                    {cancha.nombre} {cancha.ubicacion && `- ${cancha.ubicacion}`}
+                                  </option>
+                                ))}
+                              </FormSelect>
+                              <small className="text-muted d-block mt-1">
+                                Si seleccionas una cancha prioritaria, recibirá los primeros partidos hasta completar su capacidad (número de horarios disponibles). Si no seleccionas ninguna, los partidos se distribuirán equitativamente entre todas las canchas disponibles.
+                              </small>
+                            </div>
+                            <div className="col-md-6">
+                              <div className="form-check">
+                                <input 
+                                  className="form-check-input" 
+                                  type="checkbox" 
+                                  id="reiniciarAsignacionesCanchas"
+                                  checked={reiniciarAsignacionesCanchas}
+                                  onChange={(e) => setReiniciarAsignacionesCanchas(e.target.checked)}
+                                />
+                                <label className="form-check-label" htmlFor="reiniciarAsignacionesCanchas">
+                                  <small className="fw-semibold">Reiniciar todas las asignaciones</small>
+                                  <br />
+                                  <small className="text-muted">Elimina las canchas asignadas antes de asignar nuevas</small>
+                                </label>
+                              </div>
+                            </div>
+                            <div className="col-md-6">
+                              <div className="form-check">
+                                <input 
+                                  className="form-check-input" 
+                                  type="checkbox" 
+                                  id="soloEncuentrosSinCancha"
+                                  checked={soloEncuentrosSinCancha}
+                                  onChange={(e) => setSoloEncuentrosSinCancha(e.target.checked)}
+                                />
+                                <label className="form-check-label" htmlFor="soloEncuentrosSinCancha">
+                                  <small className="fw-semibold">Solo encuentros sin cancha</small>
+                                  <br />
+                                  <small className="text-muted">Asigna canchas solo a encuentros que no tienen cancha asignada</small>
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    </Col>
+                    <Col md={4}>
+                      <Card>
+                        <CardHeader className="bg-light py-3">
+                          <h6 className="mb-0">📊 Canchas Disponibles</h6>
+                          {torneo?.categoria && (
+                            <small className="text-muted">Categoría: {torneo.categoria.nombre}</small>
+                          )}
+                        </CardHeader>
+                        <CardBody>
+                          {canchas.filter(c => c.estado).length === 0 ? (
+                            <div className="text-center py-3">
+                              <p className="text-muted mb-0">
+                                {torneo?.categoria 
+                                  ? `No hay canchas activas para la categoría ${torneo.categoria.nombre}`
+                                  : 'No hay canchas activas'}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="d-grid gap-2">
+                              {canchas.filter(c => c.estado).map(cancha => (
+                                <div key={cancha.id} className="d-flex align-items-center gap-2 p-2 bg-light rounded">
+                                  <div 
+                                    className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                                    style={{
+                                      width: '32px', 
+                                      height: '32px', 
+                                      backgroundColor: '#28a745',
+                                      fontSize: '12px'
+                                    }}
+                                  >
+                                    ✓
+                                  </div>
+                                  <div className="flex-grow-1">
+                                    <strong>{cancha.nombre}</strong>
+                                    {cancha.ubicacion && (
+                                      <small className="d-block text-muted">{cancha.ubicacion}</small>
+                                    )}
                                   </div>
                                 </div>
                               ))}
                             </div>
                           )}
+                        </CardBody>
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  <Row className="mt-3">
+                    <Col>
+                      <Card>
+                        <CardHeader className="bg-light py-3">
+                          <h6 className="mb-0">📋 Resumen de Encuentros</h6>
+                        </CardHeader>
+                        <CardBody>
+                          <div className="row text-center">
+                            <Col md={4}>
+                              <div className="p-3 bg-light rounded">
+                                <h4 className="mb-0 text-primary">{encuentros.length}</h4>
+                                <small className="text-muted">Total Encuentros</small>
+                              </div>
+                            </Col>
+                            <Col md={4}>
+                              <div className="p-3 bg-light rounded">
+                                <h4 className="mb-0 text-success">
+                                  {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length}
+                                </h4>
+                                <small className="text-muted">Con Cancha Asignada</small>
+                              </div>
+                            </Col>
+                            <Col md={4}>
+                              <div className="p-3 bg-light rounded">
+                                <h4 className="mb-0 text-warning">
+                                  {encuentros.filter(e => !e.cancha || e.cancha.trim() === '').length}
+                                </h4>
+                                <small className="text-muted">Sin Cancha Asignada</small>
+                              </div>
+                            </Col>
+                          </div>
                         </CardBody>
                       </Card>
                     </Col>
@@ -1648,7 +1990,22 @@ const TorneoDetailPage = () => {
               </Col>
             </Row>
             <Row className="mt-3">
-              <Col md={12}>
+              <Col md={6}>
+                <FloatingLabel label="Día disponible">
+                  <FormSelect 
+                    name="dia_semana"
+                    defaultValue={editingHorario?.dia_semana || 'viernes'}
+                    aria-label="Selecciona el día para el horario"
+                  >
+                    {DIAS_HORARIOS.map(dia => (
+                      <option key={dia.value} value={dia.value}>
+                        {dia.label}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </FloatingLabel>
+              </Col>
+              <Col md={6}>
                 <FloatingLabel label="Color">
                   <FormControl 
                     type="color" 
@@ -1697,7 +2054,7 @@ const TorneoDetailPage = () => {
                   <option value="">Seleccionar horario...</option>
                   {horarios.map(horario => (
                     <option key={horario.id} value={horario.id}>
-                      {horario.hora_inicio}
+                      {`${obtenerEtiquetaDia(horario.dia_semana)} - ${horario.hora_inicio}`}
                     </option>
                   ))}
                 </FormSelect>
@@ -1888,6 +2245,119 @@ const TorneoDetailPage = () => {
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setShowTablaDistribucionModal(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal: Tabla de Distribución de Canchas */}
+      <Modal 
+        show={showTablaDistribucionCanchas} 
+        onHide={() => setShowTablaDistribucionCanchas(false)}
+        size="xl"
+        centered
+      >
+        <ModalHeader closeButton>
+          <Modal.Title>
+            <LuInfo className="me-2" />
+            Tabla de Distribución de Canchas
+          </Modal.Title>
+        </ModalHeader>
+        <ModalBody>
+          {tablaDistribucionCanchas && (
+            <div>
+              {/* Tabla de Distribución por Equipo */}
+              <Card>
+                <CardHeader className="bg-light">
+                  <h6 className="mb-0">📋 Distribución por Equipo</h6>
+                </CardHeader>
+                <CardBody>
+                  <div className="table-responsive">
+                    <Table striped bordered hover size="sm">
+                      <thead className="table-dark">
+                        <tr>
+                          <th>Equipo</th>
+                          {tablaDistribucionCanchas.canchas.map((cancha: any) => (
+                            <th key={cancha.nombre} className="text-center">
+                              {cancha.nombre}
+                            </th>
+                          ))}
+                          <th className="text-center">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tablaDistribucionCanchas.equipos.map((equipo: any) => (
+                          <tr key={equipo.id}>
+                            <td className="fw-bold">{equipo.nombre}</td>
+                            {equipo.distribucion.map((dist: any) => (
+                              <td key={dist.cancha} className="text-center">
+                                <Badge 
+                                  bg={dist.veces >= tablaDistribucionCanchas.estadisticas.vecesMinimas && 
+                                      dist.veces <= tablaDistribucionCanchas.estadisticas.vecesMaximas ? 
+                                      "success" : "warning"}
+                                >
+                                  {dist.veces}
+                                </Badge>
+                              </td>
+                            ))}
+                            <td className="text-center">
+                              <Badge bg="primary">{equipo.totalEncuentros}</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                  
+                  {/* Leyenda */}
+                  <div className="mt-3">
+                    <small className="text-muted">
+                      <Badge bg="success" className="me-2">Verde</Badge> = Distribución equitativa
+                      <Badge bg="warning" className="ms-3 me-2">Amarillo</Badge> = Fuera del rango esperado
+                    </small>
+                  </div>
+                  
+                  {/* Estadísticas */}
+                  <div className="mt-3 p-3 bg-light rounded">
+                    <h6 className="mb-2">📊 Estadísticas</h6>
+                    <div className="row text-center">
+                      <div className="col-md-3">
+                        <div className="p-2">
+                          <h5 className="mb-0 text-primary">{tablaDistribucionCanchas.estadisticas.totalJornadas}</h5>
+                          <small className="text-muted">Total Jornadas</small>
+                        </div>
+                      </div>
+                      <div className="col-md-3">
+                        <div className="p-2">
+                          <h5 className="mb-0 text-info">{tablaDistribucionCanchas.estadisticas.totalCanchas}</h5>
+                          <small className="text-muted">Total Canchas</small>
+                        </div>
+                      </div>
+                      <div className="col-md-3">
+                        <div className="p-2">
+                          <h5 className="mb-0 text-success">
+                            {tablaDistribucionCanchas.estadisticas.equiposConDistribucionEquitativa}
+                          </h5>
+                          <small className="text-muted">Equipos con Distribución Equitativa</small>
+                        </div>
+                      </div>
+                      <div className="col-md-3">
+                        <div className="p-2">
+                          <h5 className="mb-0 text-warning">
+                            {tablaDistribucionCanchas.estadisticas.vecesPorCancha.toFixed(2)}
+                          </h5>
+                          <small className="text-muted">Veces por Cancha (promedio)</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowTablaDistribucionCanchas(false)}>
             Cerrar
           </Button>
         </ModalFooter>

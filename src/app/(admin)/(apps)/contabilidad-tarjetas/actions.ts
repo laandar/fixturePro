@@ -396,7 +396,8 @@ export async function getEstadoCuentaEquipo(
   torneoId: number,
   equipoId: number,
   fechaDesde?: Date,
-  fechaHasta?: Date
+  fechaHasta?: Date,
+  jornada?: number | null
 ): Promise<EstadoCuentaEquipo> {
   const { valorAmarilla, valorRoja } = await getValoresTarjetas()
 
@@ -408,9 +409,65 @@ export async function getEstadoCuentaEquipo(
 
   const equipoNombre = equipo[0]?.nombre || 'Equipo'
 
-  // Saldo inicial (antes de fechaDesde si existe)
+  // Saldo inicial (antes de fechaDesde o jornada si existe)
   let saldoInicial = 0
-  if (fechaDesde) {
+  if (jornada !== null && jornada !== undefined) {
+    // Si se filtra por jornada, el saldo inicial es todo lo anterior a esa jornada
+    const tarjetasAntes = await db
+      .select({ 
+        tipo: tarjetas.tipo,
+        jornada: encuentros.jornada,
+      })
+      .from(tarjetas)
+      .innerJoin(encuentros, eq(tarjetas.encuentro_id, encuentros.id))
+      .where(
+        and(
+          eq(encuentros.torneo_id, torneoId),
+          eq(tarjetas.equipo_id, equipoId),
+          sql`${encuentros.jornada} < ${jornada}`
+        )
+      )
+
+    let amarillasAntes = 0
+    let rojasAntes = 0
+    for (const t of tarjetasAntes) {
+      if (t.tipo === 'amarilla') amarillasAntes += 1
+      if (t.tipo === 'roja') rojasAntes += 1
+    }
+
+    const cargosAntes = await db
+      .select({ monto_centavos: cargosManuales.monto_centavos })
+      .from(cargosManuales)
+      .where(
+        and(
+          eq(cargosManuales.torneo_id, torneoId),
+          eq(cargosManuales.equipo_id, equipoId),
+          or(
+            sql`${cargosManuales.jornada_aplicacion} IS NULL`,
+            sql`${cargosManuales.jornada_aplicacion} < ${jornada}`
+          )
+        )
+      )
+
+    const pagosAntes = await db
+      .select({ monto_centavos: pagosMultas.monto_centavos })
+      .from(pagosMultas)
+      .where(
+        and(
+          eq(pagosMultas.torneo_id, torneoId),
+          eq(pagosMultas.equipo_id, equipoId),
+          eq(pagosMultas.anulado, false),
+          or(
+            sql`${pagosMultas.jornada} IS NULL`,
+            sql`${pagosMultas.jornada} < ${jornada}`
+          )
+        )
+      )
+
+    saldoInicial = Math.round(amarillasAntes * valorAmarilla * 100 + rojasAntes * valorRoja * 100) +
+      cargosAntes.reduce((acc, c) => acc + (c.monto_centavos || 0), 0) -
+      pagosAntes.reduce((acc, p) => acc + (p.monto_centavos || 0), 0)
+  } else if (fechaDesde) {
     // Obtener todas las tarjetas del equipo en el torneo y filtrar por fecha en memoria
     const todasLasTarjetas = await db
       .select({ 
@@ -471,7 +528,16 @@ export async function getEstadoCuentaEquipo(
 
   const movimientos: EstadoCuentaEquipo['movimientos'] = []
 
-  // Tarjetas en el rango - obtener todas y filtrar por fecha en memoria
+  // Tarjetas en el rango - obtener todas y filtrar por fecha o jornada
+  let tarjetasWhere = and(
+    eq(encuentros.torneo_id, torneoId),
+    eq(tarjetas.equipo_id, equipoId)
+  ) as any
+  
+  if (jornada !== null && jornada !== undefined) {
+    tarjetasWhere = and(tarjetasWhere, eq(encuentros.jornada, jornada)) as any
+  }
+  
   const todasLasTarjetas = await db
     .select({
       tipo: tarjetas.tipo,
@@ -482,22 +548,19 @@ export async function getEstadoCuentaEquipo(
     })
     .from(tarjetas)
     .innerJoin(encuentros, eq(tarjetas.encuentro_id, encuentros.id))
-    .where(
-      and(
-        eq(encuentros.torneo_id, torneoId),
-        eq(tarjetas.equipo_id, equipoId)
-      )
-    )
+    .where(tarjetasWhere)
 
-  // Filtrar por fechas en memoria
-  const tarjetasRows = todasLasTarjetas.filter(t => {
-    const fecha = t.fecha_jugada || t.fecha_programada || t.createdAt
-    if (!fecha) return true // Si no hay fecha, incluirlo
-    const fechaObj = new Date(fecha)
-    if (fechaDesde && fechaObj < fechaDesde) return false
-    if (fechaHasta && fechaObj > fechaHasta) return false
-    return true
-  })
+  // Filtrar por fechas en memoria (solo si no se filtró por jornada)
+  const tarjetasRows = jornada !== null && jornada !== undefined 
+    ? todasLasTarjetas
+    : todasLasTarjetas.filter(t => {
+        const fecha = t.fecha_jugada || t.fecha_programada || t.createdAt
+        if (!fecha) return true // Si no hay fecha, incluirlo
+        const fechaObj = new Date(fecha)
+        if (fechaDesde && fechaObj < fechaDesde) return false
+        if (fechaHasta && fechaObj > fechaHasta) return false
+        return true
+      })
 
   for (const t of tarjetasRows) {
     movimientos.push({
@@ -514,11 +577,15 @@ export async function getEstadoCuentaEquipo(
     eq(cargosManuales.torneo_id, torneoId),
     eq(cargosManuales.equipo_id, equipoId)
   ) as any
-  if (fechaDesde) {
-    cargosWhere = and(cargosWhere, gte(cargosManuales.createdAt, fechaDesde)) as any
-  }
-  if (fechaHasta) {
-    cargosWhere = and(cargosWhere, lte(cargosManuales.createdAt, fechaHasta)) as any
+  if (jornada !== null && jornada !== undefined) {
+    cargosWhere = and(cargosWhere, eq(cargosManuales.jornada_aplicacion, jornada)) as any
+  } else {
+    if (fechaDesde) {
+      cargosWhere = and(cargosWhere, gte(cargosManuales.createdAt, fechaDesde)) as any
+    }
+    if (fechaHasta) {
+      cargosWhere = and(cargosWhere, lte(cargosManuales.createdAt, fechaHasta)) as any
+    }
   }
 
   const cargosRows = await db
@@ -547,11 +614,15 @@ export async function getEstadoCuentaEquipo(
     eq(pagosMultas.equipo_id, equipoId),
     eq(pagosMultas.anulado, false)
   ) as any
-  if (fechaDesde) {
-    pagosWhere = and(pagosWhere, gte(pagosMultas.createdAt, fechaDesde)) as any
-  }
-  if (fechaHasta) {
-    pagosWhere = and(pagosWhere, lte(pagosMultas.createdAt, fechaHasta)) as any
+  if (jornada !== null && jornada !== undefined) {
+    pagosWhere = and(pagosWhere, eq(pagosMultas.jornada, jornada)) as any
+  } else {
+    if (fechaDesde) {
+      pagosWhere = and(pagosWhere, gte(pagosMultas.createdAt, fechaDesde)) as any
+    }
+    if (fechaHasta) {
+      pagosWhere = and(pagosWhere, lte(pagosMultas.createdAt, fechaHasta)) as any
+    }
   }
 
   const pagosRows = await db
@@ -729,6 +800,29 @@ export async function reactivarPago(pagoId: number) {
     .where(eq(pagosMultas.id, pagoId))
     .returning()
   return { success: true, pago: row }
+}
+
+// Obtener jornadas disponibles del torneo
+export async function getJornadasDisponibles(torneoId: number): Promise<number[]> {
+  const encuentrosRows = await db
+    .select({
+      jornada: encuentros.jornada,
+    })
+    .from(encuentros)
+    .where(
+      and(
+        eq(encuentros.torneo_id, torneoId),
+        sql`${encuentros.jornada} IS NOT NULL`
+      )
+    )
+    .orderBy(asc(encuentros.jornada))
+  
+  const jornadas = encuentrosRows
+    .map(row => row.jornada)
+    .filter((j): j is number => j !== null)
+  
+  // Eliminar duplicados y ordenar
+  return [...new Set(jornadas)].sort((a, b) => a - b)
 }
 
 // Obtener la jornada con la fecha futura más cercana

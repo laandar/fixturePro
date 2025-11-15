@@ -139,3 +139,12 @@ export async function unassignCategoriasFromCancha(canchaId: number, categoriaId
     throw new Error('Error al desasignar categorías de la cancha')
   }
 }
+
+export async function getCanchasByCategoriaId(categoriaId: number) {
+  // No requiere permiso - función auxiliar usada por otros módulos
+  try {
+    return await canchaQueries.getCanchasByCategoriaId(categoriaId)
+  } catch (error) {
+    throw new Error('Error al obtener canchas por categoría')
+  }
+}
