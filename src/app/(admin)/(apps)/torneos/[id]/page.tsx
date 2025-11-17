@@ -9,7 +9,7 @@ import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada, asignarCanchasAutomaticamente, generarTablaDistribucionCanchas } from '../actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, deleteEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada, asignarCanchasAutomaticamente, generarTablaDistribucionCanchas } from '../actions'
 import { getTarjetasTorneo } from '../../gestion-jugadores/actions'
 import { confirmarJornada,  confirmarRegeneracionJornada } from '../dynamic-actions'
 import { getEquiposByCategoria } from '../../equipos/actions'
@@ -73,6 +73,15 @@ const TorneoDetailPage = () => {
   const [equiposDescansan, setEquiposDescansan] = useState<Record<number, number[]>>({})
   const [showDeleteJornadaModal, setShowDeleteJornadaModal] = useState(false)
   const [showEmparejamientosModal, setShowEmparejamientosModal] = useState(false)
+  const [showCrearEmparejamientoModal, setShowCrearEmparejamientoModal] = useState(false)
+  const [formEmparejamiento, setFormEmparejamiento] = useState({
+    equipoLocalId: '',
+    equipoVisitanteId: '',
+    fecha: '',
+    horarioId: '',
+    cancha: '',
+    jornada: ''
+  })
   const [showHorariosModal, setShowHorariosModal] = useState(false)
   const [showAsignarHorarioModal, setShowAsignarHorarioModal] = useState(false)
   const [showTablaDistribucionModal, setShowTablaDistribucionModal] = useState(false)
@@ -83,6 +92,7 @@ const TorneoDetailPage = () => {
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
   const [selectedHorarioId, setSelectedHorarioId] = useState<number | null>(null)
   const [selectedCancha, setSelectedCancha] = useState<string>('')
+  const [selectedFecha, setSelectedFecha] = useState<string>('')
   const [soloEncuentrosSinCancha, setSoloEncuentrosSinCancha] = useState(false)
   const [reiniciarAsignacionesCanchas, setReiniciarAsignacionesCanchas] = useState(true)
   const [canchaPrioritariaId, setCanchaPrioritariaId] = useState<number | null>(null)
@@ -156,7 +166,7 @@ const TorneoDetailPage = () => {
         torneoData?.categoria_id ? getEquiposByCategoria(torneoData.categoria_id) : [],
         getEncuentrosByTorneo(torneoId),
         getEquiposDescansan(torneoId),
-        getHorarios(),
+        getHorarios(torneoId),
         torneoData?.categoria_id ? getCanchasByCategoriaId(torneoData.categoria_id) : getCanchas()
       ])
       
@@ -309,6 +319,14 @@ const TorneoDetailPage = () => {
     // Precargar valores existentes
     setSelectedHorarioId(encuentro.horario_id || null)
     setSelectedCancha(encuentro.cancha || '')
+    // Inicializar fecha si existe, formatear para input datetime-local
+    if (encuentro.fecha_programada) {
+      const fecha = new Date(encuentro.fecha_programada)
+      const fechaLocal = new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60000)
+      setSelectedFecha(fechaLocal.toISOString().slice(0, 16))
+    } else {
+      setSelectedFecha('')
+    }
     setShowAsignarHorarioModal(true)
   }
 
@@ -353,6 +371,68 @@ const TorneoDetailPage = () => {
     setJornadaDinamica(jornada)
     setIsRegenerating(true)
     setShowDynamicRegenerateModal(true)
+  }
+
+  const handleCrearEmparejamiento = async () => {
+    try {
+      if (!formEmparejamiento.equipoLocalId || !formEmparejamiento.equipoVisitanteId) {
+        setError('Selecciona equipos local y visitante')
+        return
+      }
+      if (formEmparejamiento.equipoLocalId === formEmparejamiento.equipoVisitanteId) {
+        setError('Los equipos no pueden ser iguales')
+        return
+      }
+
+      // Verificar si ya existe un encuentro entre estos equipos
+      const equipoLocalId = Number(formEmparejamiento.equipoLocalId)
+      const equipoVisitanteId = Number(formEmparejamiento.equipoVisitanteId)
+      
+      // Si el torneo permite revancha, solo bloquear si existe un encuentro con exactamente los mismos equipos en las mismas posiciones
+      // Si no permite revancha, bloquear cualquier encuentro entre estos equipos
+      const encuentroExistente = encuentros.find(encuentro => {
+        if (torneo?.permite_revancha) {
+          // Con revancha: solo bloquear si es exactamente el mismo emparejamiento (mismo local y mismo visitante)
+          return encuentro.equipo_local_id === equipoLocalId && 
+                 encuentro.equipo_visitante_id === equipoVisitanteId
+        } else {
+          // Sin revancha: bloquear cualquier encuentro entre estos equipos
+          return (encuentro.equipo_local_id === equipoLocalId && encuentro.equipo_visitante_id === equipoVisitanteId) ||
+                 (encuentro.equipo_local_id === equipoVisitanteId && encuentro.equipo_visitante_id === equipoLocalId)
+        }
+      })
+
+      if (encuentroExistente) {
+        const equipoLocal = equiposParticipantes.find(et => et.equipo_id === equipoLocalId)?.equipo?.nombre || 'Equipo Local'
+        const equipoVisitante = equiposParticipantes.find(et => et.equipo_id === equipoVisitanteId)?.equipo?.nombre || 'Equipo Visitante'
+        setError(`Ya existe un encuentro entre ${equipoLocal} y ${equipoVisitante} en este torneo`)
+        return
+      }
+
+      const res = await fetch('/api/encuentros/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          torneoId,
+          equipoLocalId: Number(formEmparejamiento.equipoLocalId),
+          equipoVisitanteId: Number(formEmparejamiento.equipoVisitanteId),
+          fechaProgramada: formEmparejamiento.fecha ? new Date(formEmparejamiento.fecha).toISOString() : null,
+          horarioId: formEmparejamiento.horarioId ? Number(formEmparejamiento.horarioId) : null,
+          cancha: formEmparejamiento.cancha || null,
+          jornada: formEmparejamiento.jornada ? Number(formEmparejamiento.jornada) : null
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Error al crear emparejamiento')
+      }
+      setShowCrearEmparejamientoModal(false)
+      setFormEmparejamiento({ equipoLocalId: '', equipoVisitanteId: '', fecha: '', horarioId: '', cancha: '', jornada: '' })
+      setSuccess('Emparejamiento creado exitosamente')
+      await loadData()
+    } catch (e: any) {
+      setError(e.message || 'Error al crear emparejamiento')
+    }
   }
 
   const handleConfirmarJornadaDinamica = async (jornada: JornadaPropuesta) => {
@@ -406,10 +486,10 @@ const TorneoDetailPage = () => {
   const handleCreateHorario = async (formData: FormData) => {
     try {
       if (editingHorario) {
-        await updateHorario(editingHorario.id, formData)
+        await updateHorario(editingHorario.id, torneoId, formData)
         setSuccess('Horario actualizado exitosamente')
       } else {
-        await createHorario(formData)
+        await createHorario(torneoId, formData)
         setSuccess('Horario creado exitosamente')
       }
       setShowHorariosModal(false)
@@ -422,7 +502,7 @@ const TorneoDetailPage = () => {
 
   const handleUpdateHorario = async (id: number, formData: FormData) => {
     try {
-      await updateHorario(id, formData)
+      await updateHorario(id, torneoId, formData)
       setSuccess('Horario actualizado exitosamente')
       await loadData()
     } catch (error) {
@@ -432,11 +512,15 @@ const TorneoDetailPage = () => {
 
   const handleDeleteHorario = async (id: number) => {
     try {
-      await deleteHorario(id)
-      setSuccess('Horario eliminado exitosamente')
+      await deleteHorario(id, torneoId)
+      const successMessage = 'Horario eliminado exitosamente'
+      setSuccess(successMessage)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: successMessage, life: 5000 })
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al eliminar horario')
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar horario'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 6000 })
     }
   }
 
@@ -450,7 +534,24 @@ const TorneoDetailPage = () => {
     }
   }
 
-  const handleAsignarHorarioYCancha = async (encuentroId: number, horarioId: number | null, cancha: string | null) => {
+  const handleDeleteEncuentro = async (encuentro: EncuentroWithRelations) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar el encuentro entre ${encuentro.equipoLocal?.nombre} y ${encuentro.equipoVisitante?.nombre}?`)) {
+      return
+    }
+    
+    try {
+      const result = await deleteEncuentro(encuentro.id)
+      setSuccess(result.message)
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: result.message, life: 5000 })
+      await loadData()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar encuentro'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 6000 })
+    }
+  }
+
+  const handleAsignarHorarioYCancha = async (encuentroId: number, horarioId: number | null, cancha: string | null, fecha: string | null) => {
     try {
       const encuentro = encuentros.find(e => e.id === encuentroId)
       if (!encuentro) {
@@ -481,14 +582,27 @@ const TorneoDetailPage = () => {
         actualizaciones.push('cancha')
       }
       
+      // Actualizar fecha si cambió
+      const fechaActual = encuentro.fecha_programada ? new Date(encuentro.fecha_programada).toISOString().slice(0, 16) : ''
+      if (fechaActual !== fecha) {
+        const formData = new FormData()
+        if (fecha) {
+          formData.append('fecha_programada', new Date(fecha).toISOString())
+        } else {
+          formData.append('fecha_programada', '')
+        }
+        await updateEncuentro(encuentroId, formData)
+        actualizaciones.push('fecha')
+      }
+      
       if (actualizaciones.length > 0) {
-        setSuccess(`${actualizaciones.join(' y ')} ${actualizaciones.length === 1 ? 'actualizado' : 'actualizados'} exitosamente`)
+        setSuccess(`${actualizaciones.join(', ')} ${actualizaciones.length === 1 ? 'actualizado' : 'actualizados'} exitosamente`)
         await loadData()
       } else {
         setSuccess('No se realizaron cambios')
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al actualizar horario y cancha')
+      setError(error instanceof Error ? error.message : 'Error al actualizar horario, cancha y fecha')
     }
   }
 
@@ -1089,6 +1203,8 @@ const TorneoDetailPage = () => {
                     }}
                     onManagePlayers={navigateToGestionJugadores}
                     onEditHorario={handleSeleccionarHorario}
+                    onDeleteEncuentro={handleDeleteEncuentro}
+                    onCrearEmparejamiento={() => setShowCrearEmparejamientoModal(true)}
                     onUpdateFechaJornada={async (torneoId, jornada, fecha) => {
                       try {
                         const resultado = await updateFechaJornada(torneoId, jornada, fecha)
@@ -1922,6 +2038,107 @@ const TorneoDetailPage = () => {
         </ModalFooter>
       </Modal>
 
+      {/* Modal para crear emparejamiento manual */}
+      <Modal show={showCrearEmparejamientoModal} onHide={() => setShowCrearEmparejamientoModal(false)} centered>
+        <ModalHeader closeButton>
+          <Modal.Title>Crear Emparejamiento</Modal.Title>
+        </ModalHeader>
+        <ModalBody>
+          <Form className="d-grid gap-3">
+            <Form.Group>
+              <FloatingLabel label="Equipo Local">
+                <FormSelect
+                  value={formEmparejamiento.equipoLocalId}
+                  onChange={(e) => setFormEmparejamiento(f => ({ ...f, equipoLocalId: e.target.value }))}
+                >
+                  <option value="">Selecciona equipo</option>
+                  {equiposParticipantes.map(et => (
+                    <option key={et.equipo_id} value={et.equipo_id}>
+                      {et.equipo?.nombre || 'Equipo sin nombre'}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FloatingLabel>
+            </Form.Group>
+            <Form.Group>
+              <FloatingLabel label="Equipo Visitante">
+                <FormSelect
+                  value={formEmparejamiento.equipoVisitanteId}
+                  onChange={(e) => setFormEmparejamiento(f => ({ ...f, equipoVisitanteId: e.target.value }))}
+                >
+                  <option value="">Selecciona equipo</option>
+                  {equiposParticipantes.map(et => (
+                    <option key={et.equipo_id} value={et.equipo_id}>
+                      {et.equipo?.nombre || 'Equipo sin nombre'}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FloatingLabel>
+            </Form.Group>
+            <Form.Group>
+              <FloatingLabel label="Fecha y hora (opcional)">
+                <FormControl
+                  type="datetime-local"
+                  value={formEmparejamiento.fecha}
+                  onChange={(e) => setFormEmparejamiento(f => ({ ...f, fecha: e.target.value }))}
+                />
+              </FloatingLabel>
+            </Form.Group>
+            <Form.Group>
+              <FloatingLabel label="Horario (opcional)">
+                <FormSelect
+                  value={formEmparejamiento.horarioId}
+                  onChange={(e) => setFormEmparejamiento(f => ({ ...f, horarioId: e.target.value }))}
+                >
+                  <option value="">Selecciona un horario</option>
+                  {horarios.map(horario => (
+                    <option key={horario.id} value={horario.id}>
+                      {obtenerEtiquetaDia(horario.dia_semana)} - {horario.hora_inicio}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FloatingLabel>
+              <Form.Text className="text-muted">
+                Si seleccionas un horario, se ignorará la hora manual.
+              </Form.Text>
+            </Form.Group>
+            <Form.Group>
+              <FloatingLabel label="Cancha (opcional)">
+                <FormSelect
+                  value={formEmparejamiento.cancha}
+                  onChange={(e) => setFormEmparejamiento(f => ({ ...f, cancha: e.target.value }))}
+                >
+                  <option value="">Selecciona una cancha</option>
+                  {canchas.map(cancha => (
+                    <option key={cancha.id} value={cancha.nombre}>
+                      {cancha.nombre} {cancha.ubicacion && `- ${cancha.ubicacion}`}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FloatingLabel>
+            </Form.Group>
+            <Form.Group>
+              <FloatingLabel label="Jornada (opcional)">
+                <FormControl
+                  type="number"
+                  min={1}
+                  value={formEmparejamiento.jornada}
+                  onChange={(e) => setFormEmparejamiento(f => ({ ...f, jornada: e.target.value }))}
+                />
+              </FloatingLabel>
+            </Form.Group>
+          </Form>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowCrearEmparejamientoModal(false)}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleCrearEmparejamiento}>
+            Guardar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
       {/* Modal del Sistema Dinámico */}
       <DynamicFixtureModal
         show={showDynamicFixtureModal}
@@ -2061,6 +2278,15 @@ const TorneoDetailPage = () => {
               </div>
 
               <div className="mb-3">
+                <label className="form-label fw-semibold">Fecha y Hora:</label>
+                <FormControl
+                  type="datetime-local"
+                  value={selectedFecha}
+                  onChange={(e) => setSelectedFecha(e.target.value)}
+                />
+              </div>
+
+              <div className="mb-3">
                 <label className="form-label fw-semibold">Cancha:</label>
                 <FormSelect 
                   id="cancha-select"
@@ -2084,6 +2310,7 @@ const TorneoDetailPage = () => {
             // Limpiar estados al cancelar
             setSelectedHorarioId(null)
             setSelectedCancha('')
+            setSelectedFecha('')
           }}>
             Cancelar
           </Button>
@@ -2094,12 +2321,14 @@ const TorneoDetailPage = () => {
                 // Usar los estados en lugar de obtener del DOM
                 const horarioIdFinal = selectedHorarioId
                 const canchaFinal = selectedCancha || null
+                const fechaFinal = selectedFecha || null
                 
-                handleAsignarHorarioYCancha(editingEncuentro.id, horarioIdFinal, canchaFinal)
+                handleAsignarHorarioYCancha(editingEncuentro.id, horarioIdFinal, canchaFinal, fechaFinal)
                 setShowAsignarHorarioModal(false)
                 // Limpiar estados al guardar
                 setSelectedHorarioId(null)
                 setSelectedCancha('')
+                setSelectedFecha('')
               } else {
                 setError('Error: Encuentro no encontrado')
               }

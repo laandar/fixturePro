@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { estadisticasQueries } from '@/db/queries'
+import { estadisticasQueries, encuentroQueries } from '@/db/queries'
 import EstadisticasTorneo from './components/EstadisticasTorneo'
 
 interface PageProps {
@@ -51,10 +51,11 @@ export default async function EstadisticasPage({ params }: PageProps) {
 
   try {
     // Obtener datos del torneo y estadísticas
-    const [torneo, tablaPosiciones, tablaGoleadores] = await Promise.all([
+    const [torneo, tablaPosiciones, tablaGoleadores, encuentros] = await Promise.all([
       estadisticasQueries.getTorneoPublico(torneoId),
       estadisticasQueries.getTablaPosiciones(torneoId),
-      estadisticasQueries.getTablaGoleadores(torneoId)
+      estadisticasQueries.getTablaGoleadores(torneoId),
+      encuentroQueries.getByTorneoId(torneoId)
     ])
 
     if (!torneo) {
@@ -66,6 +67,7 @@ export default async function EstadisticasPage({ params }: PageProps) {
         torneo={torneo}
         tablaPosiciones={tablaPosiciones}
         tablaGoleadores={tablaGoleadores}
+        encuentros={encuentros}
       />
     )
   } catch (error) {

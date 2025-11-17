@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, CardBody, CardHeader, Col, Container, Row, Badge, Table } from 'react-bootstrap'
 import { LuTrophy, LuInfo, LuUsers } from 'react-icons/lu'
+import EstadisticasTabs from '../components/Tabs'
 import { getTorneoById, getEncuentrosByTorneo } from '../../../torneos/actions'
 import { getGolesTorneo } from '../../../gestion-jugadores/actions'
 import { getEstadisticasEquipos } from '@/lib/torneo-statistics'
@@ -79,6 +80,7 @@ const TablaPosicionesPage = () => {
   return (
     <Container fluid>
       <PageBreadcrumb title={`Tabla de Posiciones - ${torneo.nombre}`} />
+      <EstadisticasTabs active="posiciones" />
       
       <Row>
         <Col>

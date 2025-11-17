@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, CardBody, CardHeader, Col, Container, Row, Badge, Table } from 'react-bootstrap'
 import { LuTrophy, LuInfo, LuUsers, LuGamepad2 } from 'react-icons/lu'
+import EstadisticasTabs from '../components/Tabs'
 import { getTorneoById, getEncuentrosByTorneo } from '../../../torneos/actions'
 import { getGolesTorneo, getTarjetasTorneo } from '../../../gestion-jugadores/actions'
 import { getJugadores } from '../../../jugadores/actions'
@@ -68,6 +69,7 @@ const GoleadoresPage = () => {
   if (loading) {
     return (
       <Container fluid>
+        <EstadisticasTabs active="goleadores" />
         <PageBreadcrumb title="Cargando..." />
         <div className="text-center py-5">
           <div className="spinner-border text-primary" role="status">
@@ -97,6 +99,7 @@ const GoleadoresPage = () => {
   return (
     <Container fluid>
       <PageBreadcrumb title={`Goleadores - ${torneo.nombre}`} />
+      <EstadisticasTabs active="goleadores" />
       
       <Row>
         <Col>

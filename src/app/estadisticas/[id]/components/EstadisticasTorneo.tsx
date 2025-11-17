@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button, Nav, NavItem, NavLink, TabContent, TabPane } from 'react-bootstrap'
-import { LuTrophy, LuTarget, LuUsers, LuCalendar, LuTrendingUp, LuShare2, LuDownload, LuStar, LuZap, LuCrown, LuMonitor, LuSmartphone } from 'react-icons/lu'
+import { LuTrophy, LuTarget, LuUsers, LuCalendar, LuTrendingUp, LuShare2, LuDownload, LuStar, LuZap, LuCrown, LuMonitor, LuSmartphone, LuCalendarDays } from 'react-icons/lu'
 import TablaPosiciones from './TablaPosiciones'
 import TablaGoleadores from './TablaGoleadores'
+import TablaFixture from './TablaFixture'
 import '@/styles/fifa-animations.css'
 import '@/styles/desktop-view-mobile.css'
 
@@ -62,9 +63,10 @@ interface EstadisticasTorneoProps {
   torneo: Torneo
   tablaPosiciones: PosicionEquipo[]
   tablaGoleadores: Goleador[]
+  encuentros?: any[]
 }
 
-export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores }: EstadisticasTorneoProps) {
+export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores, encuentros = [] }: EstadisticasTorneoProps) {
   const [activeTab, setActiveTab] = useState('posiciones')
   const [isDesktopView, setIsDesktopView] = useState(false)
 
@@ -431,6 +433,54 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   )}
                 </NavLink>
               </NavItem>
+              <NavItem className="flex-fill">
+                <NavLink 
+                  eventKey="fixture" 
+                  className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
+                  style={{
+                    background: activeTab === 'fixture' 
+                      ? 'rgba(255, 255, 255, 0.2)' 
+                      : 'transparent',
+                    color: '#ffffff',
+                    borderRadius: activeTab === 'fixture' ? '15px 15px 0 0' : '0',
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontSize: '0.95rem',
+                    minHeight: '60px',
+                    textAlign: 'center',
+                    boxShadow: activeTab === 'fixture' 
+                      ? '0 4px 15px rgba(0, 0, 0, 0.2)' 
+                      : 'none',
+                    marginBottom: '1px'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== 'fixture') {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.2)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== 'fixture') {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }
+                  }}
+                >
+                  <LuCalendarDays className="fs-4 fs-md-5" />
+                  <span className="fw-bold d-none d-lg-inline">Fixture por categoría</span>
+                  <span className="fw-bold d-inline d-lg-none">Fixture</span>
+                  {activeTab === 'fixture' && (
+                    <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
+                      width: '80px',
+                      height: '4px',
+                      background: 'linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%)',
+                      borderRadius: '2px',
+                      boxShadow: '0 2px 8px rgba(255, 255, 255, 0.3)'
+                    }} />
+                  )}
+                </NavLink>
+              </NavItem>
             </Nav>
           </CardHeader>
           
@@ -448,6 +498,13 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   background: 'rgba(255, 255, 255, 0.02)'
                 }}>
                   <TablaGoleadores goleadores={tablaGoleadores} />
+                </div>
+              </TabPane>
+              <TabPane eventKey="fixture" active={activeTab === 'fixture'}>
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)'
+                }}>
+                  <TablaFixture encuentros={encuentros} />
                 </div>
               </TabPane>
             </TabContent>

@@ -164,7 +164,7 @@ export default function DynamicFixtureModal({
 
   const cargarHorarios = async () => {
     try {
-      const horariosData = await getHorarios()
+      const horariosData = await getHorarios(torneoId)
       setHorarios(horariosData)
     } catch (error) {
       console.error('Error al cargar horarios:', error)

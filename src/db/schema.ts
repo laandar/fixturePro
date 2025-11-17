@@ -116,6 +116,7 @@ export const equiposTorneo = pgTable('equipos_torneo', {
 // Tabla de horarios
 export const horarios = pgTable('horarios', {
   id: serial('id').primaryKey(),
+  torneo_id: integer('torneo_id').references(() => torneos.id, { onDelete: 'cascade' }).notNull(),
   hora_inicio: text('hora_inicio').notNull(), // Formato HH:MM (24h)
   dia_semana: text('dia_semana', { enum: ['viernes', 'sabado', 'domingo'] }).default('viernes').notNull(),
   color: text('color').default('#007bff'), // Color para identificar el horario
@@ -319,7 +320,11 @@ export const goles = pgTable('goles', {
 });
 
 // Relaciones para horarios
-export const horariosRelations = relations(horarios, ({ many }) => ({
+export const horariosRelations = relations(horarios, ({ one, many }) => ({
+  torneo: one(torneos, {
+    fields: [horarios.torneo_id],
+    references: [torneos.id],
+  }),
   encuentros: many(encuentros),
 }));
 

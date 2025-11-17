@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Card, CardBody, CardHeader, Row, Col, Button, Form } from 'react-bootstrap'
-import { LuGamepad2, LuSettings, LuTrash, LuDownload, LuUsers, LuCalendar } from 'react-icons/lu'
+import { LuGamepad2, LuSettings, LuTrash, LuDownload, LuUsers, LuCalendar, LuPlus } from 'react-icons/lu'
 import EncuentroCard from '@/components/EncuentroCard'
 import type { TorneoWithRelations, EncuentroWithRelations, EquipoTorneo } from '@/db/types'
 
@@ -17,7 +17,9 @@ interface TorneoFixtureSectionProps {
   onEliminarJornada?: (jornada: number) => void
   onManagePlayers?: (encuentro: EncuentroWithRelations) => void
   onEditHorario?: (encuentro: EncuentroWithRelations) => void
+  onDeleteEncuentro?: (encuentro: EncuentroWithRelations) => void
   onUpdateFechaJornada?: (torneoId: number, jornada: number, fecha: Date) => Promise<void>
+  onCrearEmparejamiento?: () => void
   showActions?: boolean
 }
 
@@ -33,7 +35,9 @@ export default function TorneoFixtureSection({
   onEliminarJornada,
   onManagePlayers,
   onEditHorario,
+  onDeleteEncuentro,
   onUpdateFechaJornada,
+  onCrearEmparejamiento,
   showActions = true
 }: TorneoFixtureSectionProps) {
   const [editandoFecha, setEditandoFecha] = useState<Record<number, boolean>>({})
@@ -183,6 +187,18 @@ export default function TorneoFixtureSection({
                 <LuUsers className="me-1" />
                 <span className="d-none d-sm-inline">Emparejamientos</span>
                 <span className="d-sm-none">Emparejar</span>
+              </Button>
+            )}
+            {onCrearEmparejamiento && (
+              <Button 
+                variant="primary" 
+                size="sm"
+                onClick={onCrearEmparejamiento}
+                className="px-2 px-md-3 flex-fill flex-md-grow-0"
+                style={{ minWidth: '120px', maxWidth: '200px' }}>
+                <LuPlus className="me-1" />
+                <span className="d-none d-sm-inline">Crear Emparejamiento</span>
+                <span className="d-sm-none">Crear</span>
               </Button>
             )}
           </div>
@@ -405,6 +421,7 @@ export default function TorneoFixtureSection({
                         encuentro={encuentro}
                         onManagePlayers={onManagePlayers}
                         onEditHorario={onEditHorario}
+                        onDeleteEncuentro={onDeleteEncuentro}
                       />
                     </Col>
                   ))}

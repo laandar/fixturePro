@@ -21,11 +21,16 @@ const normalizarDiaSemana = (dia: string | null): DiaSemana => {
   return (DIAS_VALIDOS.find(d => d === dia) ?? 'viernes') as DiaSemana
 }
 
-export async function getHorarios() {
+export async function getHorarios(torneoId: number) {
   try {
+    if (!torneoId || Number.isNaN(torneoId)) {
+      throw new Error('El torneo es obligatorio para obtener horarios')
+    }
+    
     const horariosData = await db
       .select()
       .from(horarios)
+      .where(eq(horarios.torneo_id, torneoId))
       .orderBy(ordenarDiaSemana, asc(horarios.orden), asc(horarios.hora_inicio))
     
     return horariosData
@@ -35,8 +40,12 @@ export async function getHorarios() {
   }
 }
 
-export async function createHorario(formData: FormData) {
+export async function createHorario(torneoId: number, formData: FormData) {
   try {
+    if (!torneoId || Number.isNaN(torneoId)) {
+      throw new Error('El torneo es obligatorio para crear un horario')
+    }
+    
     const horaInicio = formData.get('hora_inicio') as string
     const color = formData.get('color') as string || '#007bff'
     const orden = parseInt(formData.get('orden') as string) || 0
@@ -49,6 +58,7 @@ export async function createHorario(formData: FormData) {
     const nuevoHorario = await db
       .insert(horarios)
       .values({
+        torneo_id: torneoId,
         hora_inicio: horaInicio,
         dia_semana: diaSemana,
         color,
@@ -63,8 +73,26 @@ export async function createHorario(formData: FormData) {
   }
 }
 
-export async function updateHorario(id: number, formData: FormData) {
+export async function updateHorario(id: number, torneoId: number, formData: FormData) {
   try {
+    if (!torneoId || Number.isNaN(torneoId)) {
+      throw new Error('El torneo es obligatorio para actualizar un horario')
+    }
+    
+    const horarioExistente = await db
+      .select()
+      .from(horarios)
+      .where(eq(horarios.id, id))
+      .limit(1)
+    
+    if (horarioExistente.length === 0) {
+      throw new Error('Horario no encontrado')
+    }
+    
+    if (horarioExistente[0].torneo_id !== torneoId) {
+      throw new Error('No puedes modificar un horario que pertenece a otro torneo')
+    }
+    
     const horaInicio = formData.get('hora_inicio') as string
     const color = formData.get('color') as string || '#007bff'
     const orden = parseInt(formData.get('orden') as string) || 0
@@ -83,7 +111,7 @@ export async function updateHorario(id: number, formData: FormData) {
         orden,
         updatedAt: new Date()
       })
-      .where(eq(horarios.id, id))
+      .where(and(eq(horarios.id, id), eq(horarios.torneo_id, torneoId)))
       .returning()
 
     return { success: true, horario: horarioActualizado[0] }
@@ -93,16 +121,45 @@ export async function updateHorario(id: number, formData: FormData) {
   }
 }
 
-export async function deleteHorario(id: number) {
+export async function deleteHorario(id: number, torneoId: number) {
   try {
+    if (!torneoId || Number.isNaN(torneoId)) {
+      throw new Error('El torneo es obligatorio para eliminar un horario')
+    }
+    
+    const horarioExistente = await db
+      .select()
+      .from(horarios)
+      .where(eq(horarios.id, id))
+      .limit(1)
+    
+    if (horarioExistente.length === 0) {
+      throw new Error('Horario no encontrado')
+    }
+    
+    if (horarioExistente[0].torneo_id !== torneoId) {
+      throw new Error('No puedes eliminar un horario que pertenece a otro torneo')
+    }
+    
     await db
       .delete(horarios)
-      .where(eq(horarios.id, id))
+      .where(and(eq(horarios.id, id), eq(horarios.torneo_id, torneoId)))
 
     return { success: true }
   } catch (error) {
     console.error('Error al eliminar horario:', error)
-    throw new Error('Error al eliminar horario')
+    if (error instanceof Error) {
+      const mensajeOriginal = error.message || ''
+      const esRestriccion = mensajeOriginal.toLowerCase().includes('foreign key') ||
+        mensajeOriginal.includes('delete from "horarios"')
+
+      if (esRestriccion) {
+        throw new Error('No se puede eliminar el horario porque está asignado a uno o más encuentros. Reasigna o elimina esos encuentros antes de continuar.')
+      }
+
+      throw new Error(`No se pudo eliminar el horario: ${mensajeOriginal}`)
+    }
+    throw new Error('No se pudo eliminar el horario. Revisa la consola para más detalles.')
   }
 }
 
@@ -136,10 +193,7 @@ async function evaluarCalidadAsignacion(torneoId: number): Promise<number> {
       .orderBy(asc(encuentros.jornada), asc(encuentros.id))
 
     // Obtener horarios disponibles
-    const horariosDisponibles = await db
-      .select()
-      .from(horarios)
-      .orderBy(ordenarDiaSemana, asc(horarios.orden), asc(horarios.hora_inicio))
+    const horariosDisponibles = await getHorarios(torneoId)
 
     if (horariosDisponibles.length === 0) {
       return Infinity // Sin horarios disponibles
@@ -289,11 +343,8 @@ async function ejecutarIteracionAsignacion(torneoId: number, configuracion: any,
   try {
     const { encuentros } = await import('@/db/schema')
     
-    // Obtener todos los horarios ordenados
-    const horariosDisponibles = await db
-      .select()
-      .from(horarios)
-      .orderBy(asc(horarios.orden), asc(horarios.hora_inicio))
+    // Obtener todos los horarios ordenados del torneo
+    const horariosDisponibles = await getHorarios(torneoId)
     
     if (horariosDisponibles.length === 0) {
       throw new Error('No hay horarios disponibles para asignar')
@@ -713,11 +764,8 @@ export async function asignarHorariosPorJornada(torneoId: number, jornada: numbe
   try {
     const { encuentros } = await import('@/db/schema')
     
-    // Obtener horarios ordenados
-    const horariosDisponibles = await db
-      .select()
-      .from(horarios)
-      .orderBy(asc(horarios.orden), asc(horarios.hora_inicio))
+    // Obtener horarios ordenados del torneo
+    const horariosDisponibles = await getHorarios(torneoId)
     
     if (horariosDisponibles.length === 0) {
       throw new Error('No hay horarios disponibles para asignar')
@@ -1095,7 +1143,12 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
       })
       .from(horarios)
       .innerJoin(encuentros, eq(horarios.id, encuentros.horario_id))
-      .where(eq(encuentros.torneo_id, torneoId))
+      .where(
+        and(
+          eq(encuentros.torneo_id, torneoId),
+          eq(horarios.torneo_id, torneoId)
+        )
+      )
       .groupBy(horarios.id, horarios.hora_inicio, horarios.dia_semana)
       .orderBy(ordenarDiaSemana, asc(horarios.hora_inicio))
 

@@ -135,7 +135,7 @@ export async function generarPropuestaJornada(
     const equiposDisponibles = equipos.filter((e: any) => !equiposQueDescansan.includes(e.id))
     
     // Obtener horarios disponibles
-    const horariosDisponibles = await getHorarios()
+    const horariosDisponibles = await getHorarios(torneoId)
     
     // Generar encuentros usando algoritmo optimizado que evita emparejamientos repetidos
     const encuentros = generarEncuentrosOptimizados(

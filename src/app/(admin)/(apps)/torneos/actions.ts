@@ -7,9 +7,16 @@ import { generateFixture } from '@/lib/fixture-generator'
 import type { NewTorneo, NewEquipoTorneo, EquipoWithRelations } from '@/db/types'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { db } from '@/db'
-import { tarjetas, goles, equiposTorneo, jugadoresParticipantes, cambiosJugadores, firmasEncuentros } from '@/db/schema'
-import { eq, count, inArray } from 'drizzle-orm'
+import { tarjetas, goles, equiposTorneo, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, torneos, horarios, encuentros, categorias, canchas, canchasCategorias } from '@/db/schema'
+import { eq, count, inArray, and, isNotNull, asc, sql } from 'drizzle-orm'
 import { getJugadoresActivosByEquipos } from '@/app/(admin)/(apps)/jugadores/actions'
+
+const DIAS_HORARIOS = ['viernes', 'sabado', 'domingo'] as const
+const DIA_LABELS: Record<(typeof DIAS_HORARIOS)[number], string> = {
+  viernes: 'Viernes',
+  sabado: 'Sábado',
+  domingo: 'Domingo'
+}
 
 export async function getTorneos() {
   // No requiere permiso - función auxiliar usada por otros módulos
@@ -59,6 +66,238 @@ export async function getJugadoresByTorneo(torneoId: number) {
   }
 }
 
+export async function getMapaGeneralHorarios() {
+  try {
+    const torneosActivos = await db
+      .select({
+        id: torneos.id,
+        nombre: torneos.nombre,
+        estado: torneos.estado,
+        categoriaNombre: categorias.nombre
+      })
+      .from(torneos)
+      .leftJoin(categorias, eq(torneos.categoria_id, categorias.id))
+      .where(inArray(torneos.estado, ['planificado', 'en_curso']))
+      .orderBy(asc(torneos.fecha_inicio))
+
+    if (torneosActivos.length === 0) {
+      return []
+    }
+
+    const torneoIds = torneosActivos.map(t => t.id)
+
+    const horariosData = await db
+      .select({
+        id: horarios.id,
+        torneoId: horarios.torneo_id,
+        dia: horarios.dia_semana,
+        hora: horarios.hora_inicio,
+        orden: horarios.orden
+      })
+      .from(horarios)
+      .where(inArray(horarios.torneo_id, torneoIds))
+      .orderBy(sql`CASE ${horarios.dia_semana}
+        WHEN 'viernes' THEN 1
+        WHEN 'sabado' THEN 2
+        WHEN 'domingo' THEN 3
+        ELSE 4
+      END`, asc(horarios.orden), asc(horarios.hora_inicio))
+
+    const encuentrosPorHorario = await db
+      .select({
+        torneoId: encuentros.torneo_id,
+        horarioId: encuentros.horario_id,
+        total: count(encuentros.id)
+      })
+      .from(encuentros)
+      .where(
+        and(
+          inArray(encuentros.torneo_id, torneoIds),
+          isNotNull(encuentros.horario_id)
+        )
+      )
+      .groupBy(encuentros.torneo_id, encuentros.horario_id)
+
+    const usosPorHorario = new Map<number, number>()
+    encuentrosPorHorario.forEach(item => {
+      if (item.horarioId) {
+        usosPorHorario.set(item.horarioId, Number(item.total) || 0)
+      }
+    })
+
+    const resultado = torneosActivos.map(torneo => {
+      const horariosDelTorneo = horariosData.filter(h => h.torneoId === torneo.id)
+      const detallesHorarios = horariosDelTorneo.map(horario => {
+        const totalEncuentros = usosPorHorario.get(horario.id) || 0
+        const dia = (horario.dia as (typeof DIAS_HORARIOS)[number]) || 'viernes'
+        return {
+          id: horario.id,
+          dia,
+          labelDia: DIA_LABELS[dia],
+          hora: horario.hora,
+          cubierto: totalEncuentros > 0,
+          totalEncuentros
+        }
+      })
+
+      const totalHorarios = detallesHorarios.length
+      const horariosCubiertos = detallesHorarios.filter(h => h.cubierto).length
+      const dias = DIAS_HORARIOS.map(dia => {
+        const itemsDia = detallesHorarios.filter(h => h.dia === dia)
+        const cubiertosDia = itemsDia.filter(h => h.cubierto).length
+        return {
+          dia,
+          label: DIA_LABELS[dia],
+          totalHorarios: itemsDia.length,
+          cubiertos: cubiertosDia,
+          libres: itemsDia.length - cubiertosDia
+        }
+      })
+
+      return {
+        torneoId: torneo.id,
+        torneo: torneo.nombre,
+        estado: torneo.estado,
+        categoria: torneo.categoriaNombre,
+        totales: {
+          totalHorarios,
+          horariosCubiertos,
+          horariosLibres: Math.max(totalHorarios - horariosCubiertos, 0),
+          coberturaPorcentaje: totalHorarios === 0 ? 0 : Math.round((horariosCubiertos / totalHorarios) * 100)
+        },
+        dias,
+        horarios: detallesHorarios
+      }
+    })
+
+    return resultado
+  } catch (error) {
+    console.error('Error al generar mapa general de horarios:', error)
+    throw new Error('No se pudo generar el mapa general de horarios')
+  }
+}
+
+export async function getMapaHorariosCanchasGeneral() {
+  try {
+    const torneosActivos = await db
+      .select({
+        id: torneos.id,
+        nombre: torneos.nombre,
+        estado: torneos.estado,
+        categoriaId: torneos.categoria_id,
+        categoriaNombre: categorias.nombre
+      })
+      .from(torneos)
+      .leftJoin(categorias, eq(torneos.categoria_id, categorias.id))
+      .where(inArray(torneos.estado, ['planificado', 'en_curso']))
+      .orderBy(asc(torneos.fecha_inicio))
+
+    if (torneosActivos.length === 0) return []
+
+    const torneoIds = torneosActivos.map(t => t.id)
+
+    // Horarios por torneo
+    const horariosData = await db
+      .select({
+        id: horarios.id,
+        torneoId: horarios.torneo_id,
+        dia: horarios.dia_semana,
+        hora: horarios.hora_inicio,
+        orden: horarios.orden
+      })
+      .from(horarios)
+      .where(inArray(horarios.torneo_id, torneoIds))
+      .orderBy(sql`CASE ${horarios.dia_semana}
+        WHEN 'viernes' THEN 1
+        WHEN 'sabado' THEN 2
+        WHEN 'domingo' THEN 3
+        ELSE 4
+      END`, asc(horarios.orden), asc(horarios.hora_inicio))
+
+    // Canchas por categoría (activas)
+    const canchasData = await db
+      .select({
+        torneoId: torneos.id,
+        canchaId: canchas.id,
+        canchaNombre: canchas.nombre,
+        canchaEstado: canchas.estado
+      })
+      .from(torneos)
+      .innerJoin(canchasCategorias, eq(torneos.categoria_id, canchasCategorias.categoria_id))
+      .innerJoin(canchas, eq(canchasCategorias.cancha_id, canchas.id))
+      .where(inArray(torneos.id, torneoIds))
+
+    // Encuentros: necesitamos (torneo, horario_id, cancha_nombre) -> count
+    const encuentrosData = await db
+      .select({
+        torneoId: encuentros.torneo_id,
+        horarioId: encuentros.horario_id,
+        cancha: encuentros.cancha,
+        total: count(encuentros.id)
+      })
+      .from(encuentros)
+      .where(and(inArray(encuentros.torneo_id, torneoIds), isNotNull(encuentros.horario_id)))
+      .groupBy(encuentros.torneo_id, encuentros.horario_id, encuentros.cancha)
+
+    // Indexar usos por (torneoId, horarioId, canchaNombre)
+    const usos = new Map<string, number>()
+    for (const e of encuentrosData) {
+      if (!e.horarioId || !e.cancha) continue
+      usos.set(`${e.torneoId}-${e.horarioId}-${e.cancha}`, Number(e.total) || 0)
+    }
+
+    // Armar resultado
+    const resultado = torneosActivos.map(t => {
+      const horariosTorneo = horariosData.filter(h => h.torneoId === t.id)
+      const canchasTorneo = canchasData
+        .filter(c => c.torneoId === t.id && c.canchaEstado)
+        .map(c => ({ id: c.canchaId, nombre: c.canchaNombre }))
+        // ordenar por nombre para consistencia
+        .sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+      // Filas = horarios, Columnas = canchas
+      const filas = horariosTorneo.map(h => {
+        const dia = (h.dia as (typeof DIAS_HORARIOS)[number]) || 'viernes'
+        const celdas = canchasTorneo.map(c => {
+          const key = `${t.id}-${h.id}-${c.nombre}`
+          const total = usos.get(key) || 0
+          return {
+            canchaId: c.id,
+            cancha: c.nombre,
+            cubierto: total > 0,
+            totalEncuentros: total
+          }
+        })
+        const cubiertas = celdas.filter(c => c.cubierto).length
+        return {
+          horarioId: h.id,
+          dia,
+          labelDia: DIA_LABELS[dia],
+          hora: h.hora,
+          celdas,
+          resumen: {
+            cubiertas,
+            libres: Math.max(canchasTorneo.length - cubiertas, 0)
+          }
+        }
+      })
+
+      return {
+        torneoId: t.id,
+        torneo: t.nombre,
+        estado: t.estado,
+        categoria: t.categoriaNombre,
+        canchas: canchasTorneo,
+        filas
+      }
+    })
+
+    return resultado
+  } catch (error) {
+    console.error('Error al generar mapa horarios-canchas:', error)
+    throw new Error('No se pudo generar el mapa de horarios y canchas')
+  }
+}
 export async function getEquiposDescansan(torneoId: number) {
   try {
     const descansos = await equiposDescansanQueries.getByTorneoId(torneoId)
@@ -372,15 +611,25 @@ export async function updateEncuentro(id: number, formData: FormData) {
     const goles_visitante = parseInt(formData.get('goles_visitante') as string) || null
     const estado = formData.get('estado') as string
     const fecha_jugada = formData.get('fecha_jugada') ? new Date(formData.get('fecha_jugada') as string) : null
+    const fecha_programada = formData.get('fecha_programada') ? (formData.get('fecha_programada') as string === '' ? null : new Date(formData.get('fecha_programada') as string)) : undefined
     const cancha = formData.get('cancha') as string
     const arbitro = formData.get('arbitro') as string
     const observaciones = formData.get('observaciones') as string
+    const horario_id = formData.get('horario_id') ? (formData.get('horario_id') as string === '' ? null : parseInt(formData.get('horario_id') as string)) : undefined
 
     const encuentroData: any = {
       estado,
       cancha: cancha || null,
       arbitro: arbitro || null,
       observaciones: observaciones || null,
+    }
+
+    if (fecha_programada !== undefined) {
+      encuentroData.fecha_programada = fecha_programada
+    }
+
+    if (horario_id !== undefined) {
+      encuentroData.horario_id = horario_id
     }
 
     if (goles_local !== null && goles_visitante !== null) {
@@ -412,6 +661,16 @@ export async function updateEstadoEncuentro(id: number, estado: string) {
     return { success: true, message: `Estado del encuentro actualizado a: ${estado}` }
   } catch (error) {
     throw new Error('Error al actualizar estado del encuentro')
+  }
+}
+
+export async function deleteEncuentro(id: number) {
+  try {
+    await encuentroQueries.delete(id)
+    revalidatePath('/torneos')
+    return { success: true, message: 'Encuentro eliminado exitosamente' }
+  } catch (error) {
+    throw new Error('Error al eliminar encuentro')
   }
 }
 
@@ -930,8 +1189,6 @@ export async function crearJornadaConEmparejamientos(
           })
         }
       }
-      
-      indiceJornada++
     }
     
     revalidatePath(`/torneos/${torneoId}`)
@@ -1217,29 +1474,11 @@ export async function asignarCanchasAutomaticamente(
       
       // Obtener el número total de horarios disponibles (capacidad de la cancha prioritaria)
       const { getHorarios } = await import('./horarios-actions')
-      const horariosDisponibles = await getHorarios()
+      const horariosDisponibles = await getHorarios(torneoId)
       capacidadCanchaPrioritaria = horariosDisponibles.length
     } else {
       // Si no hay cancha prioritaria, usar todas las canchas para distribución equitativa
       canchasRestantes = [...canchasActivas]
-    }
-    
-    const totalCanchasSecundarias = canchasRestantes.length
-    
-    const buildMapaPrioridadSecundaria = (offset: number) => {
-      if (totalCanchasSecundarias === 0) {
-        return {}
-      }
-      
-      const canchasRotadas = [
-        ...canchasRestantes.slice(offset),
-        ...canchasRestantes.slice(0, offset)
-      ]
-      
-      return canchasRotadas.reduce<Record<string, number>>((acc, cancha, index) => {
-        acc[cancha.nombre] = index
-        return acc
-      }, {})
     }
     
     // Obtener todos los equipos del torneo para rastrear su uso de canchas secundarias
@@ -1298,7 +1537,7 @@ export async function asignarCanchasAutomaticamente(
     
     // Obtener horarios disponibles ordenados (para asignación dinámica)
     const { getHorarios } = await import('./horarios-actions')
-    const horariosDisponibles = await getHorarios()
+    const horariosDisponibles = await getHorarios(torneoId)
     const horariosOrdenados = horariosDisponibles.sort((a: any, b: any) => {
       // Ordenar por orden si existe, sino por hora_inicio
       if (a.orden !== undefined && b.orden !== undefined) {
@@ -1321,9 +1560,6 @@ export async function asignarCanchasAutomaticamente(
       contadorUsoCanchasSecundarias[cancha.nombre] = 0
     })
     
-    // Registro por jornada para equilibrar asignaciones en canchas secundarias
-    const usoSecundarioPorJornada: Record<number, Record<string, number>> = {}
-    
     // Contador de uso de horarios por cancha (para distribución ordenada)
     const usoHorariosPorCancha: Record<string, number> = {}
     if (tieneCanchaPrioritaria) {
@@ -1336,15 +1572,7 @@ export async function asignarCanchasAutomaticamente(
     let asignacionesRealizadas = 0
     
     // Asignar canchas por jornada
-    let indiceJornada = 0
     for (const jornada of jornadasOrdenadas) {
-      const offsetRotacion = totalCanchasSecundarias > 0
-        ? indiceJornada % totalCanchasSecundarias
-        : 0
-      const mapaPrioridadSecundaria = buildMapaPrioridadSecundaria(offsetRotacion)
-      const registroUsoSecundarias = usoSecundarioPorJornada[jornada] || {}
-      usoSecundarioPorJornada[jornada] = registroUsoSecundarias
-      
       const encuentrosJornada = encuentrosPorJornada[jornada]
       
       // Filtrar encuentros que aún no tienen cancha asignada
@@ -1382,13 +1610,15 @@ export async function asignarCanchasAutomaticamente(
         // IMPORTANTE: Procesar uno por uno y actualizar el registro inmediatamente para evitar conflictos
         const encuentrosConHorario = encuentrosPendientes.filter(e => e.horario_id)
         for (const encuentro of encuentrosConHorario) {
-          const horarioKey = encuentro.horario_id
+          const horarioKey = encuentro.horario_id ?? 'sin_horario'
           
           // Verificar si la cancha prioritaria ya está ocupada en este horario
           // (verificar después de cada asignación para evitar conflictos)
-          const canchaOcupadaEnHorario = canchasPorHorarioEnJornada[horarioKey]?.[nombreCanchaPrioritaria] || false
+          const canchaOcupadaEnHorario = nombreCanchaPrioritaria
+            ? (canchasPorHorarioEnJornada[horarioKey]?.[nombreCanchaPrioritaria] || false)
+            : false
           
-          if (!canchaOcupadaEnHorario) {
+          if (!canchaOcupadaEnHorario && nombreCanchaPrioritaria) {
             // Verificar que el encuentro aún está en pendientes (no fue asignado en otra iteración)
             const indexEnPendientes = encuentrosPendientes.indexOf(encuentro)
             if (indexEnPendientes === -1) {
@@ -1483,7 +1713,6 @@ export async function asignarCanchasAutomaticamente(
           // Distribuir equitativamente entre todas las canchas
           for (const encuentro of encuentrosPendientes) {
             let canchaAsignada: string | null = null
-            let registroSecundariaActualizado = false
             const horarioKey = encuentro.horario_id || 'sin_horario'
             const canchasOcupadasParaEsteHorario = canchasPorHorarioEnJornada[horarioKey] || {}
             
@@ -1493,18 +1722,14 @@ export async function asignarCanchasAutomaticamente(
             })
             
             if (canchasDisponiblesParaHorario.length > 0) {
-              // Encontrar la cancha menos usada considerando balance por jornada
+              // Encontrar la cancha menos usada
               let mejorCancha = canchasDisponiblesParaHorario[0]
-              let mejorPuntuacion = Infinity
+              let menorUso = Infinity
               
               for (const cancha of canchasDisponiblesParaHorario) {
                 const usoTotal = usoHorariosPorCancha[cancha.nombre] || 0
-                const usoEnJornada = registroUsoSecundarias[cancha.nombre] || 0
-                const prioridadRotacion = mapaPrioridadSecundaria[cancha.nombre] ?? 0
-                const puntuacion = usoTotal * 100 + usoEnJornada * 10 + prioridadRotacion
-                
-                if (puntuacion < mejorPuntuacion) {
-                  mejorPuntuacion = puntuacion
+                if (usoTotal < menorUso) {
+                  menorUso = usoTotal
                   mejorCancha = cancha
                 }
               }
@@ -1512,27 +1737,42 @@ export async function asignarCanchasAutomaticamente(
               canchaAsignada = mejorCancha.nombre
               
               // Actualizar contadores
-              registroUsoSecundarias[canchaAsignada] = (registroUsoSecundarias[canchaAsignada] || 0) + 1
-              registroSecundariaActualizado = true
-              contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
-                (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
-              contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
+              if (canchaAsignada) {
+                if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                  contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                }
+                if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                  contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                }
+                contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
+                  (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
+                contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
                 (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
-              usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+              }
+              if (canchaAsignada) {
+                usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+              }
             }
             
             // FALLBACK FINAL: Si aún no se asignó ninguna cancha, usar la primera disponible
             if (!canchaAsignada && canchasRestantes.length > 0) {
-              canchaAsignada = canchasRestantes[0].nombre
-              usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
-              registroUsoSecundarias[canchaAsignada] = (registroUsoSecundarias[canchaAsignada] || 0) + 1
-              registroSecundariaActualizado = true
-              
-              // Actualizar contadores
-              contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
-                (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
-              contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
-                (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
+              const candidataFallback = canchasRestantes[0]?.nombre ?? null
+              if (candidataFallback) {
+                canchaAsignada = candidataFallback
+                usoHorariosPorCancha[candidataFallback] = (usoHorariosPorCancha[candidataFallback] || 0) + 1
+                
+                // Actualizar contadores
+                if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                  contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                }
+                if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                  contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                }
+                contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][candidataFallback] = 
+                  (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][candidataFallback] || 0) + 1
+                contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][candidataFallback] = 
+                  (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][candidataFallback] || 0) + 1
+              }
             }
             
             // Asignar cancha (ahora siempre debería tener un valor)
@@ -1546,17 +1786,12 @@ export async function asignarCanchasAutomaticamente(
               formData.append('cancha', canchaAsignada)
               await updateEncuentro(encuentro.id, formData)
               asignacionesRealizadas++
-              
-              if (!registroSecundariaActualizado) {
-                registroUsoSecundarias[canchaAsignada] = (registroUsoSecundarias[canchaAsignada] || 0) + 1
-              }
             }
           }
         } else {
           // Si hay cancha prioritaria, asignar a canchas secundarias con restricciones
           for (const encuentro of encuentrosPendientes) {
             let canchaAsignada: string | null = null
-            let registroSecundariaActualizado = false
             const horarioKey = encuentro.horario_id || 'sin_horario'
             const canchasOcupadasParaEsteHorario = canchasPorHorarioEnJornada[horarioKey] || {}
             
@@ -1601,15 +1836,9 @@ export async function asignarCanchasAutomaticamente(
                   
                   // Uso rotativo de la cancha (distribución equitativa)
                   const usoRotativoCancha = contadorUsoCanchasSecundarias[nombreCancha] || 0
-                  const usoEnJornada = registroUsoSecundarias[nombreCancha] || 0
-                  const prioridadRotacion = mapaPrioridadSecundaria[nombreCancha] ?? 0
                   
                   // Puntuación: menor es mejor
-                  const puntuacion = penalizacionCanchaRepetida 
-                    + sumaAparicionesEquipos * 100 
-                    + usoRotativoCancha * 5
-                    + usoEnJornada * 50
-                    + prioridadRotacion
+                  const puntuacion = penalizacionCanchaRepetida + sumaAparicionesEquipos * 100 + usoRotativoCancha
                   
                   puntuacionesCanchas.push({ cancha, puntuacion })
                 }
@@ -1642,16 +1871,25 @@ export async function asignarCanchasAutomaticamente(
                     contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] = 
                       (contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0) + 1
                     
-                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
-                      (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
-                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
-                      (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
+                    if (canchaAsignada) {
+                      if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                        contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                      }
+                      if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                        contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                      }
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
+                        (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
+                        (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
+                    }
                     
-                    contadorUsoCanchasSecundarias[canchaAsignada] = 
-                      (contadorUsoCanchasSecundarias[canchaAsignada] || 0) + 1
-                    registroUsoSecundarias[canchaAsignada] = (registroUsoSecundarias[canchaAsignada] || 0) + 1
-                    registroSecundariaActualizado = true
-                    usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+                    if (canchaAsignada) {
+                      contadorUsoCanchasSecundarias[canchaAsignada] = 
+                        (contadorUsoCanchasSecundarias[canchaAsignada] || 0) + 1
+                      usoHorariosPorCancha[canchaAsignada] = 
+                        (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+                    }
                   }
                 }
               }
@@ -1682,8 +1920,13 @@ export async function asignarCanchasAutomaticamente(
               })
               
               if (canchaDisponible) {
-                canchaAsignada = canchaDisponible.nombre || canchaDisponible
-                usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+                const candidataCancha = (typeof canchaDisponible === 'string')
+                  ? canchaDisponible
+                  : (canchaDisponible?.nombre ?? null)
+                if (candidataCancha) {
+                  canchaAsignada = candidataCancha
+                  usoHorariosPorCancha[candidataCancha] = (usoHorariosPorCancha[candidataCancha] || 0) + 1
+                }
                 
                 // Si es una cancha secundaria, actualizar contadores
                 if (tieneCanchaPrioritaria && canchaAsignada !== nombreCanchaPrioritaria) {
@@ -1692,26 +1935,42 @@ export async function asignarCanchasAutomaticamente(
                   contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] = 
                     (contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0) + 1
                   
-                  contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
-                    (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
-                  contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
-                    (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
+                  if (canchaAsignada) {
+                    if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                    }
+                    if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                    }
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
+                      (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
+                      (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
+                  }
                   
-                  contadorUsoCanchasSecundarias[canchaAsignada] = 
-                    (contadorUsoCanchasSecundarias[canchaAsignada] || 0) + 1
-                  registroUsoSecundarias[canchaAsignada] = (registroUsoSecundarias[canchaAsignada] || 0) + 1
-                  registroSecundariaActualizado = true
+                  if (canchaAsignada) {
+                    contadorUsoCanchasSecundarias[canchaAsignada] = 
+                      (contadorUsoCanchasSecundarias[canchaAsignada] || 0) + 1
+                  }
                 }
               } else if (todasLasCanchas.length > 0) {
                 // Si todas las canchas están ocupadas en este horario, usar la cancha prioritaria
                 // como último recurso (habrá conflicto pero al menos se asigna)
                 if (tieneCanchaPrioritaria) {
-                  canchaAsignada = nombreCanchaPrioritaria
-                  usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+                  if (nombreCanchaPrioritaria) {
+                    canchaAsignada = nombreCanchaPrioritaria
+                    usoHorariosPorCancha[nombreCanchaPrioritaria] = (usoHorariosPorCancha[nombreCanchaPrioritaria] || 0) + 1
+                  }
                 } else {
                   // Si no hay cancha prioritaria, usar la primera disponible
-                  canchaAsignada = todasLasCanchas[0].nombre || todasLasCanchas[0]
-                  usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+                  const primera = (todasLasCanchas[0] as any)
+                  const candidata = (primera && typeof primera === 'object' && 'nombre' in primera)
+                    ? (primera.nombre as string | null)
+                    : (typeof primera === 'string' ? primera : null)
+                  if (candidata) {
+                    canchaAsignada = candidata
+                    usoHorariosPorCancha[candidata] = (usoHorariosPorCancha[candidata] || 0) + 1
+                  }
                 }
               }
             }
@@ -1727,10 +1986,6 @@ export async function asignarCanchasAutomaticamente(
               formData.append('cancha', canchaAsignada)
               await updateEncuentro(encuentro.id, formData)
               asignacionesRealizadas++
-              
-              if (canchaAsignada !== nombreCanchaPrioritaria && !registroSecundariaActualizado) {
-                registroUsoSecundarias[canchaAsignada] = (registroUsoSecundarias[canchaAsignada] || 0) + 1
-              }
             }
           }
         }
