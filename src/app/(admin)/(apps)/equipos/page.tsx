@@ -1,10 +1,15 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import '@/styles/react-select.css'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
 import TablePagination from '@/components/table/TablePagination'
+import Loader from '@/components/Loader'
+import { Toast } from 'primereact/toast'
+import 'primereact/resources/themes/lara-light-cyan/theme.css'
+import 'primereact/resources/primereact.min.css'
+import 'primeicons/primeicons.css'
 import { toPascalCase } from '@/helpers/casing'
 import useToggle from '@/hooks/useToggle'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -55,15 +60,10 @@ const Page = () => {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [entrenadores, setEntrenadores] = useState<Entrenador[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [formError, setFormError] = useState<string | null>(null)
-  const [formSuccess, setFormSuccess] = useState<string | null>(null)
-  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null)
   const [editingEquipo, setEditingEquipo] = useState<EquipoWithRelations | null>(null)
-  const [editFormError, setEditFormError] = useState<string | null>(null)
-  const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
   const [selectedCategorias, setSelectedCategorias] = useState<{ value: number; label: string }[]>([])
   const [editSelectedCategorias, setEditSelectedCategorias] = useState<{ value: number; label: string }[]>([])
+  const toast = useRef<any>(null)
   
   // Opciones para React Select
   const categoriaOptions = categorias.map(categoria => ({
@@ -226,7 +226,7 @@ const Page = () => {
     
     // 🔐 Verificar permiso antes de eliminar
     if (!puedeEliminar) {
-      setError('No tienes permiso para eliminar equipos')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No tienes permiso para eliminar equipos', life: 5000 })
       setShowDeleteModal(false)
       return
     }
@@ -239,15 +239,18 @@ const Page = () => {
         const equipoNombre = equipoToDelete.nombre
         await deleteEquipo(equipoToDelete.id)
         setEquipoToDelete(null)
-        setDeleteSuccess(`El equipo "${equipoNombre}" ha sido eliminado exitosamente`)
+        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: `El equipo "${equipoNombre}" ha sido eliminado exitosamente`, life: 5000 })
       }
       
       setPagination({ ...pagination, pageIndex: 0 })
       setShowDeleteModal(false)
-      setError(null)
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al eliminar equipos')
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar equipos'
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
+      // Cerrar el modal cuando hay un error (por ejemplo, dependencias)
+      setShowDeleteModal(false)
+      setEquipoToDelete(null)
     } finally {
       setLoading(false)
     }
@@ -256,13 +259,11 @@ const Page = () => {
   const handleEditClick = (equipo: EquipoWithRelations) => {
     // 🔐 Verificar permiso antes de abrir modal
     if (!puedeEditar) {
-      setError('No tienes permiso para editar equipos')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No tienes permiso para editar equipos', life: 5000 })
       return
     }
     
     setEditingEquipo(equipo)
-    setEditFormError(null)
-    setEditFormSuccess(null)
     
     // Establecer las categorías seleccionadas para React Select
     const categoriasSeleccionadas = equipo.equiposCategoria?.map(ec => ({
@@ -279,14 +280,11 @@ const Page = () => {
     
     // 🔐 Verificar permiso antes de actualizar
     if (!puedeEditar) {
-      setEditFormError('No tienes permiso para editar equipos')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No tienes permiso para editar equipos', life: 5000 })
       return
     }
     
     try {
-      setEditFormError(null)
-      setEditFormSuccess(null)
-      
       // Agregar las categorías seleccionadas al FormData
       editSelectedCategorias.forEach(categoria => {
         formData.append('categoria_ids', categoria.value.toString())
@@ -305,7 +303,7 @@ const Page = () => {
       // Enviar actualización al servidor
       await updateEquipo(editingEquipo.id, formData)
       
-      setEditFormSuccess('Equipo actualizado exitosamente')
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Equipo actualizado exitosamente', life: 5000 })
       setEditSelectedCategorias([]) // Limpiar selección
       toggleEditOffcanvas()
       setEditingEquipo(null)
@@ -323,14 +321,13 @@ const Page = () => {
       }
       
     } catch (error) {
-      setEditFormError(error instanceof Error ? error.message : 'Error al actualizar equipo')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error instanceof Error ? error.message : 'Error al actualizar equipo', life: 5000 })
     }
   }
 
   const loadData = async () => {
     try {
       setLoading(true)
-      setError(null)
       const [equiposData, categoriasData, entrenadoresData] = await Promise.all([
         getEquipos(),
         getCategorias(),
@@ -340,7 +337,7 @@ const Page = () => {
       setCategorias(categoriasData)
       setEntrenadores(entrenadoresData)
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al cargar datos')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error instanceof Error ? error.message : 'Error al cargar datos', life: 5000 })
     } finally {
       setLoading(false)
     }
@@ -349,14 +346,11 @@ const Page = () => {
   const handleCreateEquipo = async (formData: FormData) => {
     // 🔐 Verificar permiso antes de crear
     if (!puedeCrear) {
-      setFormError('No tienes permiso para crear equipos')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No tienes permiso para crear equipos', life: 5000 })
       return
     }
     
     try {
-      setFormError(null)
-      setFormSuccess(null)
-      
       // Agregar las categorías seleccionadas al FormData
       selectedCategorias.forEach(categoria => {
         formData.append('categoria_ids', categoria.value.toString())
@@ -372,12 +366,12 @@ const Page = () => {
       })
       
       await createEquipo(formData)
-      setFormSuccess('Equipo creado exitosamente')
+      toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Equipo creado exitosamente', life: 5000 })
       setSelectedCategorias([]) // Limpiar selección
       toggleOffcanvas()
       await loadData()
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Error al crear equipo')
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error instanceof Error ? error.message : 'Error al crear equipo', life: 5000 })
     }
   }
 
@@ -421,33 +415,22 @@ const Page = () => {
     )
   }
 
-  if (loading) {
-    return (
-      <Container fluid>
-        <PageBreadcrumb title="Equipos" subtitle="Apps" />
-        <div className="text-center py-5">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Cargando...</span>
-          </div>
-        </div>
-      </Container>
-    )
-  }
-
   return (
-    <Container fluid>
+    <Container fluid className="position-relative">
       <PageBreadcrumb title="Equipos" subtitle="Apps" />
 
-      {error && (
-        <Alert variant="danger" dismissible onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {deleteSuccess && (
-        <Alert variant="success" dismissible onClose={() => setDeleteSuccess(null)}>
-          {deleteSuccess}
-        </Alert>
+      {/* Loading overlay con pelota de fútbol */}
+      {loading && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 9999,
+            backdropFilter: 'blur(2px)'
+          }}
+        >
+          <Loader height="100vh" width="100%" overlay={false} useFootball={true} />
+        </div>
       )}
 
       <Row className="justify-content-center">
@@ -576,17 +559,6 @@ const Page = () => {
           </OffcanvasTitle>
         </OffcanvasHeader>
         <OffcanvasBody>
-          {formError && (
-            <Alert variant="danger" dismissible onClose={() => setFormError(null)}>
-              {formError}
-            </Alert>
-          )}
-          {formSuccess && (
-            <Alert variant="success" dismissible onClose={() => setFormSuccess(null)}>
-              {formSuccess}
-            </Alert>
-          )}
-          
           <Form action={handleCreateEquipo}>
             <Row className="g-3">
               <Col lg={12}>
@@ -690,17 +662,6 @@ const Page = () => {
           </OffcanvasTitle>
         </OffcanvasHeader>
         <OffcanvasBody>
-          {editFormError && (
-            <Alert variant="danger" dismissible onClose={() => setEditFormError(null)}>
-              {editFormError}
-            </Alert>
-          )}
-          {editFormSuccess && (
-            <Alert variant="success" dismissible onClose={() => setEditFormSuccess(null)}>
-              {editFormSuccess}
-            </Alert>
-          )}
-          
           {editingEquipo && (
             <Form action={handleUpdateEquipo}>
               <Row className="g-3">
@@ -808,6 +769,8 @@ const Page = () => {
           )}
         </OffcanvasBody>
       </Offcanvas>
+
+      <Toast ref={toast} position="top-right" />
     </Container>
   )
 }

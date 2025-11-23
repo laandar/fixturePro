@@ -60,6 +60,7 @@ const TorneoDetailPage = () => {
   const [tarjetas, setTarjetas] = useState<Tarjeta[]>([])
   const [todosJugadores, setTodosJugadores] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const toast = useRef<any>(null)
@@ -159,7 +160,25 @@ const TorneoDetailPage = () => {
       
       // Primero cargar el torneo para obtener la categoría
       const torneoData = await getTorneoById(torneoId)
-      setTorneo((torneoData ?? null) as TorneoWithRelations | null)
+      // Solo actualizar torneo si se obtuvo un valor válido
+      // Esto previene que torneo se resetee a null si hay un error en una recarga
+      if (torneoData) {
+        setTorneo(torneoData as any)
+      }
+      
+      // Si no hay torneoData y es la primera carga, no continuar
+      if (!torneoData && isInitialLoad) {
+        setLoading(false)
+        setIsInitialLoad(false)
+        return
+      }
+      
+      // Si no hay torneoData pero no es la primera carga, mantener el torneo anterior
+      if (!torneoData && !isInitialLoad) {
+        // No hacer nada, mantener los datos existentes
+        setLoading(false)
+        return
+      }
       
       // Luego cargar el resto de datos en paralelo, incluyendo solo equipos de la categoría del torneo
       const [equiposData, encuentrosData, descansosData, horariosData, canchasData] = await Promise.all([
@@ -191,10 +210,16 @@ const TorneoDetailPage = () => {
       
       
       console.log('Equipos que descansan cargados desde BD:', descansosData)
+      // Marcar que la carga inicial se completó
+      setIsInitialLoad(false)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error al cargar datos'
       setError(errorMessage)
       toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
+      // Si hay un error pero ya teníamos un torneo cargado, mantenerlo
+      // No resetear torneo a null si ya tenía un valor
+      // Marcar que la carga inicial se completó (aunque haya error)
+      setIsInitialLoad(false)
     } finally {
       setLoading(false)
     }
@@ -205,6 +230,14 @@ const TorneoDetailPage = () => {
       loadData()
     }
   }, [torneoId])
+
+  // Resetear loading cuando cambia de pestaña (no mostrar loading al cambiar de tab)
+  useEffect(() => {
+    // Solo resetear si ya no es la carga inicial para evitar interferir con la carga inicial
+    if (!isInitialLoad) {
+      setLoading(false)
+    }
+  }, [activeTab, isInitialLoad])
 
   // Opcionalmente inicializar cancha prioritaria cuando se cargan las canchas
   // Solo si no hay ninguna seleccionada (el usuario puede dejarla vacía para distribución equitativa)
@@ -637,16 +670,14 @@ const TorneoDetailPage = () => {
     try {
       setLoading(true)
       
-      // Ejecutar asignación automática con configuración seleccionada
+      // Ejecutar redistribución automática con reiniciar asignaciones para lograr distribución equitativa
       const resultadoAsignacion = await asignarHorariosAutomaticamente(torneoId, {
-        reiniciarAsignaciones: reiniciarAsignaciones,
-        soloEncuentrosSinHorario: soloEncuentrosSinHorario,
+        reiniciarAsignaciones: true, // Siempre reiniciar para redistribución completa
+        soloEncuentrosSinHorario: false, // Redistribuir todos los encuentros
         ordenPorJornada: true
       })
 
       if (resultadoAsignacion?.success) {
-        setSuccess(`Asignación automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros actualizados`)
-        
         // Recargar datos
         await loadData()
         
@@ -654,10 +685,34 @@ const TorneoDetailPage = () => {
         const resultadoTabla = await generarTablaDistribucionHorarios(torneoId)
         if (resultadoTabla.success) {
           setTablaDistribucion(resultadoTabla.tabla)
+          
+          // Mostrar mensaje con estadísticas de la redistribución
+          const equiposEquitativos = resultadoTabla.tabla.estadisticas.equiposConDistribucionEquitativa
+          const totalEquipos = resultadoTabla.tabla.estadisticas.totalEquipos
+          const porcentaje = Math.round((equiposEquitativos / totalEquipos) * 100)
+          
+          const mensaje = `Redistribución automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros redistribuidos. ${equiposEquitativos}/${totalEquipos} equipos con distribución equitativa (${porcentaje}%)`
+          setSuccess(mensaje)
+          
+          toast.current?.show({ 
+            severity: 'success', 
+            summary: 'Redistribución Automática Completada', 
+            detail: mensaje, 
+            life: 6000 
+          })
+        } else {
+          setSuccess(`Asignación automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros actualizados`)
         }
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error en la asignación automática')
+      const errorMessage = error instanceof Error ? error.message : 'Error en la asignación automática'
+      setError(errorMessage)
+      toast.current?.show({ 
+        severity: 'error', 
+        summary: 'Error', 
+        detail: errorMessage, 
+        life: 5000 
+      })
     } finally {
       setLoading(false)
     }
@@ -870,20 +925,21 @@ const TorneoDetailPage = () => {
     return []
   }
 
-  if (loading) {
-    return (
-      <Container fluid>
-        <PageBreadcrumb title="Detalle del Torneo" subtitle="Apps" />
-        <div className="text-center py-5">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Cargando...</span>
-          </div>
-        </div>
-      </Container>
-    )
-  }
-
+  // Si torneo tiene valor, nunca mostrar overlay (ya se cargó)
+  // Solo mostrar overlay durante la primera carga cuando realmente no hay datos
+  // NUNCA mostrar cuando cambia de pestaña
   if (!torneo) {
+    // Si no hay torneo pero ya se intentó cargar, mostrar error
+    if (!isInitialLoad) {
+      return (
+        <Container fluid>
+          <PageBreadcrumb title="Torneo no encontrado" subtitle="Apps" />
+          <Alert variant="danger">El torneo no fue encontrado</Alert>
+        </Container>
+      )
+    }
+    
+    // Si no hay torneo y no está cargando, mostrar error
     return (
       <Container fluid>
         <PageBreadcrumb title="Torneo no encontrado" subtitle="Apps" />
@@ -891,7 +947,10 @@ const TorneoDetailPage = () => {
       </Container>
     )
   }
+  
+  // Si llegamos aquí, torneo tiene valor - NUNCA mostrar overlay
 
+  // TypeScript ahora sabe que torneo no es null aquí
   const jornadas = getEncuentrosPorJornada()
   const equiposParticipantes = torneo.equiposTorneo || []
   const equiposDisponiblesParaAgregar = equiposDisponibles.filter(
@@ -1004,7 +1063,7 @@ const TorneoDetailPage = () => {
                             justifyContent: 'center'
                           }}
                         >
-                          <span className="d-none d-sm-inline">Equipos Participantes</span>
+                          <span className="d-none d-sm-inline">1. Equipos Participantes</span>
                           <span className="d-sm-none">Equipos</span>
                         </NavLink>
                       </NavItem>
@@ -1012,16 +1071,61 @@ const TorneoDetailPage = () => {
                         <NavLink 
                           eventKey="fixture"
                           className="px-2 px-md-3 py-2"
+                          disabled={equiposParticipantes.length < 2}
                           style={{ 
                             fontSize: '0.875rem',
                             whiteSpace: 'nowrap',
                             minWidth: 'fit-content',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            opacity: equiposParticipantes.length < 2 ? 0.5 : 1,
+                            cursor: equiposParticipantes.length < 2 ? 'not-allowed' : 'pointer'
                           }}
                         >
-                          Fixture
+                          2. Fixture
+                          {equiposParticipantes.length < 2 && <LuX className="ms-1 text-danger" size={14} />}
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="canchas"
+                          className="px-2 px-md-3 py-2"
+                          disabled={encuentros.length === 0}
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: encuentros.length === 0 ? 0.5 : 1,
+                            cursor: encuentros.length === 0 ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          <span className="d-none d-sm-inline">3. Asignar Canchas</span>
+                          <span className="d-sm-none">Canchas</span>
+                          {encuentros.length === 0 && <LuX className="ms-1 text-danger" size={14} />}
+                        </NavLink>
+                      </NavItem>
+                      <NavItem className="flex-shrink-0">
+                        <NavLink 
+                          eventKey="horarios"
+                          className="px-2 px-md-3 py-2"
+                          disabled={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0}
+                          style={{ 
+                            fontSize: '0.875rem',
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 ? 0.5 : 1,
+                            cursor: encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          4. Horarios
+                          {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 && <LuX className="ms-1 text-danger" size={14} />}
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -1039,39 +1143,6 @@ const TorneoDetailPage = () => {
                         >
                           <span className="d-none d-sm-inline">Sistema Dinámico</span>
                           <span className="d-sm-none">Dinámico</span>
-                        </NavLink>
-                      </NavItem>
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
-                          eventKey="horarios"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          Horarios
-                        </NavLink>
-                      </NavItem>
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
-                          eventKey="canchas"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <span className="d-none d-sm-inline">Asignar Canchas</span>
-                          <span className="d-sm-none">Canchas</span>
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -1188,7 +1259,25 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Fixture */}
                 <Tab.Pane eventKey="fixture">
-                  <TorneoFixtureSection
+                  {equiposParticipantes.length < 2 ? (
+                    <Alert variant="warning" className="text-center py-5">
+                      <LuTriangle size={48} className="mb-3 text-warning" />
+                      <h4>⚠️ Paso Bloqueado</h4>
+                      <p className="mb-3">
+                        Necesitas completar el <strong>Paso 1: Equipos Participantes</strong> antes de generar el fixture.
+                      </p>
+                      <p className="text-muted mb-3">
+                        Debes agregar al menos <strong>2 equipos</strong> al torneo para poder generar el calendario de encuentros.
+                      </p>
+                      <Button 
+                        variant="primary" 
+                        onClick={() => setActiveTab('equipos')}>
+                        <LuUsers className="me-2" />
+                        Ir a Agregar Equipos
+                      </Button>
+                    </Alert>
+                  ) : (
+                    <TorneoFixtureSection
                     torneo={torneo}
                     encuentros={encuentros}
                     equiposParticipantes={equiposParticipantes}
@@ -1222,6 +1311,7 @@ const TorneoDetailPage = () => {
                     }}
                     showActions={true}
                   />
+                  )}
                 </Tab.Pane>
 
                 {/* Tab: Sistema Dinámico */}
@@ -1306,9 +1396,43 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Horarios */}
                 <Tab.Pane eventKey="horarios">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h4 className="fw-bold text-primary mb-0">🕐 Gestión de Horarios</h4>
-                    <div className="d-flex gap-2">
+                  {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 ? (
+                    <Alert variant="warning" className="text-center py-5">
+                      <LuTriangle size={48} className="mb-3 text-warning" />
+                      <h4>⚠️ Paso Bloqueado</h4>
+                      <p className="mb-3">
+                        Necesitas completar los pasos anteriores antes de asignar horarios.
+                      </p>
+                      <div className="text-start mx-auto" style={{ maxWidth: '500px' }}>
+                        <p className="mb-2"><strong>Pasos requeridos (en orden):</strong></p>
+                        <ol>
+                          <li className={equiposParticipantes.length >= 2 ? 'text-success' : 'text-danger'}>
+                            {equiposParticipantes.length >= 2 ? '✓' : '✗'} <strong>Paso 1:</strong> Agregar al menos 2 equipos
+                          </li>
+                          <li className={encuentros.length > 0 ? 'text-success' : 'text-danger'}>
+                            {encuentros.length > 0 ? '✓' : '✗'} <strong>Paso 2:</strong> Generar el fixture
+                          </li>
+                          <li className={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length > 0 ? 'text-success' : 'text-danger'}>
+                            {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length > 0 ? '✓' : '✗'} <strong>Paso 3:</strong> Asignar canchas a los encuentros
+                          </li>
+                        </ol>
+                      </div>
+                      <Button 
+                        variant="primary" 
+                        onClick={() => {
+                          if (equiposParticipantes.length < 2) setActiveTab('equipos')
+                          else if (encuentros.length === 0) setActiveTab('fixture')
+                          else setActiveTab('canchas')
+                        }}
+                        className="mt-3">
+                        Ir al Paso Pendiente
+                      </Button>
+                    </Alert>
+                  ) : (
+                    <>
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <h4 className="fw-bold text-primary mb-0">🕐 Paso 4: Gestión de Horarios</h4>
+                      <div className="d-flex gap-2">
                       <Button 
                         variant="info" 
                         size="sm"
@@ -1451,13 +1575,42 @@ const TorneoDetailPage = () => {
                       </Card>
                     </Col>
                   </Row>
+                    </>
+                  )}
                 </Tab.Pane>
 
                 {/* Tab: Asignar Canchas */}
                 <Tab.Pane eventKey="canchas">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h4 className="fw-bold text-primary mb-0">🏟️ Asignación Automática de Canchas</h4>
-                    <div className="d-flex gap-2">
+                  {encuentros.length === 0 ? (
+                    <Alert variant="warning" className="text-center py-5">
+                      <LuTriangle size={48} className="mb-3 text-warning" />
+                      <h4>⚠️ Paso Bloqueado</h4>
+                      <p className="mb-3">
+                        Necesitas completar los pasos anteriores antes de asignar canchas.
+                      </p>
+                      <div className="text-start mx-auto" style={{ maxWidth: '400px' }}>
+                        <p className="mb-2"><strong>Pasos requeridos:</strong></p>
+                        <ol>
+                          <li className={equiposParticipantes.length >= 2 ? 'text-success' : 'text-danger'}>
+                            {equiposParticipantes.length >= 2 ? '✓' : '✗'} Agregar al menos 2 equipos
+                          </li>
+                          <li className={encuentros.length > 0 ? 'text-success' : 'text-danger'}>
+                            {encuentros.length > 0 ? '✓' : '✗'} Generar el fixture
+                          </li>
+                        </ol>
+                      </div>
+                      <Button 
+                        variant="primary" 
+                        onClick={() => setActiveTab(equiposParticipantes.length < 2 ? 'equipos' : 'fixture')}
+                        className="mt-3">
+                        Ir al Paso Pendiente
+                      </Button>
+                    </Alert>
+                  ) : (
+                    <>
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <h4 className="fw-bold text-primary mb-0">🏟️ Paso 3: Asignación Automática de Canchas</h4>
+                      <div className="d-flex gap-2">
                       <Button 
                         variant="info" 
                         size="sm"
@@ -1645,6 +1798,8 @@ const TorneoDetailPage = () => {
                       </Card>
                     </Col>
                   </Row>
+                    </>
+                  )}
                 </Tab.Pane>
 
                 {/* Tab: Sanciones */}
@@ -1844,11 +1999,29 @@ const TorneoDetailPage = () => {
           <Modal.Title>Agregar Equipos al Torneo</Modal.Title>
         </ModalHeader>
         <ModalBody>
-          <p className="text-muted mb-3">
-            Selecciona los equipos que deseas agregar al torneo:
-          </p>
-          <Row>
-            {equiposDisponiblesParaAgregar.map((equipo) => (
+          {torneo.categoria ? (
+            <Alert variant="info" className="mb-3">
+              <LuInfo className="me-2" />
+              Solo se muestran equipos <strong>activos</strong> de la categoría: <strong>{torneo.categoria.nombre}</strong>
+            </Alert>
+          ) : (
+            <Alert variant="warning" className="mb-3">
+              <LuInfo className="me-2" />
+              Este torneo no tiene una categoría asignada. Se mostrarán todos los equipos activos.
+            </Alert>
+          )}
+          {equiposDisponiblesParaAgregar.length === 0 ? (
+            <Alert variant="warning">
+              No hay equipos disponibles para agregar. 
+              {torneo.categoria && ` Todos los equipos de la categoría ${torneo.categoria.nombre} ya están participando o no existen equipos en esta categoría.`}
+            </Alert>
+          ) : (
+            <>
+              <p className="text-muted mb-3">
+                Selecciona los equipos que deseas agregar al torneo ({equiposDisponiblesParaAgregar.length} disponibles):
+              </p>
+              <Row>
+                {equiposDisponiblesParaAgregar.map((equipo) => (
               <Col key={equipo.id} md={6} className="mb-2">
                 <Form.Check
                   type="checkbox"
@@ -1876,14 +2049,20 @@ const TorneoDetailPage = () => {
                 />
               </Col>
             ))}
-          </Row>
+              </Row>
+            </>
+          )}
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setShowAddEquiposModal(false)}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={handleAddEquipos}>
-            Agregar Equipos
+          <Button 
+            variant="primary" 
+            onClick={handleAddEquipos}
+            disabled={equiposDisponiblesParaAgregar.length === 0 || selectedEquipos.length === 0}
+          >
+            Agregar Equipos ({selectedEquipos.length})
           </Button>
         </ModalFooter>
       </Modal>
@@ -2357,10 +2536,25 @@ const TorneoDetailPage = () => {
           {/* Sección de Asignación Automática */}
           <div className="mb-4">
             <div className="d-flex align-items-center justify-content-between mb-3">
-              <h6 className="mb-0 text-success">
-                <LuSettings className="me-2" size={18} />
-                Asignación Automática de Horarios
-              </h6>
+              <div>
+                <h6 className="mb-0 text-success">
+                  <LuSettings className="me-2" size={18} />
+                  Redistribución Automática de Horarios
+                </h6>
+                <small className="text-muted d-block mt-1">
+                  Ejecuta una redistribución automática para lograr una distribución equitativa de horarios entre todos los equipos
+                </small>
+                {tablaDistribucion && tablaDistribucion.estadisticas.equiposConDistribucionEquitativa < tablaDistribucion.estadisticas.totalEquipos && (
+                  <small className="text-warning d-block mt-1">
+                    ⚠️ Se detectaron desequilibrios. Haz clic en "Ejecutar Redistribución" para aplicar la redistribución automática.
+                  </small>
+                )}
+                {tablaDistribucion && tablaDistribucion.estadisticas.equiposConDistribucionEquitativa === tablaDistribucion.estadisticas.totalEquipos && (
+                  <small className="text-success d-block mt-1">
+                    ✅ Distribución equitativa lograda
+                  </small>
+                )}
+              </div>
               <Button 
                 variant="success" 
                 size="sm"
@@ -2370,12 +2564,12 @@ const TorneoDetailPage = () => {
                 {loading ? (
                   <>
                     <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                    Ejecutando...
+                    Redistribuyendo...
                   </>
                 ) : (
                   <>
                     <LuSettings className="me-1" size={14} />
-                    Ejecutar Asignación
+                    Ejecutar Redistribución
                   </>
                 )}
               </Button>
@@ -2460,8 +2654,24 @@ const TorneoDetailPage = () => {
                     </Table>
                   </div>
                   
-                  {/* Leyenda */}
+                  {/* Estadísticas y Leyenda */}
                   <div className="mt-3">
+                    <div className="row mb-2">
+                      <div className="col-md-6">
+                        <small className="text-muted">
+                          <strong>Equipos con distribución equitativa:</strong>{' '}
+                          <Badge bg={tablaDistribucion.estadisticas.equiposConDistribucionEquitativa === tablaDistribucion.estadisticas.totalEquipos ? "success" : "warning"}>
+                            {tablaDistribucion.estadisticas.equiposConDistribucionEquitativa} / {tablaDistribucion.estadisticas.totalEquipos}
+                          </Badge>
+                        </small>
+                      </div>
+                      <div className="col-md-6">
+                        <small className="text-muted">
+                          <strong>Rango esperado por horario:</strong>{' '}
+                          {tablaDistribucion.estadisticas.vecesMinimas} - {tablaDistribucion.estadisticas.vecesMaximas} veces
+                        </small>
+                      </div>
+                    </div>
                     <small className="text-muted">
                       <Badge bg="success" className="me-2">Verde</Badge> = Distribución equitativa
                       <Badge bg="warning" className="ms-3 me-2">Amarillo</Badge> = Fuera del rango esperado

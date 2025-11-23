@@ -19,6 +19,26 @@ const obtenerEtiquetaDia = (dia?: string | null) => {
 	return 'Viernes'
 }
 
+const formatFechaConDia = (fecha?: Date | string | null) => {
+	if (!fecha) return 'Sin fecha'
+	const d = fecha instanceof Date ? fecha : new Date(fecha)
+	if (isNaN(d.getTime())) return 'Sin fecha'
+	const diaSemana = d.toLocaleDateString('es-ES', { weekday: 'long' })
+	const fechaStr = d.toLocaleDateString('es-ES')
+	const diaCapitalizado = diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1)
+	return `${diaCapitalizado} ${fechaStr}`
+}
+
+const formatHora = (iso?: Date | string | null, horarioInicio?: string | null) => {
+	// SIEMPRE usar horario.hora_inicio si está disponible
+	// fecha_programada solo se usa para la fecha, nunca para la hora
+	if (horarioInicio && /^\d{2}:\d{2}/.test(horarioInicio)) {
+		return horarioInicio.slice(0, 5)
+	}
+	// Si no hay horario, no mostrar hora
+	return null
+}
+
 const FixturePorCategoriaPage = () => {
 	const params = useParams()
 	const torneoId = parseInt(params.id as string)
@@ -244,20 +264,41 @@ const FixturePorCategoriaPage = () => {
 														<tbody>
 															{lista
 																.sort((a, b) => {
-																	const da = a.fecha_programada ? new Date(a.fecha_programada).getTime() : 0
-																	const db = b.fecha_programada ? new Date(b.fecha_programada).getTime() : 0
-																	return da - db
+																	// Función para obtener el valor de ordenamiento por hora
+																	const getSortValue = (e: EncuentroWithRelations) => {
+																		// 1) PRIORIZAR horario.hora_inicio (siempre usar la hora del horario asignado)
+																		if (e.horario?.hora_inicio && /^\d{2}:\d{2}/.test(e.horario.hora_inicio)) {
+																			const [hh, mm] = e.horario.hora_inicio.split(':').map(Number)
+																			// Convertir a minutos del día para ordenar correctamente
+																			return hh * 60 + mm
+																		}
+																		// 2) Si no hay horario, usar fecha_programada como respaldo
+																		if (e.fecha_programada) {
+																			const ts = new Date(e.fecha_programada).getTime()
+																			if (!isNaN(ts)) return ts
+																		}
+																		// 3) Último recurso: 0 (sin hora)
+																		return 0
+																	}
+																	return getSortValue(a) - getSortValue(b)
 																})
 																.map(encuentro => (
 																	<tr key={encuentro.id}>
 																		<td>
 																			<div className="d-flex align-items-center gap-2">
 																				<LuClock className="text-muted" />
-																				<span>
-																					{encuentro.fecha_programada
-																						? new Date(encuentro.fecha_programada).toLocaleString()
-																						: 'Sin fecha'}
-																				</span>
+																				<div className="d-flex flex-column">
+																					<span>
+																						{encuentro.fecha_programada
+																							? formatFechaConDia(encuentro.fecha_programada)
+																							: 'Sin fecha'}
+																					</span>
+																					{formatHora(encuentro.fecha_programada, encuentro.horario?.hora_inicio) && (
+																						<small className="text-muted">
+																							{formatHora(encuentro.fecha_programada, encuentro.horario?.hora_inicio)} hs
+																						</small>
+																					)}
+																				</div>
 																			</div>
 																		</td>
 																		<td className="fw-semibold">

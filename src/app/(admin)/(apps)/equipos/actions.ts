@@ -167,6 +167,20 @@ export async function deleteEquipo(id: number) {
       throw new Error('El equipo no existe')
     }
     
+    // Verificar dependencias antes de eliminar
+    const dependencias = await equipoQueries.checkDependencies(id)
+    if (dependencias.tieneDependencias) {
+      const mensajesDependencias: Record<string, string> = {
+        torneos: 'torneos',
+        encuentros: 'encuentros',
+        descansos: 'descansos en torneos'
+      }
+      const dependenciasTexto = dependencias.dependencias
+        .map(dep => mensajesDependencias[dep] || dep)
+        .join(', ')
+      throw new Error(`No se puede eliminar el equipo porque tiene dependencias en: ${dependenciasTexto}. Por favor, elimine primero estas dependencias.`)
+    }
+    
     await equipoQueries.delete(id)
     revalidatePath('/equipos')
   } catch (error) {
@@ -196,6 +210,28 @@ export async function deleteMultipleEquipos(ids: number[]) {
     
     if (equiposNoEncontrados.length > 0) {
       throw new Error('Algunos equipos no existen')
+    }
+    
+    // Verificar dependencias para todos los equipos antes de eliminar
+    const equiposConDependencias: number[] = []
+    for (const id of validIds) {
+      const dependencias = await equipoQueries.checkDependencies(id)
+      if (dependencias.tieneDependencias) {
+        equiposConDependencias.push(id)
+      }
+    }
+    
+    if (equiposConDependencias.length > 0) {
+      const mensajesDependencias: Record<string, string> = {
+        torneos: 'torneos',
+        encuentros: 'encuentros',
+        descansos: 'descansos en torneos'
+      }
+      const nombresEquipos = await Promise.all(
+        equiposConDependencias.map(id => equipoQueries.getById(id))
+      )
+      const nombres = nombresEquipos.map(e => e?.nombre).filter(Boolean).join(', ')
+      throw new Error(`No se pueden eliminar los siguientes equipos porque tienen dependencias: ${nombres}. Por favor, elimine primero estas dependencias.`)
     }
     
     // Eliminar equipos uno por uno para mejor control de errores
@@ -228,7 +264,9 @@ export async function deleteMultipleEquipos(ids: number[]) {
 
 export async function getCategorias() {
   try {
-    return await categoriaQueries.getAll()
+    // Filtrar solo categorías activas
+    const todasLasCategorias = await categoriaQueries.getAll()
+    return todasLasCategorias.filter(categoria => categoria.estado === true)
   } catch (error) {
     console.error('Error al obtener categorías:', error)
     throw new Error('Error al obtener categorías')

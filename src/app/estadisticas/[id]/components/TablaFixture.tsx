@@ -35,13 +35,12 @@ export default function TablaFixture({ encuentros }: { encuentros: Encuentro[] }
 		return `${diaCapitalizado} ${fecha}`
 	}
 	const formatHora = (iso?: string | null, horarioInicio?: string | null) => {
-		if (iso) {
-			const d = new Date(iso)
-			return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-		}
+		// SIEMPRE usar horario.hora_inicio si está disponible
+		// fecha_programada solo se usa para la fecha, nunca para la hora
 		if (horarioInicio && /^\d{2}:\d{2}/.test(horarioInicio)) {
-			return horarioInicio.slice(0,5)
+			return horarioInicio.slice(0, 5)
 		}
+		// Si no hay horario, no mostrar hora
 		return ''
 	}
 	const getEstadoColors = (estado?: string | null) => {
@@ -89,17 +88,18 @@ export default function TablaFixture({ encuentros }: { encuentros: Encuentro[] }
 	}, [encuentros])
 
 	const getSortValue = (e: Encuentro) => {
-		// 1) Si hay fecha con hora, usarla
+		// 1) PRIORIZAR horario.hora_inicio (siempre usar la hora del horario asignado)
+		if (e.horario?.hora_inicio && /^\d{2}:\d{2}/.test(e.horario.hora_inicio)) {
+			const [hh, mm] = e.horario.hora_inicio.split(':').map(Number)
+			// Convertir a minutos del día para ordenar correctamente
+			return hh * 60 + mm
+		}
+		// 2) Si no hay horario, usar fecha_programada como respaldo
 		if (e.fecha_programada) {
 			const ts = new Date(e.fecha_programada).getTime()
 			if (!isNaN(ts)) return ts
 		}
-		// 2) Si no hay hora en fecha, intentar con horario.hora_inicio (HH:MM)
-		if (e.horario?.hora_inicio && /^\d{2}:\d{2}/.test(e.horario.hora_inicio)) {
-			const [hh, mm] = e.horario.hora_inicio.split(':').map(Number)
-			return hh * 60 + mm // minutos del día, suficiente para ordenar dentro de la jornada
-		}
-		// 3) Último recurso: 0
+		// 3) Último recurso: 0 (sin hora)
 		return 0
 	}
 

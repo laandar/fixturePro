@@ -237,6 +237,11 @@ async function evaluarCalidadAsignacion(torneoId: number): Promise<number> {
       for (const horario of horariosDisponibles) {
         const vecesEnHorario = distribucionEquipo[horario.id] || 0
         
+        // CRÍTICO: Penalizar extremadamente si un equipo tiene exactamente 1 vez (NUNCA permitir 1)
+        if (vecesEnHorario === 1) {
+          puntuacionTotal += 10000 // Penalización muy alta para evitar 1 vez
+        }
+        
         // Penalizar si excede el máximo (3 veces)
         if (vecesEnHorario > 3) {
           puntuacionTotal += (vecesEnHorario - 3) * 1000 // Penalización severa
@@ -247,8 +252,8 @@ async function evaluarCalidadAsignacion(torneoId: number): Promise<number> {
           puntuacionTotal += (vecesEnHorario - vecesMaximas) * 100
         }
         
-        // Penalizar si está muy por debajo del mínimo equitativo
-        if (vecesEnHorario < vecesMinimas) {
+        // Penalizar si está muy por debajo del mínimo equitativo (pero no 0, que es válido temporalmente)
+        if (vecesEnHorario < vecesMinimas && vecesEnHorario > 0) {
           puntuacionTotal += (vecesMinimas - vecesEnHorario) * 50
         }
       }
@@ -611,22 +616,8 @@ async function ejecutarIteracionAsignacion(torneoId: number, configuracion: any,
                  !equipoAlcanzoLimiteHorario(encuentro.equipo_visitante_id, jornada, horario.id)
         })
         
-        // FILTRO ULTRA ESTRICTO: Eliminar horarios donde algún equipo ya tiene 2 veces (evitar llegar a 3)
-        const horariosUltraFiltrados = horariosFiltrados.filter(horario => {
-          return !equipoCercaDelLimite(encuentro.equipo_local_id, jornada, horario.id) &&
-                 !equipoCercaDelLimite(encuentro.equipo_visitante_id, jornada, horario.id)
-        })
-        
-        // Priorizar horarios donde algún equipo nunca ha jugado (solo de los ultra filtrados)
-        const horariosPrioritarios = horariosUltraFiltrados.filter(horario => {
-          return equipoNuncaJugoEnHorario(encuentro.equipo_local_id, jornada, horario.id) ||
-                 equipoNuncaJugoEnHorario(encuentro.equipo_visitante_id, jornada, horario.id)
-        })
-        
-        // Jerarquía de selección: Ultra filtrados > Filtrados > Todos
-        const horariosParaEvaluar = horariosPrioritarios.length > 0 ? horariosPrioritarios : 
-                                   horariosUltraFiltrados.length > 0 ? horariosUltraFiltrados :
-                                   horariosFiltrados.length > 0 ? horariosFiltrados : horariosDisponibles
+        // Si no hay horarios filtrados (todos alcanzaron 3), usar todos los disponibles
+        const horariosParaEvaluar = horariosFiltrados.length > 0 ? horariosFiltrados : horariosDisponibles
         
         // Calcular puntuación combinada para cada horario
         const horariosConPuntuacion = horariosParaEvaluar.map(horario => {
@@ -673,48 +664,60 @@ async function ejecutarIteracionAsignacion(torneoId: number, configuracion: any,
           const desviacionLocal = Math.abs(vecesUsadoLocal - distribucionEquitativa.vecesExactas)
           const desviacionVisitante = Math.abs(vecesUsadoVisitante - distribucionEquitativa.vecesExactas)
           
-          // CRÍTICO: Penalizar si ya se ha usado 3 veces (límite absoluto)
+          // CRÍTICO: Penalizar extremadamente si ya se ha usado 3 veces (límite absoluto)
           if (vecesUsadoLocal >= 3) {
-            puntuacionTotal += 15000
+            puntuacionTotal += 20000
           }
           if (vecesUsadoVisitante >= 3) {
-            puntuacionTotal += 15000
+            puntuacionTotal += 20000
           }
           
-          // MUY ALTO: Penalizar si está por encima del máximo permitido
-          if (vecesUsadoLocal > distribucionEquitativa.vecesMaximas) {
-            puntuacionTotal += 1000
+          // CRÍTICO: Penalizar extremadamente si un equipo tiene exactamente 1 vez (NUNCA permitir 1)
+          // Esto asegura que siempre se llegue a 2 o 3, nunca quede en 1
+          if (vecesUsadoLocal === 1) {
+            puntuacionTotal -= 15000 // Bonificar fuertemente para llegar a 2
           }
-          if (vecesUsadoVisitante > distribucionEquitativa.vecesMaximas) {
-            puntuacionTotal += 1000
+          if (vecesUsadoVisitante === 1) {
+            puntuacionTotal -= 15000 // Bonificar fuertemente para llegar a 2
           }
           
-          // CRÍTICO: Bonificar extremadamente si un equipo nunca ha jugado en este horario
+          // CRÍTICO: Bonificar extremadamente si un equipo nunca ha jugado en este horario (0 veces)
+          // Priorizar para llegar a 2 veces
           if (equipoNuncaJugoEnHorario(encuentro.equipo_local_id, jornada, horario.id)) {
-            puntuacionTotal -= 5000
+            puntuacionTotal -= 12000
           }
           if (equipoNuncaJugoEnHorario(encuentro.equipo_visitante_id, jornada, horario.id)) {
-            puntuacionTotal -= 5000
+            puntuacionTotal -= 12000
           }
           
-          // MUY ALTO: Penalizar si un equipo ya tiene 2 veces en este horario (evitar llegar a 3)
-          if (equipoCercaDelLimite(encuentro.equipo_local_id, jornada, horario.id)) {
-            puntuacionTotal += 3000
+          // MUY ALTO: Bonificar si un equipo tiene 0 veces (priorizar llegar a 2)
+          if (vecesUsadoLocal === 0) {
+            puntuacionTotal -= 8000
           }
-          if (equipoCercaDelLimite(encuentro.equipo_visitante_id, jornada, horario.id)) {
-            puntuacionTotal += 3000
-          }
-          
-          // Premiar horarios que están por debajo del mínimo (necesitan más uso)
-          if (vecesUsadoLocal < distribucionEquitativa.vecesMinimas) {
-            puntuacionTotal -= 100
-          }
-          if (vecesUsadoVisitante < distribucionEquitativa.vecesMinimas) {
-            puntuacionTotal -= 100
+          if (vecesUsadoVisitante === 0) {
+            puntuacionTotal -= 8000
           }
           
-          // Penalizar según desviación de la distribución ideal
-          puntuacionTotal += (desviacionLocal + desviacionVisitante) * 50
+          // ALTO: Bonificar si un equipo tiene menos de 2 veces (pero no 0 ni 1, que ya están cubiertos)
+          // Esto cubre casos especiales donde el mínimo es diferente
+          if (vecesUsadoLocal < 2 && vecesUsadoLocal > 1) {
+            puntuacionTotal -= 3000
+          }
+          if (vecesUsadoVisitante < 2 && vecesUsadoVisitante > 1) {
+            puntuacionTotal -= 3000
+          }
+          
+          // MEDIO: Penalizar moderadamente si un equipo ya tiene 2 veces (permitir llegar a 3 si es necesario)
+          // Esto permite que algunos equipos lleguen a 3 veces para lograr la distribución equitativa
+          if (vecesUsadoLocal === 2) {
+            puntuacionTotal += 1000
+          }
+          if (vecesUsadoVisitante === 2) {
+            puntuacionTotal += 1000
+          }
+          
+          // Bajo: Penalizar según desviación de la distribución ideal (ajuste fino)
+          puntuacionTotal += (desviacionLocal + desviacionVisitante) * 20
           
           return {
             horario,
@@ -1008,48 +1011,58 @@ export async function asignarHorariosPorJornada(torneoId: number, jornada: numbe
         const desviacionLocal = Math.abs(vecesUsadoLocal - distribucionEquitativa.vecesExactas)
         const desviacionVisitante = Math.abs(vecesUsadoVisitante - distribucionEquitativa.vecesExactas)
         
-        // CRÍTICO: Penalizar si ya se ha usado 3 veces (límite absoluto)
+        // CRÍTICO: Penalizar extremadamente si ya se ha usado 3 veces (límite absoluto)
         if (vecesUsadoLocal >= 3) {
-          puntuacionTotal += 15000
+          puntuacionTotal += 20000
         }
         if (vecesUsadoVisitante >= 3) {
-          puntuacionTotal += 15000
+          puntuacionTotal += 20000
         }
         
-        // MUY ALTO: Penalizar si está por encima del máximo permitido
-        if (vecesUsadoLocal > distribucionEquitativa.vecesMaximas) {
-          puntuacionTotal += 1000
+        // CRÍTICO: Penalizar extremadamente si un equipo tiene exactamente 1 vez (NUNCA permitir 1)
+        // Esto asegura que siempre se llegue a 2 o 3, nunca quede en 1
+        if (vecesUsadoLocal === 1) {
+          puntuacionTotal -= 15000 // Bonificar fuertemente para llegar a 2
         }
-        if (vecesUsadoVisitante > distribucionEquitativa.vecesMaximas) {
-          puntuacionTotal += 1000
+        if (vecesUsadoVisitante === 1) {
+          puntuacionTotal -= 15000 // Bonificar fuertemente para llegar a 2
         }
         
-        // CRÍTICO: Bonificar extremadamente si un equipo nunca ha jugado en este horario
+        // CRÍTICO: Bonificar extremadamente si un equipo nunca ha jugado en este horario (0 veces)
+        // Priorizar para llegar a 2 veces
         if (equipoNuncaJugoEnHorario(encuentro.equipo_local_id, horario.id)) {
-          puntuacionTotal -= 5000
+          puntuacionTotal -= 12000
         }
         if (equipoNuncaJugoEnHorario(encuentro.equipo_visitante_id, horario.id)) {
-          puntuacionTotal -= 5000
+          puntuacionTotal -= 12000
         }
         
-        // MUY ALTO: Penalizar si un equipo ya tiene 2 veces en este horario (evitar llegar a 3)
-        if (equipoCercaDelLimite(encuentro.equipo_local_id, horario.id)) {
-          puntuacionTotal += 3000
+        // MUY ALTO: Bonificar si un equipo tiene 0 veces (priorizar llegar a 2)
+        if (vecesUsadoLocal === 0) {
+          puntuacionTotal -= 8000
         }
-        if (equipoCercaDelLimite(encuentro.equipo_visitante_id, horario.id)) {
-          puntuacionTotal += 3000
-        }
-        
-        // Premiar horarios que están por debajo del mínimo (necesitan más uso)
-        if (vecesUsadoLocal < distribucionEquitativa.vecesMinimas) {
-          puntuacionTotal -= 100
-        }
-        if (vecesUsadoVisitante < distribucionEquitativa.vecesMinimas) {
-          puntuacionTotal -= 100
+        if (vecesUsadoVisitante === 0) {
+          puntuacionTotal -= 8000
         }
         
-        // Penalizar según desviación de la distribución ideal
-        puntuacionTotal += (desviacionLocal + desviacionVisitante) * 50
+        // ALTO: Bonificar si un equipo tiene menos de 2 veces (pero no 0 ni 1, que ya están cubiertos)
+        if (vecesUsadoLocal < 2 && vecesUsadoLocal > 1) {
+          puntuacionTotal -= 3000
+        }
+        if (vecesUsadoVisitante < 2 && vecesUsadoVisitante > 1) {
+          puntuacionTotal -= 3000
+        }
+        
+        // MEDIO: Penalizar moderadamente si un equipo ya tiene 2 veces (permitir llegar a 3 si es necesario)
+        if (vecesUsadoLocal === 2) {
+          puntuacionTotal += 1000
+        }
+        if (vecesUsadoVisitante === 2) {
+          puntuacionTotal += 1000
+        }
+        
+        // Bajo: Penalizar según desviación de la distribución ideal (ajuste fino)
+        puntuacionTotal += (desviacionLocal + desviacionVisitante) * 20
         
         return {
           horario,

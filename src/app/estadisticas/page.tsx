@@ -22,11 +22,26 @@ export default async function EstadisticasPage() {
     
     if (!torneos || torneos.length === 0) {
       return (
-      <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
-        <Container className="py-5">
+      <div className="min-vh-100" style={{ 
+        backgroundImage: 'url(/uploads/ldba.jpeg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        position: 'relative'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 0
+        }} />
+        <Container className="py-5" style={{ position: 'relative', zIndex: 1 }}>
           <div className="text-center">
-            <h2 className="text-dark">No hay torneos disponibles</h2>
-            <p className="text-muted">Los torneos aparecerán aquí una vez que estén activos o finalizados.</p>
+            <h2 className="text-white">No hay torneos disponibles</h2>
+            <p className="text-white-75">Los torneos aparecerán aquí una vez que estén activos o finalizados.</p>
           </div>
         </Container>
       </div>
@@ -35,13 +50,29 @@ export default async function EstadisticasPage() {
 
     return (
       <div className="min-vh-100" style={{ 
-        background: 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%)',
-        overflow: 'hidden'
+        backgroundImage: 'url(/uploads/ldba.jpeg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        position: 'relative',
+        overflowX: 'hidden',
+        overflowY: 'auto'
       }}>
-        <Container fluid className="py-3 py-md-5">
-          <Row className="align-items-center min-vh-100">
+        {/* Overlay oscuro para mejorar legibilidad del texto */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(51, 65, 85, 0.75) 50%, rgba(30, 41, 59, 0.85) 100%)',
+          zIndex: 0
+        }} />
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '100vw', overflowX: 'hidden' }}>
+        <Container className="py-4 py-md-5 px-3 px-md-4" style={{ maxWidth: '100%', width: '100%', overflowX: 'hidden', paddingLeft: '1rem', paddingRight: '1rem' }}>
+          <Row className="align-items-center min-vh-100 g-0" style={{ marginLeft: 0, marginRight: 0, width: '100%' }}>
             {/* Columna Izquierda - Texto */}
-            <Col xs={12} lg={5} className="text-white ps-0 ps-lg-5 text-center text-lg-start mb-4 mb-lg-0">
+            <Col xs={12} lg={5} className="text-white text-center text-lg-start mb-4 mb-lg-0 px-3 px-lg-4">
               
               <h1 className="display-1 fw-bold mb-3 mb-md-4" style={{ 
                 fontSize: 'clamp(2rem, 8vw, 4.5rem)',
@@ -127,7 +158,7 @@ export default async function EstadisticasPage() {
             </Col>
 
             {/* Columna Derecha - Tarjetas de Torneos */}
-            <Col xs={12} lg={7} className="pe-0 pe-lg-5 position-relative">
+            <Col xs={12} lg={7} className="position-relative px-3 px-lg-4">
               {/* Decorative soccer icons on right side - Hidden on mobile */}
               <div className="position-absolute d-none d-lg-block" style={{
                 top: '8%',
@@ -170,15 +201,17 @@ export default async function EstadisticasPage() {
               </div>
               
               <div style={{ 
-                maxHeight: '70vh',
+                maxHeight: '75vh',
                 overflowY: 'auto',
-                paddingRight: '0',
+                overflowX: 'hidden',
                 position: 'relative',
-                zIndex: 1
+                zIndex: 1,
+                paddingRight: '8px',
+                width: '100%'
               }}>
-                <Row className="g-2 g-md-3">
+                <Row className="g-2" style={{ marginLeft: 0, marginRight: 0, width: '100%' }}>
                   {torneos.map((torneo) => (
-                    <Col key={torneo.id} xs={12} sm={6} lg={6} xl={6}>
+                    <Col key={torneo.id} xs={12} sm={6} lg={12} xl={6} style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', maxWidth: '100%' }}>
                       <TorneoCard torneo={torneo} />
                     </Col>
                   ))}
@@ -187,17 +220,33 @@ export default async function EstadisticasPage() {
             </Col>
           </Row>
         </Container>
+        </div>
       </div>
     )
   } catch (error) {
     console.error('Error al cargar torneos:', error)
     
     return (
-      <div className="min-vh-100" style={{ background: '#f5f5f5' }}>
-        <Container className="py-5">
+      <div className="min-vh-100" style={{ 
+        backgroundImage: 'url(/uploads/ldba.jpeg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        position: 'relative'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 0
+        }} />
+        <Container className="py-5" style={{ position: 'relative', zIndex: 1 }}>
           <div className="text-center">
-            <h2 className="text-dark">Error al cargar torneos</h2>
-            <p className="text-muted">Ocurrió un error al cargar la lista de torneos. Intenta nuevamente más tarde.</p>
+            <h2 className="text-white">Error al cargar torneos</h2>
+            <p className="text-white-75">Ocurrió un error al cargar la lista de torneos. Intenta nuevamente más tarde.</p>
           </div>
         </Container>
       </div>

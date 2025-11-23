@@ -1494,6 +1494,45 @@ export async function asignarCanchasAutomaticamente(
       .from(equipos)
       .innerJoin(equiposTorneo, eq(equipos.id, equiposTorneo.equipo_id))
       .where(eq(equiposTorneo.torneo_id, torneoId))
+      .orderBy(asc(equipos.id)) // Ordenar por ID para tener consistencia
+    
+    // DISTRIBUCIÓN ESPECIAL PARA 12 EQUIPOS
+    // Si hay 12 equipos y hay cancha prioritaria, aplicar distribución estricta:
+    // - 2 equipos: 10 partidos en prioritaria, 1 en secundarias (total 11 partidos)
+    // - 10 equipos: 9 partidos en prioritaria, 2 en secundarias (total 11 partidos)
+    // Total: 11 jornadas × 1 partido en secundarias = 11 partidos = 22 apariciones de equipos
+    // Distribución de las 22 apariciones: 2 equipos × 1 + 10 equipos × 2 = 2 + 20 = 22 ✓
+    const esCategoriaMaxima = equiposDelTorneo.length === 12 && tieneCanchaPrioritaria
+    const equiposConLimite1: Set<number> = new Set()
+    const equiposConLimite2: Set<number> = new Set()
+    
+    if (esCategoriaMaxima) {
+      // Seleccionar 2 equipos que tendrán solo 1 aparición en secundarias
+      // ESTRATEGIA: Seleccionar de forma aleatoria o por criterio específico
+      // Para simplificar, usaremos los primeros 2 equipos ordenados por ID
+      const equiposOrdenados = [...equiposDelTorneo].sort((a, b) => a.id - b.id)
+      for (let i = 0; i < 2 && i < equiposOrdenados.length; i++) {
+        equiposConLimite1.add(equiposOrdenados[i].id)
+      }
+      // Los otros 10 equipos tendrán 2 apariciones en secundarias
+      for (let i = 2; i < equiposOrdenados.length; i++) {
+        equiposConLimite2.add(equiposOrdenados[i].id)
+      }
+    }
+    
+    // Mapa de límites por equipo: { equipo_id: max_apariciones_secundarias }
+    const limiteAparicionesSecundariasPorEquipo: Record<number, number> = {}
+    equiposDelTorneo.forEach(equipo => {
+      if (esCategoriaMaxima && equiposConLimite1.has(equipo.id)) {
+        limiteAparicionesSecundariasPorEquipo[equipo.id] = 1 // 2 equipos: 1 aparición en secundarias
+      } else if (esCategoriaMaxima && equiposConLimite2.has(equipo.id)) {
+        limiteAparicionesSecundariasPorEquipo[equipo.id] = 2 // 10 equipos: 2 apariciones en secundarias
+      } else {
+        limiteAparicionesSecundariasPorEquipo[equipo.id] = 2 // Por defecto: 2 apariciones
+      }
+    })
+    
+    // Para 12 equipos: alternar entre cancha 2 y cancha 3 para el partido sobrante de cada jornada
     
     // Contador total de veces que cada equipo ha jugado en canchas NO priorizadas
     // Estructura: { equipo_id: cantidad_total }
@@ -1549,10 +1588,21 @@ export async function asignarCanchasAutomaticamente(
       return 0
     })
     
-    // Máximo estricto: cada equipo puede jugar máximo 2 veces en canchas NO priorizadas (total)
-    const maxAparicionesSecundarias = 2
     // Máximo por cancha específica: cada equipo puede jugar máximo 1 vez en cada cancha secundaria
     const maxAparicionesPorCancha = 1
+    
+    // Función auxiliar para obtener el límite máximo de apariciones secundarias para un equipo
+    const getMaxAparicionesSecundarias = (equipoId: number): number => {
+      return limiteAparicionesSecundariasPorEquipo[equipoId] || 2
+    }
+    
+    // Función para verificar si un equipo puede jugar en cancha secundaria
+    // ESTRICTA: Verifica el límite específico de cada equipo
+    const puedeJugarEnSecundaria = (equipoId: number): boolean => {
+      const vecesSecundarias = contadorEquipoCanchasSecundarias[equipoId] || 0
+      const limiteMaximo = getMaxAparicionesSecundarias(equipoId)
+      return vecesSecundarias < limiteMaximo // Solo si tiene menos de su límite máximo
+    }
     
     // Contador rotativo para distribución equitativa entre canchas secundarias
     const contadorUsoCanchasSecundarias: Record<string, number> = {}
@@ -1570,6 +1620,73 @@ export async function asignarCanchasAutomaticamente(
     })
     
     let asignacionesRealizadas = 0
+    
+    // PLANIFICACIÓN GLOBAL PARA 12 EQUIPOS:
+    // Pre-planificar qué encuentros van a canchas secundarias para garantizar la distribución exacta
+    // 2 equipos con 1 aparición en secundarias, 10 equipos con 2 apariciones en secundarias
+    const encuentrosParaSecundariasPorJornada: Record<number, number> = {} // { jornada: encuentro_id }
+    
+    if (esCategoriaMaxima) {
+      // Obtener todos los encuentros sin cancha por jornada
+      const todosLosEncuentrosSinCancha: any[] = []
+      for (const jornada of jornadasOrdenadas) {
+        const encuentrosJornada = encuentrosPorJornada[jornada]
+        const encuentrosSinCancha = encuentrosJornada.filter(e => !e.cancha || e.cancha.trim() === '')
+        todosLosEncuentrosSinCancha.push(...encuentrosSinCancha.map(e => ({ ...e, jornada })))
+      }
+      
+      // Contador de apariciones necesarias en secundarias para cada equipo
+      const aparicionesRestantesEnSecundarias: Record<number, number> = {}
+      equiposDelTorneo.forEach(equipo => {
+        const yaAsignadas = contadorEquipoCanchasSecundarias[equipo.id] || 0
+        const limiteEquipo = getMaxAparicionesSecundarias(equipo.id)
+        aparicionesRestantesEnSecundarias[equipo.id] = limiteEquipo - yaAsignadas
+      })
+      
+      // Seleccionar exactamente 1 encuentro por jornada para ir a secundarias
+      // Estrategia: priorizar encuentros donde ambos equipos necesiten más apariciones en secundarias
+      for (const jornada of jornadasOrdenadas) {
+        const encuentrosJornada = encuentrosPorJornada[jornada]
+        const encuentrosSinCancha = encuentrosJornada.filter(e => !e.cancha || e.cancha.trim() === '')
+        
+        if (encuentrosSinCancha.length === 0) continue
+        
+        // Ordenar encuentros por prioridad para ir a secundarias
+        const encuentrosConPuntuacion = encuentrosSinCancha.map(encuentro => {
+          const necesidadLocal = aparicionesRestantesEnSecundarias[encuentro.equipo_local_id] || 0
+          const necesidadVisitante = aparicionesRestantesEnSecundarias[encuentro.equipo_visitante_id] || 0
+          
+          // Si algún equipo ya no necesita más apariciones, penalizar mucho
+          if (necesidadLocal <= 0 || necesidadVisitante <= 0) {
+            return { encuentro, puntuacion: -10000 }
+          }
+          
+          // Priorizar encuentros donde ambos equipos necesiten apariciones
+          // Mayor puntuación = más prioridad
+          const puntuacion = necesidadLocal * 100 + necesidadVisitante * 100
+          
+          return { encuentro, puntuacion }
+        })
+        
+        // Ordenar por puntuación (mayor = más prioridad)
+        encuentrosConPuntuacion.sort((a, b) => b.puntuacion - a.puntuacion)
+        
+        // Seleccionar el mejor encuentro para ir a secundarias
+        const mejorEncuentro = encuentrosConPuntuacion[0]
+        if (mejorEncuentro && mejorEncuentro.puntuacion > 0) {
+          encuentrosParaSecundariasPorJornada[jornada] = mejorEncuentro.encuentro.id
+          
+          // Actualizar contadores de necesidad (simulación)
+          aparicionesRestantesEnSecundarias[mejorEncuentro.encuentro.equipo_local_id] = 
+            (aparicionesRestantesEnSecundarias[mejorEncuentro.encuentro.equipo_local_id] || 0) - 1
+          aparicionesRestantesEnSecundarias[mejorEncuentro.encuentro.equipo_visitante_id] = 
+            (aparicionesRestantesEnSecundarias[mejorEncuentro.encuentro.equipo_visitante_id] || 0) - 1
+        } else {
+          // Fallback: seleccionar el primer encuentro disponible (aunque exceda límites)
+          encuentrosParaSecundariasPorJornada[jornada] = encuentrosSinCancha[0].id
+        }
+      }
+    }
     
     // Asignar canchas por jornada
     for (const jornada of jornadasOrdenadas) {
@@ -1597,26 +1714,269 @@ export async function asignarCanchasAutomaticamente(
         }
       }
       
-      // ESTRATEGIA NUEVA: Asignar primero a la cancha prioritaria hasta completar su capacidad
-      // Luego distribuir el resto equitativamente en canchas secundarias
+      // ESTRATEGIA PARA 12 EQUIPOS:
+      // 1. Cada jornada: exactamente 5 partidos en cancha prioritaria, 1 en secundarias (alternando entre cancha 2 y 3)
+      // 2. Distribución final: 2 equipos (10 en prioritaria + 1 fuera), 10 equipos (9 en prioritaria + 2 fuera)
       
       const encuentrosPendientes = [...encuentrosSinCancha]
       const nombreCanchaPrioritaria = tieneCanchaPrioritaria ? (canchaPrioritaria as any).nombre : null
       
-      // PASO 1: Asignar encuentros a la cancha prioritaria (uno por cada horario disponible)
-      // PRIORIDAD: Llenar la cancha prioritaria hasta completar su capacidad (todos los horarios disponibles)
+      // Recargar encuentros de esta jornada desde BD para tener estado actualizado
+      const encuentrosJornadaActualizados = await encuentroQueries.getByTorneoId(torneoId)
+      const encuentrosJornadaBD = encuentrosJornadaActualizados.filter(e => e.jornada === jornada)
+      
+      // Actualizar canchasPorHorarioEnJornada con estado actual de BD
+      for (const encuentroBD of encuentrosJornadaBD) {
+        if (encuentroBD.cancha && encuentroBD.cancha.trim() !== '' && encuentroBD.horario_id) {
+          const horarioKey = encuentroBD.horario_id
+          if (!canchasPorHorarioEnJornada[horarioKey]) {
+            canchasPorHorarioEnJornada[horarioKey] = {}
+          }
+          canchasPorHorarioEnJornada[horarioKey][encuentroBD.cancha] = true
+        }
+      }
+      
+      // Para 12 equipos: exactamente 5 partidos por jornada en prioritaria, 1 en secundarias
+      const partidosPorJornadaEnPrioritaria = esCategoriaMaxima ? 5 : capacidadCanchaPrioritaria
+      const partidosPorJornadaEnSecundarias = esCategoriaMaxima ? 1 : 0
+      
+      // Contador rotativo para alternar entre canchas secundarias (cancha 2 y cancha 3)
+      // Usar el número de jornada para determinar qué cancha usar (alternar)
+      // Ordenar canchas secundarias por nombre para tener consistencia
+      const canchasSecundariasOrdenadas = canchasRestantes.length >= 2 
+        ? [...canchasRestantes].sort((a: any, b: any) => (a.nombre || '').localeCompare(b.nombre || ''))
+        : []
+      const indiceCanchaSecundaria = (jornada - 1) % 2 // Alterna entre 0 y 1
+      
+      // PASO 1: Para 12 equipos, asignar exactamente 1 partido a canchas secundarias (alternando entre cancha 2 y 3)
+      // IMPORTANTE: Usar la planificación global pre-calculada para garantizar la distribución exacta
+      // CRÍTICO: Debe asignarse ANTES que a la prioritaria para garantizar la distribución
+      if (esCategoriaMaxima && canchasSecundariasOrdenadas.length >= 2 && encuentrosPendientes.length >= partidosPorJornadaEnPrioritaria + 1) {
+        // Obtener el encuentro pre-planificado para esta jornada
+        const encuentroIdParaSecundaria = encuentrosParaSecundariasPorJornada[jornada]
+        const encuentroSeleccionado = encuentroIdParaSecundaria 
+          ? encuentrosPendientes.find(e => e.id === encuentroIdParaSecundaria)
+          : null
+        
+        let encuentroAsignadoASecundaria = false
+        
+        // Si tenemos un encuentro pre-planificado, intentar asignarlo
+        if (encuentroSeleccionado) {
+          const encuentro = encuentroSeleccionado
+          
+          // Verificar que ambos equipos pueden ir a secundarias
+          const vecesSecundariasLocal = contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0
+          const vecesSecundariasVisitante = contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0
+          const maxAparicionesLocal = getMaxAparicionesSecundarias(encuentro.equipo_local_id)
+          const maxAparicionesVisitante = getMaxAparicionesSecundarias(encuentro.equipo_visitante_id)
+          
+          // Si un equipo ya alcanzó su límite, no usar este encuentro (buscar en fallback)
+          const puedeUsarEsteEncuentro = vecesSecundariasLocal < maxAparicionesLocal && 
+              vecesSecundariasVisitante < maxAparicionesVisitante
+          
+          if (puedeUsarEsteEncuentro) {
+          
+          // Seleccionar la cancha secundaria según la jornada (alternar entre cancha 2 y cancha 3)
+          const canchaSecundariaSeleccionada = canchasSecundariasOrdenadas[indiceCanchaSecundaria]
+          const nombreCanchaSecundaria = canchaSecundariaSeleccionada.nombre
+          
+          const horarioKey = encuentro.horario_id || 'sin_horario'
+          
+          // Verificar SIEMPRE desde BD qué canchas están ocupadas en este horario
+          const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
+          const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
+          
+          const canchasOcupadasEnHorarioBD = encuentrosJornadaBDCheck
+            .filter(e => e.horario_id === horarioKey && e.cancha && e.cancha.trim() !== '')
+            .map(e => e.cancha)
+          const canchaOcupada = canchasOcupadasEnHorarioBD.includes(nombreCanchaSecundaria)
+          
+          if (!canchaOcupada) {
+            // Verificar una vez más que ambos equipos pueden ir a secundarias
+            const vecesSecundariasLocalActual = contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0
+            const vecesSecundariasVisitanteActual = contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0
+            
+            if (vecesSecundariasLocalActual < maxAparicionesLocal && 
+                vecesSecundariasVisitanteActual < maxAparicionesVisitante) {
+              
+              // Asignar a cancha secundaria
+              const formData = new FormData()
+              formData.append('cancha', nombreCanchaSecundaria)
+              await updateEncuentro(encuentro.id, formData)
+              asignacionesRealizadas++
+              encuentroAsignadoASecundaria = true
+              
+              // Actualizar contadores
+              contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] = 
+                (contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0) + 1
+              contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] = 
+                (contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0) + 1
+              
+              if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+              }
+              if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+              }
+              contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaSecundaria] = 
+                (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaSecundaria] || 0) + 1
+              contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaSecundaria] = 
+                (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaSecundaria] || 0) + 1
+              
+              contadorUsoCanchasSecundarias[nombreCanchaSecundaria] = 
+                (contadorUsoCanchasSecundarias[nombreCanchaSecundaria] || 0) + 1
+              usoHorariosPorCancha[nombreCanchaSecundaria] = 
+                (usoHorariosPorCancha[nombreCanchaSecundaria] || 0) + 1
+              
+              // Actualizar registro local INMEDIATAMENTE
+              if (!canchasPorHorarioEnJornada[horarioKey]) {
+                canchasPorHorarioEnJornada[horarioKey] = {}
+              }
+              canchasPorHorarioEnJornada[horarioKey][nombreCanchaSecundaria] = true
+              
+              // Recargar encuentros desde BD después de asignar
+              const encuentroActualizado = await encuentroQueries.getById(encuentro.id)
+              if (encuentroActualizado) {
+                const indexEnBD = encuentrosJornadaBD.findIndex(e => e.id === encuentro.id)
+                if (indexEnBD !== -1) {
+                  encuentrosJornadaBD[indexEnBD] = encuentroActualizado as any
+                } else {
+                  encuentrosJornadaBD.push(encuentroActualizado as any)
+                }
+              }
+              
+              // Remover de pendientes INMEDIATAMENTE
+              const indexEnPendientes = encuentrosPendientes.indexOf(encuentro)
+              if (indexEnPendientes !== -1) {
+                encuentrosPendientes.splice(indexEnPendientes, 1)
+              }
+            }
+          }
+          }
+        }
+        
+        // FALLBACK: Si no se pudo asignar ningún encuentro a secundarias por límites, asignar el primero disponible
+        // Esto asegura que siempre haya exactamente 1 partido en secundarias por jornada
+        if (!encuentroAsignadoASecundaria && encuentrosPendientes.length >= 6 && canchasSecundariasOrdenadas.length >= 2) {
+          // Buscar cualquier encuentro disponible que pueda ir a secundarias (relajar restricciones)
+          const canchaSecundariaSeleccionada = canchasSecundariasOrdenadas[indiceCanchaSecundaria]
+          const nombreCanchaSecundaria = canchaSecundariaSeleccionada.nombre
+          
+          // Intentar con el primer encuentro pendiente
+          const encuentroFallback = encuentrosPendientes[0]
+          if (encuentroFallback) {
+            const horarioKey = encuentroFallback.horario_id || 'sin_horario'
+            
+            // Verificar desde BD si la cancha secundaria está ocupada en este horario
+            const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
+            const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
+            
+            const canchasOcupadasEnHorarioBD = encuentrosJornadaBDCheck
+              .filter(e => e.horario_id === horarioKey && e.cancha && e.cancha.trim() !== '')
+              .map(e => e.cancha)
+            const canchaOcupada = canchasOcupadasEnHorarioBD.includes(nombreCanchaSecundaria)
+            
+            if (!canchaOcupada) {
+              // Asignar a cancha secundaria (aunque un equipo pueda haber alcanzado su límite)
+              const formData = new FormData()
+              formData.append('cancha', nombreCanchaSecundaria)
+              await updateEncuentro(encuentroFallback.id, formData)
+              asignacionesRealizadas++
+              encuentroAsignadoASecundaria = true
+              
+              // Actualizar contadores (incluso si excede límites, para mantener consistencia)
+              contadorEquipoCanchasSecundarias[encuentroFallback.equipo_local_id] = 
+                (contadorEquipoCanchasSecundarias[encuentroFallback.equipo_local_id] || 0) + 1
+              contadorEquipoCanchasSecundarias[encuentroFallback.equipo_visitante_id] = 
+                (contadorEquipoCanchasSecundarias[encuentroFallback.equipo_visitante_id] || 0) + 1
+              
+              if (!contadorEquipoCanchaEspecifica[encuentroFallback.equipo_local_id]) {
+                contadorEquipoCanchaEspecifica[encuentroFallback.equipo_local_id] = {}
+              }
+              if (!contadorEquipoCanchaEspecifica[encuentroFallback.equipo_visitante_id]) {
+                contadorEquipoCanchaEspecifica[encuentroFallback.equipo_visitante_id] = {}
+              }
+              contadorEquipoCanchaEspecifica[encuentroFallback.equipo_local_id][nombreCanchaSecundaria] = 
+                (contadorEquipoCanchaEspecifica[encuentroFallback.equipo_local_id][nombreCanchaSecundaria] || 0) + 1
+              contadorEquipoCanchaEspecifica[encuentroFallback.equipo_visitante_id][nombreCanchaSecundaria] = 
+                (contadorEquipoCanchaEspecifica[encuentroFallback.equipo_visitante_id][nombreCanchaSecundaria] || 0) + 1
+              
+              contadorUsoCanchasSecundarias[nombreCanchaSecundaria] = 
+                (contadorUsoCanchasSecundarias[nombreCanchaSecundaria] || 0) + 1
+              usoHorariosPorCancha[nombreCanchaSecundaria] = 
+                (usoHorariosPorCancha[nombreCanchaSecundaria] || 0) + 1
+              
+              // Actualizar registro local
+              if (!canchasPorHorarioEnJornada[horarioKey]) {
+                canchasPorHorarioEnJornada[horarioKey] = {}
+              }
+              canchasPorHorarioEnJornada[horarioKey][nombreCanchaSecundaria] = true
+              
+              // Recargar encuentros desde BD
+              const encuentroActualizado = await encuentroQueries.getById(encuentroFallback.id)
+              if (encuentroActualizado) {
+                const indexEnBD = encuentrosJornadaBD.findIndex(e => e.id === encuentroFallback.id)
+                if (indexEnBD !== -1) {
+                  encuentrosJornadaBD[indexEnBD] = encuentroActualizado as any
+                } else {
+                  encuentrosJornadaBD.push(encuentroActualizado as any)
+                }
+              }
+              
+              // Remover de pendientes
+              const indexEnPendientes = encuentrosPendientes.indexOf(encuentroFallback)
+              if (indexEnPendientes !== -1) {
+                encuentrosPendientes.splice(indexEnPendientes, 1)
+              }
+            }
+          }
+        }
+      }
+      
+      // PASO 2: Asignar exactamente 5 partidos a la cancha prioritaria (para 12 equipos)
+      // Para otras configuraciones: llenar hasta completar su capacidad
+      // CRÍTICO: Después de asignar 1 partido a secundarias, los 5 restantes van a prioritaria
       if (tieneCanchaPrioritaria && encuentrosPendientes.length > 0) {
+        // Para 12 equipos: limitar a exactamente 5 partidos por jornada en prioritaria
+        // Después de asignar 1 a secundarias, deben quedar exactamente 5 para prioritaria
+        const limitePartidosPrioritaria = esCategoriaMaxima ? 5 : horariosOrdenados.length
+        
+        // Para 12 equipos: verificar cuántos partidos ya están asignados a prioritaria en esta jornada
+        const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
+        const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
+        const partidosYaAsignadosAPrioritaria = encuentrosJornadaBDCheck.filter(e => 
+          e.cancha === nombreCanchaPrioritaria
+        ).length
+        
+        // Si ya hay 5 partidos asignados a prioritaria (para 12 equipos), no asignar más
+        // (Esto se verifica dentro del loop de encuentros)
+        
         // FASE 1: Asignar encuentros que ya tienen horario a la cancha prioritaria en ese horario
-        // IMPORTANTE: Procesar uno por uno y actualizar el registro inmediatamente para evitar conflictos
+        // IMPORTANTE: Procesar uno por uno y recargar estado para evitar conflictos
         const encuentrosConHorario = encuentrosPendientes.filter(e => e.horario_id)
         for (const encuentro of encuentrosConHorario) {
+          // Verificar cuántos partidos ya están asignados a la prioritaria en esta jornada
+          const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
+          const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
+          const partidosAsignadosAPrioritaria = encuentrosJornadaBDCheck.filter(e => 
+            e.cancha === nombreCanchaPrioritaria
+          ).length
+          
+          // Si ya alcanzamos el límite de 5 partidos en prioritaria (para 12 equipos), no asignar más
+          if (esCategoriaMaxima && partidosAsignadosAPrioritaria >= limitePartidosPrioritaria) {
+            break // Ya tenemos exactamente 5 partidos en prioritaria
+          }
+          
           const horarioKey = encuentro.horario_id ?? 'sin_horario'
           
-          // Verificar si la cancha prioritaria ya está ocupada en este horario
-          // (verificar después de cada asignación para evitar conflictos)
-          const canchaOcupadaEnHorario = nombreCanchaPrioritaria
-            ? (canchasPorHorarioEnJornada[horarioKey]?.[nombreCanchaPrioritaria] || false)
-            : false
+          // Verificar SIEMPRE antes de asignar si la cancha prioritaria ya está ocupada en este horario
+          const encuentrosEnHorario = encuentrosJornadaBDCheck.filter(e => 
+            e.horario_id === horarioKey && 
+            e.cancha === nombreCanchaPrioritaria &&
+            e.id !== encuentro.id // Excluir el encuentro actual
+          )
+          
+          const canchaOcupadaEnHorario = encuentrosEnHorario.length > 0
           
           if (!canchaOcupadaEnHorario && nombreCanchaPrioritaria) {
             // Verificar que el encuentro aún está en pendientes (no fue asignado en otra iteración)
@@ -1631,11 +1991,22 @@ export async function asignarCanchasAutomaticamente(
             await updateEncuentro(encuentro.id, formData)
             asignacionesRealizadas++
             
-            // Registrar la asignación INMEDIATAMENTE para evitar conflictos
+            // Actualizar registro local INMEDIATAMENTE
             if (!canchasPorHorarioEnJornada[horarioKey]) {
               canchasPorHorarioEnJornada[horarioKey] = {}
             }
             canchasPorHorarioEnJornada[horarioKey][nombreCanchaPrioritaria] = true
+            
+            // Recargar encuentros desde BD después de asignar para mantener estado actualizado
+            const encuentroActualizado = await encuentroQueries.getById(encuentro.id)
+            if (encuentroActualizado) {
+              const indexEnBD = encuentrosJornadaBD.findIndex(e => e.id === encuentro.id)
+              if (indexEnBD !== -1) {
+                encuentrosJornadaBD[indexEnBD] = encuentroActualizado as any
+              } else {
+                encuentrosJornadaBD.push(encuentroActualizado as any)
+              }
+            }
             
             // Remover de pendientes INMEDIATAMENTE
             encuentrosPendientes.splice(indexEnPendientes, 1)
@@ -1645,21 +2016,36 @@ export async function asignarCanchasAutomaticamente(
           }
         }
         
-        // FASE 2: Llenar los horarios restantes con encuentros sin horario o reasignar encuentros con horario
-        // IMPORTANTE: Solo llenar hasta completar la capacidad de la cancha prioritaria (cantidad de horarios)
+        // FASE 2: Llenar los horarios restantes de la cancha prioritaria hasta llegar al límite
+        // IMPORTANTE: Para 12 equipos, limitar a exactamente 5 partidos por jornada en prioritaria
         for (let i = 0; i < horariosOrdenados.length && encuentrosPendientes.length > 0; i++) {
+          // Verificar cuántos partidos ya están asignados a la prioritaria en esta jornada
+          const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
+          const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
+          const partidosAsignadosAPrioritaria = encuentrosJornadaBDCheck.filter(e => 
+            e.cancha === nombreCanchaPrioritaria
+          ).length
+          
+          // Si ya alcanzamos el límite de 5 partidos en prioritaria (para 12 equipos), no asignar más
+          if (esCategoriaMaxima && partidosAsignadosAPrioritaria >= limitePartidosPrioritaria) {
+            break
+          }
+          
           const horario = horariosOrdenados[i]
           const horarioKey = horario.id
           
-          // Verificar si la cancha prioritaria ya está ocupada en este horario
-          const canchaOcupadaEnHorario = canchasPorHorarioEnJornada[horarioKey]?.[nombreCanchaPrioritaria] || false
+          // Verificar SIEMPRE desde BD si la cancha prioritaria ya está ocupada en este horario
+          const encuentrosEnHorarioBD = encuentrosJornadaBDCheck.filter(e => 
+            e.horario_id === horarioKey && 
+            e.cancha === nombreCanchaPrioritaria
+          )
+          const canchaOcupadaEnHorario = encuentrosEnHorarioBD.length > 0
           
           if (!canchaOcupadaEnHorario) {
             // PRIORIDAD 1: Buscar un encuentro sin horario
             let encuentroParaAsignar = encuentrosPendientes.find(e => !e.horario_id)
             
             // PRIORIDAD 2: Si no hay encuentro sin horario, buscar cualquier encuentro pendiente
-            // (esto asegura que se llene la cancha prioritaria en todos los horarios)
             if (!encuentroParaAsignar && encuentrosPendientes.length > 0) {
               encuentroParaAsignar = encuentrosPendientes[0]
             }
@@ -1669,6 +2055,15 @@ export async function asignarCanchasAutomaticamente(
               const indexEnPendientes = encuentrosPendientes.indexOf(encuentroParaAsignar)
               if (indexEnPendientes === -1) {
                 continue // El encuentro ya fue procesado, saltar
+              }
+              
+              // Verificar UNA VEZ MÁS desde BD antes de asignar (evitar condición de carrera)
+              const ultimaVerificacion = encuentrosJornadaBDCheck.filter(e => 
+                e.horario_id === horarioKey && 
+                e.cancha === nombreCanchaPrioritaria
+              )
+              if (ultimaVerificacion.length > 0) {
+                continue // Alguien más asignó, saltar este horario
               }
               
               // Asignar cancha
@@ -1690,11 +2085,22 @@ export async function asignarCanchasAutomaticamente(
                 }
               }
               
-              // Registrar la asignación INMEDIATAMENTE para evitar conflictos
+              // Actualizar registro local INMEDIATAMENTE
               if (!canchasPorHorarioEnJornada[horarioKey]) {
                 canchasPorHorarioEnJornada[horarioKey] = {}
               }
               canchasPorHorarioEnJornada[horarioKey][nombreCanchaPrioritaria] = true
+              
+              // Recargar encuentros desde BD después de asignar
+              const encuentroActualizado = await encuentroQueries.getById(encuentroParaAsignar.id)
+              if (encuentroActualizado) {
+                const indexEnBD = encuentrosJornadaBD.findIndex(e => e.id === encuentroParaAsignar.id)
+                if (indexEnBD !== -1) {
+                  encuentrosJornadaBD[indexEnBD] = encuentroActualizado as any
+                } else {
+                  encuentrosJornadaBD.push(encuentroActualizado as any)
+                }
+              }
               
               // Remover de pendientes INMEDIATAMENTE
               encuentrosPendientes.splice(indexEnPendientes, 1)
@@ -1706,7 +2112,8 @@ export async function asignarCanchasAutomaticamente(
         }
       }
       
-      // PASO 2: Asignar encuentros restantes a canchas secundarias (distribución equitativa)
+      // PASO 3: Asignar encuentros restantes SOLO si no hay cancha prioritaria o ya alcanzaron límites
+      // IMPORTANTE: Si hay cancha prioritaria, NO asignar más encuentros a secundarias si algún equipo alcanzó el límite
       if (encuentrosPendientes.length > 0) {
         // Si no hay cancha prioritaria, distribuir equitativamente entre todas las canchas
         if (!tieneCanchaPrioritaria) {
@@ -1789,26 +2196,20 @@ export async function asignarCanchasAutomaticamente(
             }
           }
         } else {
-          // Si hay cancha prioritaria, asignar a canchas secundarias con restricciones
+          // Si hay cancha prioritaria, NUNCA asignar a secundarias si algún equipo alcanzó el límite de 2
+          // TODOS los encuentros restantes deben ir a cancha prioritaria
           for (const encuentro of encuentrosPendientes) {
             let canchaAsignada: string | null = null
             const horarioKey = encuentro.horario_id || 'sin_horario'
             const canchasOcupadasParaEsteHorario = canchasPorHorarioEnJornada[horarioKey] || {}
             
-            // Verificar si alguno de los equipos ya alcanzó el límite de 2 apariciones
-            const vecesSecundariasLocal = contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0
-            const vecesSecundariasVisitante = contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0
+            // REGLA ESTRICTA: Verificar si AMBOS equipos pueden jugar en canchas secundarias
+            // Un equipo puede jugar si tiene menos de 2 apariciones en secundarias
+            const puedeLocal = puedeJugarEnSecundaria(encuentro.equipo_local_id)
+            const puedeVisitante = puedeJugarEnSecundaria(encuentro.equipo_visitante_id)
+            const ambosEquiposPuedenUsarSecundarias = puedeLocal && puedeVisitante
             
-            // REGLA ESTRICTA: Si CUALQUIERA de los equipos ya alcanzó el límite de 2, NO usar canchas secundarias
-            const algunEquipoAlcanzoLimite = 
-              vecesSecundariasLocal >= maxAparicionesSecundarias || 
-              vecesSecundariasVisitante >= maxAparicionesSecundarias
-            
-            // Solo usar canchas secundarias si AMBOS equipos tienen menos de 2 apariciones
-            const ambosEquiposPuedenUsarSecundarias = 
-              vecesSecundariasLocal < maxAparicionesSecundarias && 
-              vecesSecundariasVisitante < maxAparicionesSecundarias
-            
+            // SOLO intentar asignar a secundarias si AMBOS equipos pueden (ambos tienen menos de 2)
             if (ambosEquiposPuedenUsarSecundarias) {
               // Buscar canchas secundarias disponibles para este horario
               const canchasDisponiblesParaHorario = canchasRestantes.filter((cancha: any) => {
@@ -1832,6 +2233,8 @@ export async function asignarCanchasAutomaticamente(
                     (vecesVisitanteEnEstaCancha >= maxAparicionesPorCancha ? 10000 : 0)
                   
                   // Calcular suma de apariciones de ambos equipos en canchas secundarias
+                  const vecesSecundariasLocal = contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0
+                  const vecesSecundariasVisitante = contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0
                   const sumaAparicionesEquipos = vecesSecundariasLocal + vecesSecundariasVisitante
                   
                   // Uso rotativo de la cancha (distribución equitativa)
@@ -1850,17 +2253,23 @@ export async function asignarCanchasAutomaticamente(
                 if (mejorCancha) {
                   const nombreMejorCancha = mejorCancha.nombre
                   
-                  // Verificar una vez más que AMBOS equipos pueden usar canchas secundarias
+                  // VERIFICACIÓN FINAL ESTRICTA: Doble verificación de límites
                   const vecesSecundariasLocalActual = contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0
                   const vecesSecundariasVisitanteActual = contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0
+                  
+                  // Obtener límites específicos para cada equipo
+                  const limiteLocal = getMaxAparicionesSecundarias(encuentro.equipo_local_id)
+                  const limiteVisitante = getMaxAparicionesSecundarias(encuentro.equipo_visitante_id)
                   
                   // Verificar que ningún equipo ya jugó en esta cancha específica
                   const vecesLocalEnEstaCanchaActual = contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]?.[nombreMejorCancha] || 0
                   const vecesVisitanteEnEstaCanchaActual = contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]?.[nombreMejorCancha] || 0
                   
-                  // SOLO asignar si AMBOS equipos tienen menos de 2 apariciones Y ninguno ya jugó en esta cancha
-                  if (vecesSecundariasLocalActual < maxAparicionesSecundarias && 
-                      vecesSecundariasVisitanteActual < maxAparicionesSecundarias &&
+                  // SOLO asignar si:
+                  // 1. AMBOS equipos tienen menos de su límite específico en secundarias (1 o 2)
+                  // 2. Ninguno ya jugó en esta cancha específica
+                  if (vecesSecundariasLocalActual < limiteLocal && 
+                      vecesSecundariasVisitanteActual < limiteVisitante &&
                       vecesLocalEnEstaCanchaActual < maxAparicionesPorCancha &&
                       vecesVisitanteEnEstaCanchaActual < maxAparicionesPorCancha) {
                     canchaAsignada = nombreMejorCancha
@@ -1895,82 +2304,45 @@ export async function asignarCanchasAutomaticamente(
               }
             }
             
-            // Si no se pudo asignar a cancha secundaria, usar la prioritaria como fallback
+            // FALLBACK: Si no se pudo asignar a cancha secundaria, SIEMPRE usar la prioritaria
+            // IMPORTANTE: NUNCA asignar a cancha secundaria en fallback si algún equipo alcanzó el límite
             if (!canchaAsignada && tieneCanchaPrioritaria) {
               const nombreCanchaPrioritaria = (canchaPrioritaria as any).nombre
-              if (!canchasOcupadasParaEsteHorario[nombreCanchaPrioritaria]) {
-                canchaAsignada = nombreCanchaPrioritaria
-                usoHorariosPorCancha[nombreCanchaPrioritaria] = 
-                  (usoHorariosPorCancha[nombreCanchaPrioritaria] || 0) + 1
-              }
+              // Asignar a cancha prioritaria aunque esté ocupada en el horario (es el único recurso)
+              canchaAsignada = nombreCanchaPrioritaria
+              usoHorariosPorCancha[nombreCanchaPrioritaria] = 
+                (usoHorariosPorCancha[nombreCanchaPrioritaria] || 0) + 1
             }
             
-            // FALLBACK FINAL: Si aún no se asignó ninguna cancha, buscar cualquier cancha disponible
-            // Esto asegura que todos los encuentros tengan cancha asignada
-            if (!canchaAsignada) {
-              // Buscar todas las canchas disponibles (incluyendo la prioritaria si existe)
-              const todasLasCanchas = tieneCanchaPrioritaria 
-                ? [canchaPrioritaria, ...canchasRestantes]
-                : canchasRestantes
+            // FALLBACK FINAL: Si aún no se asignó y no hay cancha prioritaria, usar primera secundaria disponible
+            // PERO solo si ambos equipos pueden (menos de 2 apariciones)
+            if (!canchaAsignada && !tieneCanchaPrioritaria) {
+              const puedeLocal = puedeJugarEnSecundaria(encuentro.equipo_local_id)
+              const puedeVisitante = puedeJugarEnSecundaria(encuentro.equipo_visitante_id)
               
-              // Primero intentar encontrar una cancha que no esté ocupada en este horario
-              const canchaDisponible = todasLasCanchas.find((cancha: any) => {
-                const nombreCancha = cancha.nombre || cancha
-                return !canchasOcupadasParaEsteHorario[nombreCancha]
-              })
-              
-              if (canchaDisponible) {
-                const candidataCancha = (typeof canchaDisponible === 'string')
-                  ? canchaDisponible
-                  : (canchaDisponible?.nombre ?? null)
-                if (candidataCancha) {
-                  canchaAsignada = candidataCancha
-                  usoHorariosPorCancha[candidataCancha] = (usoHorariosPorCancha[candidataCancha] || 0) + 1
-                }
-                
-                // Si es una cancha secundaria, actualizar contadores
-                if (tieneCanchaPrioritaria && canchaAsignada !== nombreCanchaPrioritaria) {
+              // Solo usar secundarias si ambos equipos pueden
+              if (puedeLocal && puedeVisitante && canchasRestantes.length > 0) {
+                const primeraDisponible = canchasRestantes[0]?.nombre ?? null
+                if (primeraDisponible) {
+                  canchaAsignada = primeraDisponible
+                  usoHorariosPorCancha[primeraDisponible] = (usoHorariosPorCancha[primeraDisponible] || 0) + 1
+                  
+                  // Actualizar contadores
                   contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] = 
                     (contadorEquipoCanchasSecundarias[encuentro.equipo_local_id] || 0) + 1
                   contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] = 
                     (contadorEquipoCanchasSecundarias[encuentro.equipo_visitante_id] || 0) + 1
                   
-                  if (canchaAsignada) {
-                    if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
-                      contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
-                    }
-                    if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
-                      contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
-                    }
-                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
-                      (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
-                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
-                      (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
+                  if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
                   }
-                  
-                  if (canchaAsignada) {
-                    contadorUsoCanchasSecundarias[canchaAsignada] = 
-                      (contadorUsoCanchasSecundarias[canchaAsignada] || 0) + 1
+                  if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
                   }
-                }
-              } else if (todasLasCanchas.length > 0) {
-                // Si todas las canchas están ocupadas en este horario, usar la cancha prioritaria
-                // como último recurso (habrá conflicto pero al menos se asigna)
-                if (tieneCanchaPrioritaria) {
-                  if (nombreCanchaPrioritaria) {
-                    canchaAsignada = nombreCanchaPrioritaria
-                    usoHorariosPorCancha[nombreCanchaPrioritaria] = (usoHorariosPorCancha[nombreCanchaPrioritaria] || 0) + 1
-                  }
-                } else {
-                  // Si no hay cancha prioritaria, usar la primera disponible
-                  const primera = (todasLasCanchas[0] as any)
-                  const candidata = (primera && typeof primera === 'object' && 'nombre' in primera)
-                    ? (primera.nombre as string | null)
-                    : (typeof primera === 'string' ? primera : null)
-                  if (candidata) {
-                    canchaAsignada = candidata
-                    usoHorariosPorCancha[candidata] = (usoHorariosPorCancha[candidata] || 0) + 1
-                  }
+                  contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][primeraDisponible] = 
+                    (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][primeraDisponible] || 0) + 1
+                  contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][primeraDisponible] = 
+                    (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][primeraDisponible] || 0) + 1
                 }
               }
             }

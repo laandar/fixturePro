@@ -13,6 +13,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
+    "db:check": "tsx src/db/check-database.ts",
+    "db:check-schema": "drizzle-kit check",
     "db:seed": "tsx src/db/seed.ts",
     "auth:seed-admin": "tsx src/lib/seed-admin.ts",
     "seed:roles-menus": "tsx src/db/seed-roles-menus.ts",

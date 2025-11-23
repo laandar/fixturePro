@@ -46,14 +46,17 @@ export const equipoQueries = {
     });
   },
 
-  // Obtener equipos por categoría con relaciones
+  // Obtener equipos por categoría con relaciones (solo activos)
   getByCategoriaWithRelations: async (categoriaId: number) => {
     return await db.query.equipos.findMany({
-      where: (equipos, { exists }) => exists(
-        db.select().from(equipoCategoria).where(
-          and(
-            eq(equipoCategoria.equipo_id, equipos.id),
-            eq(equipoCategoria.categoria_id, categoriaId)
+      where: (equipos, { exists, and: andWhere, eq: eqWhere }) => andWhere(
+        eqWhere(equipos.estado, true),
+        exists(
+          db.select().from(equipoCategoria).where(
+            and(
+              eq(equipoCategoria.equipo_id, equipos.id),
+              eq(equipoCategoria.categoria_id, categoriaId)
+            )
           )
         )
       ),
@@ -106,6 +109,49 @@ export const equipoQueries = {
     }
 
     return result[0];
+  },
+
+  // Verificar dependencias de un equipo antes de eliminar
+  checkDependencies: async (id: number) => {
+    const dependencias: string[] = [];
+    
+    // Verificar si el equipo está en algún torneo
+    const equiposTorneoResult = await db
+      .select({ count: count() })
+      .from(equiposTorneo)
+      .where(eq(equiposTorneo.equipo_id, id));
+    if (equiposTorneoResult[0]?.count && equiposTorneoResult[0].count > 0) {
+      dependencias.push('torneos');
+    }
+    
+    // Verificar si el equipo tiene encuentros como local o visitante
+    const encuentrosLocal = await db
+      .select({ count: count() })
+      .from(encuentros)
+      .where(eq(encuentros.equipo_local_id, id));
+    const encuentrosVisitante = await db
+      .select({ count: count() })
+      .from(encuentros)
+      .where(eq(encuentros.equipo_visitante_id, id));
+    
+    if ((encuentrosLocal[0]?.count && encuentrosLocal[0].count > 0) || 
+        (encuentrosVisitante[0]?.count && encuentrosVisitante[0].count > 0)) {
+      dependencias.push('encuentros');
+    }
+    
+    // Verificar si el equipo tiene registros en equiposDescansan
+    const equiposDescansanCount = await db
+      .select({ count: count() })
+      .from(equiposDescansan)
+      .where(eq(equiposDescansan.equipo_id, id));
+    if (equiposDescansanCount[0]?.count && equiposDescansanCount[0].count > 0) {
+      dependencias.push('descansos');
+    }
+    
+    return {
+      tieneDependencias: dependencias.length > 0,
+      dependencias
+    };
   },
 
   // Eliminar equipo
