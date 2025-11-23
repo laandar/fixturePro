@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { estadisticasQueries, encuentroQueries } from '@/db/queries'
+import { estadisticasQueries, encuentroQueries, equiposDescansanQueries, equipoTorneoQueries } from '@/db/queries'
 import EstadisticasTorneo from './components/EstadisticasTorneo'
 
 interface PageProps {
@@ -51,16 +51,39 @@ export default async function EstadisticasPage({ params }: PageProps) {
 
   try {
     // Obtener datos del torneo y estadísticas
-    const [torneo, tablaPosiciones, tablaGoleadores, encuentros] = await Promise.all([
+    const [torneo, tablaPosiciones, tablaGoleadores, encuentros, descansosData, equiposTorneo] = await Promise.all([
       estadisticasQueries.getTorneoPublico(torneoId),
       estadisticasQueries.getTablaPosiciones(torneoId),
       estadisticasQueries.getTablaGoleadores(torneoId),
-      encuentroQueries.getByTorneoId(torneoId)
+      encuentroQueries.getByTorneoId(torneoId),
+      equiposDescansanQueries.getByTorneoId(torneoId),
+      equipoTorneoQueries.getByTorneoId(torneoId)
     ])
 
     if (!torneo) {
       notFound()
     }
+
+    // Formatear equipos que descansan por jornada
+    const equiposDescansan: Record<number, number[]> = {}
+    descansosData.forEach(descanso => {
+      if (!equiposDescansan[descanso.jornada]) {
+        equiposDescansan[descanso.jornada] = []
+      }
+      equiposDescansan[descanso.jornada].push(descanso.equipo_id)
+    })
+
+    // Crear mapa de todos los equipos del torneo
+    const equiposMap: Record<number, { id: number; nombre: string; imagen_equipo?: string | null }> = {}
+    equiposTorneo.forEach(et => {
+      if (et.equipo) {
+        equiposMap[et.equipo.id] = {
+          id: et.equipo.id,
+          nombre: et.equipo.nombre,
+          imagen_equipo: et.equipo.imagen_equipo
+        }
+      }
+    })
 
     return (
       <EstadisticasTorneo
@@ -68,6 +91,8 @@ export default async function EstadisticasPage({ params }: PageProps) {
         tablaPosiciones={tablaPosiciones}
         tablaGoleadores={tablaGoleadores}
         encuentros={encuentros}
+        equiposDescansan={equiposDescansan}
+        equiposMap={equiposMap}
       />
     )
   } catch (error) {

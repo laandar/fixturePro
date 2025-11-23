@@ -64,9 +64,11 @@ interface EstadisticasTorneoProps {
   tablaPosiciones: PosicionEquipo[]
   tablaGoleadores: Goleador[]
   encuentros?: any[]
+  equiposDescansan?: Record<number, number[]>
+  equiposMap?: Record<number, { id: number; nombre: string; imagen_equipo?: string | null }>
 }
 
-export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores, encuentros = [] }: EstadisticasTorneoProps) {
+export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores, encuentros = [], equiposDescansan = {}, equiposMap = {} }: EstadisticasTorneoProps) {
   const [activeTab, setActiveTab] = useState('posiciones')
   const [isDesktopView, setIsDesktopView] = useState(false)
 
@@ -504,7 +506,7 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.02)'
                 }}>
-                  <TablaFixture encuentros={encuentros} />
+                  <TablaFixture encuentros={encuentros} equiposDescansan={equiposDescansan} equiposMap={equiposMap} />
                 </div>
               </TabPane>
             </TabContent>

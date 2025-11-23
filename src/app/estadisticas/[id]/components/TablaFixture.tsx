@@ -25,7 +25,13 @@ interface Encuentro {
 	cancha?: string | Cancha | null
 }
 
-export default function TablaFixture({ encuentros }: { encuentros: Encuentro[] }) {
+interface TablaFixtureProps {
+	encuentros: Encuentro[]
+	equiposDescansan?: Record<number, number[]>
+	equiposMap?: Record<number, { id: number; nombre: string; imagen_equipo?: string | null }>
+}
+
+export default function TablaFixture({ encuentros, equiposDescansan = {}, equiposMap = {} }: TablaFixtureProps) {
 	const formatFechaConDia = (iso?: string | null) => {
 		if (!iso) return 'Sin fecha'
 		const d = new Date(iso)
@@ -75,6 +81,25 @@ export default function TablaFixture({ encuentros }: { encuentros: Encuentro[] }
 		}
 		return palette[hash % palette.length]
 	}
+	// Crear mapa de equipos desde los encuentros y el mapa de equipos del torneo
+	const equiposMapCompleto = useMemo(() => {
+		const map = new Map<number, Equipo>()
+		// Primero agregar equipos del mapa del torneo
+		Object.values(equiposMap).forEach(equipo => {
+			map.set(equipo.id, {
+				id: equipo.id,
+				nombre: equipo.nombre,
+				imagen_equipo: equipo.imagen_equipo
+			})
+		})
+		// Luego agregar equipos de los encuentros (pueden tener más información)
+		encuentros.forEach(e => {
+			if (e.equipoLocal) map.set(e.equipoLocal.id, e.equipoLocal)
+			if (e.equipoVisitante) map.set(e.equipoVisitante.id, e.equipoVisitante)
+		})
+		return map
+	}, [encuentros, equiposMap])
+
 	const encuentrosPorJornada = useMemo(() => {
 		const grupos: Record<number, Encuentro[]> = {}
 		for (const e of encuentros) {
@@ -86,6 +111,44 @@ export default function TablaFixture({ encuentros }: { encuentros: Encuentro[] }
 			.map(([j, lista]) => [parseInt(j), lista] as [number, Encuentro[]])
 			.sort((a, b) => a[0] - b[0])
 	}, [encuentros])
+
+	// Obtener equipos que descansan en una jornada
+	const getEquiposQueDescansan = (jornada: number): Equipo[] => {
+		// Primero intentar obtener desde los datos de la base de datos
+		const equiposIds = equiposDescansan[jornada] || []
+		if (equiposIds.length > 0) {
+			const equipos = equiposIds.map(id => equiposMapCompleto.get(id)).filter((e): e is Equipo => e !== undefined)
+			if (equipos.length > 0) {
+				return equipos
+			}
+		}
+
+		// Si no hay datos en BD, calcular automáticamente
+		// Obtener todos los equipos que juegan en esta jornada
+		const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
+		const equiposQueJuegan = new Set<number>()
+		encuentrosJornada.forEach(encuentro => {
+			if (encuentro.equipoLocal) equiposQueJuegan.add(encuentro.equipoLocal.id)
+			if (encuentro.equipoVisitante) equiposQueJuegan.add(encuentro.equipoVisitante.id)
+		})
+
+		// Obtener todos los equipos del torneo
+		const todosEquiposIds = Array.from(equiposMapCompleto.keys())
+		
+		// Encontrar los equipos que NO juegan (descansan)
+		const equiposQueDescansanIds = todosEquiposIds.filter(id => !equiposQueJuegan.has(id))
+		
+		// Si hay un número impar de equipos, debería haber exactamente 1 que descansa
+		// Si hay un número par, no debería haber ninguno (pero mostramos si hay)
+		if (equiposQueDescansanIds.length > 0) {
+			const equipos = equiposQueDescansanIds
+				.map(id => equiposMapCompleto.get(id))
+				.filter((e): e is Equipo => e !== undefined)
+			return equipos
+		}
+
+		return []
+	}
 
 	const getSortValue = (e: Encuentro) => {
 		// 1) PRIORIZAR horario.hora_inicio (siempre usar la hora del horario asignado)
@@ -138,7 +201,44 @@ export default function TablaFixture({ encuentros }: { encuentros: Encuentro[] }
 									borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
 								}}
 							>
-								<h5 className="mb-0 fw-bold">Jornada {jornada}</h5>
+								<div className="d-flex flex-column gap-1">
+									<h5 className="mb-0 fw-bold">Jornada {jornada}</h5>
+									{(() => {
+										const equiposDescansando = getEquiposQueDescansan(jornada)
+										if (equiposDescansando.length > 0) {
+											return (
+												<div className="d-flex align-items-center gap-2" style={{ marginTop: '4px' }}>
+													<span style={{ 
+														color: '#ffc107',
+														fontSize: '0.85rem',
+														fontWeight: '500',
+														opacity: 0.9,
+														display: 'flex',
+														alignItems: 'center',
+														gap: '6px'
+													}}>
+														<span style={{ fontSize: '1rem' }}>⚽</span>
+														<span style={{ 
+															color: 'rgba(255, 255, 255, 0.7)',
+															fontSize: '0.85rem',
+															fontWeight: '400'
+														}}>
+															Descansa:
+														</span>
+														<span style={{ 
+															color: '#ffc107',
+															fontWeight: '600',
+															fontSize: '0.9rem'
+														}}>
+															{equiposDescansando.map(e => e.nombre).join(', ')}
+														</span>
+													</span>
+												</div>
+											)
+										}
+										return null
+									})()}
+								</div>
 								<div className="d-flex align-items-center gap-2">
 									<Badge 
 										className="px-3 py-2 fw-semibold"
