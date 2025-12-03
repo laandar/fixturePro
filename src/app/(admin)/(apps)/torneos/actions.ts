@@ -8,7 +8,7 @@ import type { NewTorneo, NewEquipoTorneo, EquipoWithRelations } from '@/db/types
 import { requirePermiso } from '@/lib/auth-helpers'
 import { db } from '@/db'
 import { tarjetas, goles, equiposTorneo, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, torneos, horarios, encuentros, categorias, canchas, canchasCategorias } from '@/db/schema'
-import { eq, count, inArray, and, isNotNull, asc, sql } from 'drizzle-orm'
+import { eq, count, inArray, and, isNotNull, asc, sql, ne } from 'drizzle-orm'
 import { getJugadoresActivosByEquipos } from '@/app/(admin)/(apps)/jugadores/actions'
 
 const DIAS_HORARIOS = ['viernes', 'sabado', 'domingo'] as const
@@ -24,6 +24,74 @@ export async function getTorneos() {
     return await torneoQueries.getAllWithRelations()
   } catch (error) {
     throw new Error('Error al obtener torneos')
+  }
+}
+
+/**
+ * Obtiene todos los encuentros de todos los torneos con sus relaciones
+ */
+export async function getAllEncuentrosTodosTorneos() {
+  try {
+    const { db } = await import('@/db')
+    const { encuentros } = await import('@/db/schema')
+    const { isNotNull } = await import('drizzle-orm')
+
+    // Obtener todos los encuentros con sus relaciones usando query builder
+    const todosEncuentros = await db.query.encuentros.findMany({
+      where: isNotNull(encuentros.horario_id),
+      with: {
+        equipoLocal: {
+          with: {
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
+            entrenador: true,
+          },
+        },
+        equipoVisitante: {
+          with: {
+            equiposCategoria: {
+              with: {
+                categoria: true,
+              },
+            },
+            entrenador: true,
+          },
+        },
+        horario: true,
+        torneo: true,
+      },
+      orderBy: [encuentros.torneo_id, encuentros.jornada, encuentros.id],
+    })
+
+    return todosEncuentros
+  } catch (error) {
+    console.error('Error al obtener todos los encuentros:', error)
+    throw new Error('Error al obtener todos los encuentros de los torneos')
+  }
+}
+
+/**
+ * Obtiene todos los horarios de todos los torneos
+ */
+export async function getAllHorariosTodosTorneos() {
+  try {
+    const { db } = await import('@/db')
+    const { horarios } = await import('@/db/schema')
+    const { asc } = await import('drizzle-orm')
+
+    // Obtener todos los horarios ordenados
+    const todosHorarios = await db
+      .select()
+      .from(horarios)
+      .orderBy(asc(horarios.dia_semana), asc(horarios.hora_inicio))
+
+    return todosHorarios
+  } catch (error) {
+    console.error('Error al obtener todos los horarios:', error)
+    throw new Error('Error al obtener todos los horarios de los torneos')
   }
 }
 
@@ -645,6 +713,138 @@ export async function updateEncuentro(id: number, formData: FormData) {
   }
 }
 
+/**
+ * Mueve un encuentro globalmente a otra combinación horario/cancha,
+ * opcionalmente intercambiando con otro encuentro del MISMO torneo si ya ocupa ese slot.
+ * Mantiene las validaciones de no repetir cancha+fecha+hora entre torneos.
+ */
+export async function moverEncuentroGlobal(
+  encuentroId: number,
+  targetHorarioId: number | null,
+  targetCancha: string,
+  targetFechaProgramada?: Date | null
+): Promise<{
+  success: boolean
+  mensaje: string
+}> {
+  try {
+    if (!targetHorarioId || !targetCancha) {
+      throw new Error('Horario o cancha destino inválidos')
+    }
+
+    // Cargar encuentro actual
+    const encuentroActual = await db.query.encuentros.findFirst({
+      where: eq(encuentros.id, encuentroId),
+      with: {
+        horario: true,
+      },
+    })
+
+    if (!encuentroActual) {
+      throw new Error('Encuentro no encontrado')
+    }
+
+    const jornada = encuentroActual.jornada
+    const torneoId = encuentroActual.torneo_id
+    const fechaBase = targetFechaProgramada ?? encuentroActual.fecha_programada ?? null
+
+    // Buscar si ya hay un encuentro ocupando el slot destino (misma cancha, horario y fecha/jornada)
+    // Usamos la misma lógica de fecha que en verificarCanchaOcupadaEnTodosTorneos
+    const condicionesConflicto: any[] = [
+      eq(encuentros.cancha, targetCancha),
+      eq(encuentros.horario_id, targetHorarioId),
+      isNotNull(encuentros.cancha),
+      isNotNull(encuentros.horario_id),
+      ne(encuentros.id, encuentroId),
+    ]
+
+    if (fechaBase) {
+      const fecha = new Date(fechaBase)
+      fecha.setHours(0, 0, 0, 0)
+      const fechaSiguiente = new Date(fecha)
+      fechaSiguiente.setDate(fechaSiguiente.getDate() + 1)
+
+      condicionesConflicto.push(
+        sql`${encuentros.fecha_programada} >= ${fecha.toISOString()}::timestamp`,
+        sql`${encuentros.fecha_programada} < ${fechaSiguiente.toISOString()}::timestamp`,
+      )
+    } else if (jornada !== null && jornada !== undefined) {
+      condicionesConflicto.push(eq(encuentros.jornada, jornada))
+    }
+
+    const conflicto = await db.query.encuentros.findFirst({
+      where: and(...condicionesConflicto),
+    })
+
+    // Si el conflicto es de otro torneo, no permitimos mover
+    if (conflicto && conflicto.torneo_id !== torneoId) {
+      throw new Error(
+        `La combinación ${targetCancha} / horario destino ya está usada por otro torneo (encuentro ${conflicto.id})`,
+      )
+    }
+
+    // Si hay conflicto en el mismo torneo => intercambiar horarios/canchas
+    if (conflicto && conflicto.torneo_id === torneoId) {
+      // Intercambiar horario_id y cancha entre los dos encuentros
+      await db.transaction(async (tx) => {
+        await tx
+          .update(encuentros)
+          .set({
+            horario_id: targetHorarioId,
+            cancha: targetCancha,
+            updatedAt: new Date(),
+          })
+          .where(eq(encuentros.id, encuentroId))
+
+        await tx
+          .update(encuentros)
+          .set({
+            horario_id: encuentroActual.horario_id,
+            cancha: encuentroActual.cancha,
+            updatedAt: new Date(),
+          })
+          .where(eq(encuentros.id, conflicto.id))
+      })
+
+      revalidatePath('/torneos')
+      return {
+        success: true,
+        mensaje: `Encuentro movido e intercambiado con el encuentro ${conflicto.id}`,
+      }
+    }
+
+    // Sin conflicto: solo mover este encuentro al nuevo horario/cancha (y opcionalmente fecha)
+    const updateData: any = {
+      horario_id: targetHorarioId,
+      cancha: targetCancha,
+      updatedAt: new Date(),
+    }
+
+    if (targetFechaProgramada) {
+      const fechaNueva = new Date(targetFechaProgramada)
+      updateData.fecha_programada = fechaNueva
+    }
+
+    await db
+      .update(encuentros)
+      .set(updateData)
+      .where(eq(encuentros.id, encuentroId))
+
+    revalidatePath('/torneos')
+    return {
+      success: true,
+      mensaje: 'Encuentro movido correctamente al nuevo horario y cancha',
+    }
+  } catch (error: any) {
+    console.error('Error al mover encuentro globalmente:', error)
+    return {
+      success: false,
+      mensaje:
+        error instanceof Error ? error.message : 'Error al mover encuentro. Intenta nuevamente.',
+    }
+  }
+}
+
 export async function updateEstadoEncuentro(id: number, estado: string) {
   try {
     const encuentroData: any = {
@@ -1203,6 +1403,67 @@ export async function crearJornadaConEmparejamientos(
   }
 }
 
+/**
+ * Calcula la fecha correcta basándose en el día de la semana del horario
+ * Busca el día más cercano a la fecha base, priorizando el anterior si está a la misma distancia
+ * @param fechaBase - Fecha base proporcionada (puede ser sábado o domingo)
+ * @param diaSemanaHorario - Día de la semana del horario ('viernes', 'sabado', 'domingo')
+ * @returns Fecha ajustada al día de la semana correcto
+ */
+function calcularFechaPorDiaSemana(fechaBase: Date, diaSemanaHorario: string | null | undefined): Date {
+  if (!diaSemanaHorario) {
+    return fechaBase // Si no hay horario, usar la fecha base
+  }
+
+  const fecha = new Date(fechaBase)
+  fecha.setHours(0, 0, 0, 0) // Normalizar a inicio del día
+
+  // Mapeo de días de la semana
+  const diasSemana: Record<string, number> = {
+    domingo: 0,
+    lunes: 1,
+    martes: 2,
+    miercoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sabado: 6
+  }
+
+  const diaObjetivo = diasSemana[diaSemanaHorario.toLowerCase()] ?? 5 // Default: viernes
+  const diaActual = fecha.getDay()
+
+  // Si ya estamos en el día correcto, no hacer cambios
+  if (diaObjetivo === diaActual) {
+    return fecha
+  }
+
+  // Calcular diferencia hacia adelante y hacia atrás
+  const diferenciaAdelante = diaObjetivo > diaActual 
+    ? diaObjetivo - diaActual 
+    : (diaObjetivo - diaActual) + 7
+  
+  const diferenciaAtras = diaObjetivo < diaActual
+    ? diaActual - diaObjetivo
+    : (diaActual - diaObjetivo) + 7
+
+  // Priorizar el día anterior si está a la misma distancia o más cerca
+  // En el contexto de una jornada, si seleccionas domingo, los sábados deberían ir al sábado anterior
+  let diferencia: number
+  if (diferenciaAtras <= diferenciaAdelante) {
+    // Usar el día anterior (más cercano o igual distancia)
+    diferencia = -diferenciaAtras
+  } else {
+    // Usar el día siguiente (más cercano)
+    diferencia = diferenciaAdelante
+  }
+
+  // Ajustar la fecha al día de la semana correcto
+  const fechaAjustada = new Date(fecha)
+  fechaAjustada.setDate(fecha.getDate() + diferencia)
+
+  return fechaAjustada
+}
+
 export async function updateFechaJornada(
   torneoId: number,
   jornada: number,
@@ -1211,19 +1472,45 @@ export async function updateFechaJornada(
   try {
     await requirePermiso('torneos', 'editar')
     
-    const encuentrosActualizados = await encuentroQueries.updateFechaByJornada(
-      torneoId,
-      jornada,
-      fecha
-    )
+    // Obtener todos los encuentros de la jornada con sus horarios
+    const encuentrosJornada = await encuentroQueries.getByJornada(torneoId, jornada)
+    
+    if (encuentrosJornada.length === 0) {
+      throw new Error(`No se encontraron encuentros para la jornada ${jornada}`)
+    }
+
+    // Actualizar cada encuentro con la fecha correcta según su horario
+    const { db } = await import('@/db')
+    const { encuentros } = await import('@/db/schema')
+    const { eq, and } = await import('drizzle-orm')
+
+    let encuentrosActualizados = 0
+
+    for (const encuentro of encuentrosJornada) {
+      // Calcular la fecha correcta según el día de la semana del horario
+      const diaSemanaHorario = encuentro.horario?.dia_semana
+      const fechaCorrecta = calcularFechaPorDiaSemana(fecha, diaSemanaHorario)
+
+      // Actualizar solo este encuentro con su fecha específica
+      await db
+        .update(encuentros)
+        .set({ 
+          fecha_programada: fechaCorrecta,
+          updatedAt: new Date()
+        })
+        .where(eq(encuentros.id, encuentro.id))
+        .returning()
+
+      encuentrosActualizados++
+    }
 
     revalidatePath(`/torneos/${torneoId}`)
     revalidatePath('/fixture')
 
     return {
       success: true,
-      mensaje: `Fecha de la jornada ${jornada} actualizada correctamente`,
-      encuentrosActualizados: encuentrosActualizados.length
+      mensaje: `Fecha de la jornada ${jornada} actualizada correctamente. Se ajustaron las fechas según el día de la semana de cada horario.`,
+      encuentrosActualizados: encuentrosActualizados
     }
   } catch (error) {
     throw new Error(`Error al actualizar fecha de jornada: ${error instanceof Error ? error.message : 'Error desconocido'}`)
@@ -1356,6 +1643,181 @@ export async function generarTablaDistribucionCanchas(torneoId: number) {
   }
 }
 
+/**
+ * Verifica si una cancha está ocupada en cualquier torneo con la misma hora_inicio y jornada
+ * @param canchaNombre - Nombre de la cancha a verificar
+ * @param horaInicio - Hora de inicio del horario (formato HH:MM)
+ * @param jornada - Número de jornada
+ * @param torneoIdActual - ID del torneo actual (opcional, para logging)
+ * @param encuentroIdActual - ID del encuentro actual que se está intentando asignar (para excluirlo)
+ * @returns true si la cancha está ocupada, false si está disponible
+ */
+async function verificarCanchaOcupadaEnTodosTorneos(
+  canchaNombre: string,
+  horaInicio: string | null,
+  jornada: number | null,
+  torneoIdActual?: number,
+  encuentroIdActual?: number,
+  diaSemana?: string | null,
+  fechaProgramada?: Date | string | null
+): Promise<boolean> {
+  // Si falta información crítica, NO permitir asignación (más estricto)
+  if (!horaInicio || !jornada || !canchaNombre) {
+    console.warn('⚠️ Verificación de cancha omitida: falta información', {
+      canchaNombre,
+      horaInicio,
+      jornada,
+      diaSemana,
+      fechaProgramada,
+      encuentroIdActual
+    })
+    // Retornar true para bloquear asignación si falta información crítica
+    return true
+  }
+
+  try {
+    const { encuentros, horarios } = await import('@/db/schema')
+    const { eq, and, isNotNull, ne, sql } = await import('drizzle-orm')
+
+    // Construir condiciones de filtro base
+    const condiciones = [
+      eq(encuentros.cancha, canchaNombre),
+      eq(horarios.hora_inicio, horaInicio),
+      isNotNull(encuentros.cancha),
+      isNotNull(encuentros.horario_id)
+    ]
+
+    // PRIORIDAD 1: Si tenemos fecha_programada, usar fecha exacta (más preciso)
+    // Esto es más confiable que usar jornada, ya que la fecha es única
+    if (fechaProgramada) {
+      const fecha = typeof fechaProgramada === 'string' ? new Date(fechaProgramada) : fechaProgramada
+      // Normalizar fecha a inicio del día (00:00:00) para comparar solo la fecha, no la hora
+      const fechaNormalizada = new Date(fecha)
+      fechaNormalizada.setHours(0, 0, 0, 0)
+      const fechaSiguiente = new Date(fechaNormalizada)
+      fechaSiguiente.setDate(fechaSiguiente.getDate() + 1)
+      
+      // Verificar que la fecha_programada del encuentro existente esté en el mismo día
+      condiciones.push(
+        sql`${encuentros.fecha_programada} >= ${fechaNormalizada.toISOString()}::timestamp`,
+        sql`${encuentros.fecha_programada} < ${fechaSiguiente.toISOString()}::timestamp`
+      )
+    } else {
+      // FALLBACK: Si no hay fecha_programada, usar jornada y dia_semana
+      condiciones.push(eq(encuentros.jornada, jornada))
+      
+      // IMPORTANTE: Si se proporciona diaSemana, también verificar que coincida
+      // Esto previene conflictos entre sábado y domingo con la misma hora
+      if (diaSemana && (diaSemana === 'viernes' || diaSemana === 'sabado' || diaSemana === 'domingo')) {
+        condiciones.push(eq(horarios.dia_semana, diaSemana as 'viernes' | 'sabado' | 'domingo'))
+      }
+    }
+
+    // Excluir el encuentro actual si se proporciona (para evitar que se detecte a sí mismo)
+    if (encuentroIdActual) {
+      condiciones.push(ne(encuentros.id, encuentroIdActual))
+    }
+
+    // Buscar encuentros en TODOS los torneos que tengan:
+    // - La misma cancha
+    // - Un horario con la misma hora_inicio
+    // - La misma fecha_programada (si se proporciona) O la misma jornada + dia_semana
+    const encuentrosOcupados = await db
+      .select({
+        id: encuentros.id,
+        torneo_id: encuentros.torneo_id,
+        cancha: encuentros.cancha,
+        jornada: encuentros.jornada,
+        fecha_programada: encuentros.fecha_programada,
+        hora_inicio: horarios.hora_inicio,
+        dia_semana: horarios.dia_semana
+      })
+      .from(encuentros)
+      .innerJoin(horarios, eq(encuentros.horario_id, horarios.id))
+      .where(and(...condiciones))
+      .limit(5) // Limitar a 5 para logging
+
+    if (encuentrosOcupados.length > 0) {
+      console.log('🚫 Cancha ocupada encontrada:', {
+        cancha: canchaNombre,
+        horaInicio,
+        diaSemana,
+        jornada,
+        fechaProgramada,
+        encuentrosEncontrados: encuentrosOcupados.map(e => ({
+          id: e.id,
+          torneo_id: e.torneo_id,
+          jornada: e.jornada,
+          fecha_programada: e.fecha_programada,
+          dia_semana: e.dia_semana
+        })),
+        encuentroIdActual
+      })
+      return true
+    }
+
+    return false
+  } catch (error) {
+    console.error('❌ Error al verificar cancha ocupada:', error)
+    // En caso de error, retornar true para bloquear la asignación (más seguro)
+    return true
+  }
+}
+
+/**
+ * Obtiene la hora_inicio y dia_semana de un horario por su ID
+ */
+async function obtenerHoraInicioPorHorarioId(horarioId: number | null): Promise<string | null> {
+  if (!horarioId) {
+    return null
+  }
+
+  try {
+    const { horarios } = await import('@/db/schema')
+    const { eq } = await import('drizzle-orm')
+
+    const horario = await db
+      .select({
+        hora_inicio: horarios.hora_inicio
+      })
+      .from(horarios)
+      .where(eq(horarios.id, horarioId))
+      .limit(1)
+
+    return horario.length > 0 ? horario[0].hora_inicio : null
+  } catch (error) {
+    console.error('Error al obtener hora_inicio del horario:', error)
+    return null
+  }
+}
+
+/**
+ * Obtiene el dia_semana de un horario por su ID
+ */
+async function obtenerDiaSemanaPorHorarioId(horarioId: number | null): Promise<string | null> {
+  if (!horarioId) {
+    return null
+  }
+
+  try {
+    const { horarios } = await import('@/db/schema')
+    const { eq } = await import('drizzle-orm')
+
+    const horario = await db
+      .select({
+        dia_semana: horarios.dia_semana
+      })
+      .from(horarios)
+      .where(eq(horarios.id, horarioId))
+      .limit(1)
+
+    return horario.length > 0 ? horario[0].dia_semana : null
+  } catch (error) {
+    console.error('Error al obtener dia_semana del horario:', error)
+    return null
+  }
+}
+
 export async function asignarCanchasAutomaticamente(
   torneoId: number,
   configuracion: {
@@ -1472,10 +1934,8 @@ export async function asignarCanchasAutomaticamente(
       // Separar la cancha prioritaria de las restantes
       canchasRestantes = canchasActivas.filter((cancha: any) => cancha.id !== configuracion.canchaPrioritariaId)
       
-      // Obtener el número total de horarios disponibles (capacidad de la cancha prioritaria)
-      const { getHorarios } = await import('./horarios-actions')
-      const horariosDisponibles = await getHorarios(torneoId)
-      capacidadCanchaPrioritaria = horariosDisponibles.length
+      // La capacidad de la cancha prioritaria se calculará más abajo,
+      // cuando carguemos todos los horarios del torneo (horariosDisponibles).
     } else {
       // Si no hay cancha prioritaria, usar todas las canchas para distribución equitativa
       canchasRestantes = [...canchasActivas]
@@ -1577,6 +2037,10 @@ export async function asignarCanchasAutomaticamente(
     // Obtener horarios disponibles ordenados (para asignación dinámica)
     const { getHorarios } = await import('./horarios-actions')
     const horariosDisponibles = await getHorarios(torneoId)
+    // Si hay cancha prioritaria, su capacidad es el número total de horarios disponibles
+    if (tieneCanchaPrioritaria) {
+      capacidadCanchaPrioritaria = horariosDisponibles.length
+    }
     const horariosOrdenados = horariosDisponibles.sort((a: any, b: any) => {
       // Ordenar por orden si existe, sino por hora_inicio
       if (a.orden !== undefined && b.orden !== undefined) {
@@ -1780,16 +2244,31 @@ export async function asignarCanchasAutomaticamente(
           const canchaSecundariaSeleccionada = canchasSecundariasOrdenadas[indiceCanchaSecundaria]
           const nombreCanchaSecundaria = canchaSecundariaSeleccionada.nombre
           
+          // CRÍTICO: No asignar cancha si el encuentro no tiene horario asignado
+          if (!encuentro.horario_id) {
+            console.warn('⚠️ No se puede asignar cancha a encuentro sin horario:', {
+              encuentroId: encuentro.id,
+              jornada
+            })
+            continue // Saltar este encuentro, necesita horario primero
+          }
+          
+          // Obtener hora_inicio y dia_semana del horario del encuentro
+          const horaInicio = await obtenerHoraInicioPorHorarioId(encuentro.horario_id)
+          const diaSemana = await obtenerDiaSemanaPorHorarioId(encuentro.horario_id)
+          const fechaProgramada = encuentro.fecha_programada
           const horarioKey = encuentro.horario_id || 'sin_horario'
           
-          // Verificar SIEMPRE desde BD qué canchas están ocupadas en este horario
-          const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
-          const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
-          
-          const canchasOcupadasEnHorarioBD = encuentrosJornadaBDCheck
-            .filter(e => e.horario_id === horarioKey && e.cancha && e.cancha.trim() !== '')
-            .map(e => e.cancha)
-          const canchaOcupada = canchasOcupadasEnHorarioBD.includes(nombreCanchaSecundaria)
+          // Verificar SIEMPRE desde BD si la cancha está ocupada en cualquier torneo con la misma fecha, hora_inicio, dia_semana y jornada
+          const canchaOcupada = await verificarCanchaOcupadaEnTodosTorneos(
+            nombreCanchaSecundaria,
+            horaInicio,
+            jornada,
+            torneoId,
+            encuentro.id,
+            diaSemana,
+            fechaProgramada
+          )
           
           if (!canchaOcupada) {
             // Verificar una vez más que ambos equipos pueden ir a secundarias
@@ -1865,16 +2344,31 @@ export async function asignarCanchasAutomaticamente(
           // Intentar con el primer encuentro pendiente
           const encuentroFallback = encuentrosPendientes[0]
           if (encuentroFallback) {
+            // CRÍTICO: No asignar cancha si el encuentro no tiene horario asignado
+            if (!encuentroFallback.horario_id) {
+              console.warn('⚠️ No se puede asignar cancha a encuentro sin horario (fallback):', {
+                encuentroId: encuentroFallback.id,
+                jornada
+              })
+              continue // Saltar este encuentro, necesita horario primero
+            }
+            
+            // Obtener hora_inicio del horario del encuentro
+            const horaInicio = await obtenerHoraInicioPorHorarioId(encuentroFallback.horario_id)
+            const diaSemana = await obtenerDiaSemanaPorHorarioId(encuentroFallback.horario_id)
+            const fechaProgramada = encuentroFallback.fecha_programada
             const horarioKey = encuentroFallback.horario_id || 'sin_horario'
             
-            // Verificar desde BD si la cancha secundaria está ocupada en este horario
-            const encuentrosJornadaActualizadosCheck = await encuentroQueries.getByTorneoId(torneoId)
-            const encuentrosJornadaBDCheck = encuentrosJornadaActualizadosCheck.filter(e => e.jornada === jornada)
-            
-            const canchasOcupadasEnHorarioBD = encuentrosJornadaBDCheck
-              .filter(e => e.horario_id === horarioKey && e.cancha && e.cancha.trim() !== '')
-              .map(e => e.cancha)
-            const canchaOcupada = canchasOcupadasEnHorarioBD.includes(nombreCanchaSecundaria)
+            // Verificar desde BD si la cancha está ocupada en cualquier torneo con la misma fecha, hora_inicio, dia_semana y jornada
+            const canchaOcupada = await verificarCanchaOcupadaEnTodosTorneos(
+              nombreCanchaSecundaria,
+              horaInicio,
+              jornada,
+              torneoId,
+              encuentroFallback.id,
+              diaSemana,
+              fechaProgramada
+            )
             
             if (!canchaOcupada) {
               // Asignar a cancha secundaria (aunque un equipo pueda haber alcanzado su límite)
@@ -1967,16 +2461,31 @@ export async function asignarCanchasAutomaticamente(
             break // Ya tenemos exactamente 5 partidos en prioritaria
           }
           
+          // CRÍTICO: No asignar cancha si el encuentro no tiene horario asignado
+          if (!encuentro.horario_id) {
+            console.warn('⚠️ No se puede asignar cancha a encuentro sin horario (prioritaria):', {
+              encuentroId: encuentro.id,
+              jornada
+            })
+            continue // Saltar este encuentro, necesita horario primero
+          }
+          
+          // Obtener hora_inicio del horario del encuentro
+          const horaInicio = await obtenerHoraInicioPorHorarioId(encuentro.horario_id)
+          const diaSemana = await obtenerDiaSemanaPorHorarioId(encuentro.horario_id)
+          const fechaProgramada = encuentro.fecha_programada
           const horarioKey = encuentro.horario_id ?? 'sin_horario'
           
-          // Verificar SIEMPRE antes de asignar si la cancha prioritaria ya está ocupada en este horario
-          const encuentrosEnHorario = encuentrosJornadaBDCheck.filter(e => 
-            e.horario_id === horarioKey && 
-            e.cancha === nombreCanchaPrioritaria &&
-            e.id !== encuentro.id // Excluir el encuentro actual
+          // Verificar SIEMPRE antes de asignar si la cancha prioritaria está ocupada en cualquier torneo con la misma fecha, hora_inicio, dia_semana y jornada
+          const canchaOcupadaEnHorario = await verificarCanchaOcupadaEnTodosTorneos(
+            nombreCanchaPrioritaria,
+            horaInicio,
+            jornada,
+            torneoId,
+            encuentro.id,
+            diaSemana,
+            fechaProgramada
           )
-          
-          const canchaOcupadaEnHorario = encuentrosEnHorario.length > 0
           
           if (!canchaOcupadaEnHorario && nombreCanchaPrioritaria) {
             // Verificar que el encuentro aún está en pendientes (no fue asignado en otra iteración)
@@ -2033,13 +2542,19 @@ export async function asignarCanchasAutomaticamente(
           
           const horario = horariosOrdenados[i]
           const horarioKey = horario.id
+          const horaInicio = horario.hora_inicio // Obtener hora_inicio directamente del horario
+          const diaSemana = horario.dia_semana // Obtener dia_semana directamente del horario
           
-          // Verificar SIEMPRE desde BD si la cancha prioritaria ya está ocupada en este horario
-          const encuentrosEnHorarioBD = encuentrosJornadaBDCheck.filter(e => 
-            e.horario_id === horarioKey && 
-            e.cancha === nombreCanchaPrioritaria
+          // Verificar SIEMPRE desde BD si la cancha prioritaria está ocupada en cualquier torneo con la misma hora_inicio, dia_semana y jornada
+          // Nota: Aquí aún no tenemos el encuentro específico, así que verificamos sin excluir
+          const canchaOcupadaEnHorario = await verificarCanchaOcupadaEnTodosTorneos(
+            nombreCanchaPrioritaria,
+            horaInicio,
+            jornada,
+            torneoId,
+            undefined,
+            diaSemana
           )
-          const canchaOcupadaEnHorario = encuentrosEnHorarioBD.length > 0
           
           if (!canchaOcupadaEnHorario) {
             // PRIORIDAD 1: Buscar un encuentro sin horario
@@ -2058,11 +2573,17 @@ export async function asignarCanchasAutomaticamente(
               }
               
               // Verificar UNA VEZ MÁS desde BD antes de asignar (evitar condición de carrera)
-              const ultimaVerificacion = encuentrosJornadaBDCheck.filter(e => 
-                e.horario_id === horarioKey && 
-                e.cancha === nombreCanchaPrioritaria
+              // Verificar en todos los torneos con la misma hora_inicio, dia_semana y jornada
+              // Ahora sí excluimos el encuentro actual
+              const ultimaVerificacion = await verificarCanchaOcupadaEnTodosTorneos(
+                nombreCanchaPrioritaria,
+                horaInicio,
+                jornada,
+                torneoId,
+                encuentroParaAsignar.id,
+                diaSemana
               )
-              if (ultimaVerificacion.length > 0) {
+              if (ultimaVerificacion) {
                 continue // Alguien más asignó, saltar este horario
               }
               
@@ -2123,10 +2644,42 @@ export async function asignarCanchasAutomaticamente(
             const horarioKey = encuentro.horario_id || 'sin_horario'
             const canchasOcupadasParaEsteHorario = canchasPorHorarioEnJornada[horarioKey] || {}
             
+            // CRÍTICO: No asignar cancha si el encuentro no tiene horario asignado
+            if (!encuentro.horario_id) {
+              console.warn('⚠️ No se puede asignar cancha a encuentro sin horario (distribución equitativa):', {
+                encuentroId: encuentro.id,
+                jornada
+              })
+              continue // Saltar este encuentro, necesita horario primero
+            }
+            
+            // Obtener hora_inicio y dia_semana del horario del encuentro
+            const horaInicio = await obtenerHoraInicioPorHorarioId(encuentro.horario_id)
+            const diaSemana = await obtenerDiaSemanaPorHorarioId(encuentro.horario_id)
+            // Obtener fecha_programada del encuentro (más preciso que jornada)
+            const fechaProgramada = encuentro.fecha_programada
+            
             // Buscar canchas disponibles para este horario
-            const canchasDisponiblesParaHorario = canchasRestantes.filter((cancha: any) => {
-              return !canchasOcupadasParaEsteHorario[cancha.nombre]
-            })
+            // Verificar tanto en el torneo actual como en todos los torneos
+            const canchasDisponiblesParaHorario = []
+            for (const cancha of canchasRestantes) {
+              // Verificar si está ocupada en el torneo actual (optimización local)
+              const ocupadaEnTorneoActual = canchasOcupadasParaEsteHorario[cancha.nombre]
+              // Verificar si está ocupada en cualquier otro torneo con la misma fecha, hora, dia_semana y jornada
+              const ocupadaEnOtrosTorneos = await verificarCanchaOcupadaEnTodosTorneos(
+                cancha.nombre,
+                horaInicio,
+                jornada,
+                torneoId,
+                encuentro.id,
+                diaSemana,
+                fechaProgramada
+              )
+              
+              if (!ocupadaEnTorneoActual && !ocupadaEnOtrosTorneos) {
+                canchasDisponiblesParaHorario.push(cancha)
+              }
+            }
             
             if (canchasDisponiblesParaHorario.length > 0) {
               // Encontrar la cancha menos usada
@@ -2141,32 +2694,74 @@ export async function asignarCanchasAutomaticamente(
                 }
               }
               
-              canchaAsignada = mejorCancha.nombre
+              // VERIFICACIÓN FINAL: Antes de asignar, verificar una vez más que la cancha no esté ocupada
+              // Esto previene conflictos cuando múltiples encuentros tienen el mismo horario
+              const verificaciónFinal = await verificarCanchaOcupadaEnTodosTorneos(
+                mejorCancha.nombre,
+                horaInicio,
+                jornada,
+                torneoId,
+                encuentro.id,
+                diaSemana,
+                fechaProgramada
+              )
+              
+              // También verificar en el estado local (encuentros asignados en este bucle)
+              const ocupadaLocalmente = canchasOcupadasParaEsteHorario[mejorCancha.nombre]
+              
+                if (!verificaciónFinal && !ocupadaLocalmente) {
+                  const nombreCanchaMejor = mejorCancha.nombre
+                  canchaAsignada = nombreCanchaMejor
               
               // Actualizar contadores
-              if (canchaAsignada) {
+                  if (nombreCanchaMejor) {
                 if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
                   contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
                 }
                 if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
                   contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
                 }
-                contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] = 
-                  (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][canchaAsignada] || 0) + 1
-                contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] = 
-                (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][canchaAsignada] || 0) + 1
-              }
-              if (canchaAsignada) {
-                usoHorariosPorCancha[canchaAsignada] = (usoHorariosPorCancha[canchaAsignada] || 0) + 1
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaMejor] = 
+                      (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaMejor] || 0) + 1
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaMejor] = 
+                    (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaMejor] || 0) + 1
+                    usoHorariosPorCancha[nombreCanchaMejor] = (usoHorariosPorCancha[nombreCanchaMejor] || 0) + 1
+                  }
+              } else {
+                console.warn('⚠️ Cancha seleccionada ya está ocupada, buscando alternativa:', {
+                  cancha: mejorCancha.nombre,
+                  horaInicio,
+                  jornada,
+                  encuentroId: encuentro.id,
+                  ocupadaEnBD: verificaciónFinal,
+                  ocupadaLocalmente
+                })
               }
             }
             
-            // FALLBACK FINAL: Si aún no se asignó ninguna cancha, usar la primera disponible
+            // FALLBACK MEJORADO: Si aún no se asignó ninguna cancha, buscar una cancha disponible con verificación
             if (!canchaAsignada && canchasRestantes.length > 0) {
-              const candidataFallback = canchasRestantes[0]?.nombre ?? null
-              if (candidataFallback) {
-                canchaAsignada = candidataFallback
-                usoHorariosPorCancha[candidataFallback] = (usoHorariosPorCancha[candidataFallback] || 0) + 1
+              for (const cancha of canchasRestantes) {
+                // Verificar que no esté ocupada localmente
+                const ocupadaLocalmente = canchasOcupadasParaEsteHorario[cancha.nombre]
+                
+                // Verificar que no esté ocupada en BD
+                const ocupadaEnBD = await verificarCanchaOcupadaEnTodosTorneos(
+                  cancha.nombre,
+                  horaInicio,
+                  jornada,
+                  torneoId,
+                  encuentro.id,
+                  diaSemana,
+                  fechaProgramada
+                )
+                
+                if (!ocupadaLocalmente && !ocupadaEnBD) {
+                  const nombreCanchaFallbackSec = cancha.nombre
+                  canchaAsignada = nombreCanchaFallbackSec
+                  
+                  if (nombreCanchaFallbackSec) {
+                    usoHorariosPorCancha[nombreCanchaFallbackSec] = (usoHorariosPorCancha[nombreCanchaFallbackSec] || 0) + 1
                 
                 // Actualizar contadores
                 if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
@@ -2175,15 +2770,96 @@ export async function asignarCanchasAutomaticamente(
                 if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
                   contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
                 }
-                contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][candidataFallback] = 
-                  (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][candidataFallback] || 0) + 1
-                contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][candidataFallback] = 
-                  (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][candidataFallback] || 0) + 1
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaFallbackSec] = 
+                      (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaFallbackSec] || 0) + 1
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaFallbackSec] = 
+                      (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaFallbackSec] || 0) + 1
+                  }
+                  
+                  break // Encontrar una cancha disponible, salir del bucle
+                }
+              }
+              
+              if (!canchaAsignada) {
+                console.warn('⚠️ No se pudo asignar cancha al encuentro (todas ocupadas):', {
+                  encuentroId: encuentro.id,
+                  horaInicio,
+                  jornada,
+                  canchasDisponibles: canchasRestantes.length,
+                  motivo: 'Todas las canchas están ocupadas en este horario'
+                })
+                
+                // ÚLTIMO INTENTO: Asignar la primera cancha disponible sin verificación estricta
+                // Esto puede ser necesario si hay un problema con la verificación
+                if (canchasRestantes.length > 0 && horaInicio) {
+                  const canchaEmergencia = canchasRestantes[0]?.nombre
+                  if (canchaEmergencia) {
+                    console.warn('⚠️ Asignando cancha de emergencia (último recurso):', {
+                      encuentroId: encuentro.id,
+                      cancha: canchaEmergencia,
+                      horaInicio,
+                      jornada
+                    })
+                    canchaAsignada = canchaEmergencia
+                  }
+                }
               }
             }
             
-            // Asignar cancha (ahora siempre debería tener un valor)
-            if (canchaAsignada) {
+            // Asignar cancha solo si se encontró una disponible
+            if (canchaAsignada && horaInicio) {
+              // Verificación final antes de guardar en BD (solo si tenemos horaInicio)
+              const verificaciónPreGuardado = await verificarCanchaOcupadaEnTodosTorneos(
+                canchaAsignada,
+                horaInicio,
+                jornada,
+                torneoId,
+                encuentro.id,
+                diaSemana,
+                fechaProgramada
+              )
+              
+              if (verificaciónPreGuardado) {
+                console.error('❌ Error: Cancha ocupada detectada justo antes de guardar:', {
+                  cancha: canchaAsignada,
+                  horaInicio,
+                  jornada,
+                  encuentroId: encuentro.id
+                })
+                // Intentar otra cancha si la primera está ocupada
+                let canchaAlternativa: string | null = null
+                for (const cancha of canchasRestantes) {
+                  if (cancha.nombre === canchaAsignada) continue
+                  
+                    const verifAlt = await verificarCanchaOcupadaEnTodosTorneos(
+                      cancha.nombre,
+                      horaInicio,
+                      jornada,
+                      torneoId,
+                      encuentro.id,
+                      diaSemana,
+                      fechaProgramada
+                    )
+                  
+                  if (!verifAlt) {
+                    canchaAlternativa = cancha.nombre
+                    break
+                  }
+                }
+                
+                if (canchaAlternativa) {
+                  console.log('✅ Cancha alternativa encontrada:', {
+                    original: canchaAsignada,
+                    alternativa: canchaAlternativa,
+                    encuentroId: encuentro.id
+                  })
+                  canchaAsignada = canchaAlternativa
+                } else {
+                  console.error('❌ No se encontró cancha alternativa, saltando asignación')
+                  continue
+                }
+              }
+              
               if (!canchasPorHorarioEnJornada[horarioKey]) {
                 canchasPorHorarioEnJornada[horarioKey] = {}
               }
@@ -2193,6 +2869,26 @@ export async function asignarCanchasAutomaticamente(
               formData.append('cancha', canchaAsignada)
               await updateEncuentro(encuentro.id, formData)
               asignacionesRealizadas++
+              
+              console.log('✅ Cancha asignada exitosamente:', {
+                encuentroId: encuentro.id,
+                cancha: canchaAsignada,
+                horaInicio,
+                jornada
+              })
+            } else if (!horaInicio) {
+              console.warn('⚠️ No se puede asignar cancha: falta horaInicio:', {
+                encuentroId: encuentro.id,
+                horarioId: encuentro.horario_id,
+                jornada
+              })
+            } else {
+              console.warn('⚠️ No se pudo asignar cancha al encuentro:', {
+                encuentroId: encuentro.id,
+                horaInicio,
+                jornada,
+                motivo: 'No se encontró cancha disponible'
+              })
             }
           }
         } else {
@@ -2211,10 +2907,287 @@ export async function asignarCanchasAutomaticamente(
             
             // SOLO intentar asignar a secundarias si AMBOS equipos pueden (ambos tienen menos de 2)
             if (ambosEquiposPuedenUsarSecundarias) {
+              // CRÍTICO: No asignar cancha si el encuentro no tiene horario asignado
+              if (!encuentro.horario_id) {
+                console.warn('⚠️ No se puede asignar cancha a encuentro sin horario (secundarias):', {
+                  encuentroId: encuentro.id,
+                  jornada
+                })
+                continue // Saltar este encuentro, necesita horario primero
+              }
+              
+              // Obtener hora_inicio y dia_semana del horario del encuentro
+              const horaInicio = await obtenerHoraInicioPorHorarioId(encuentro.horario_id)
+              const diaSemana = await obtenerDiaSemanaPorHorarioId(encuentro.horario_id)
+              const fechaProgramada = encuentro.fecha_programada
+              
               // Buscar canchas secundarias disponibles para este horario
-              const canchasDisponiblesParaHorario = canchasRestantes.filter((cancha: any) => {
-                return !canchasOcupadasParaEsteHorario[cancha.nombre]
-              })
+              // Verificar tanto en el torneo actual como en todos los torneos
+              const canchasDisponiblesParaHorario = []
+              for (const cancha of canchasRestantes) {
+                // Verificar si está ocupada en el torneo actual (optimización local)
+                const ocupadaEnTorneoActual = canchasOcupadasParaEsteHorario[cancha.nombre]
+                // Verificar si está ocupada en cualquier otro torneo con la misma fecha, hora_inicio, dia_semana y jornada
+                const ocupadaEnOtrosTorneos = await verificarCanchaOcupadaEnTodosTorneos(
+                  cancha.nombre,
+                  horaInicio,
+                  jornada,
+                  torneoId,
+                  encuentro.id,
+                  diaSemana,
+                  fechaProgramada
+                )
+                
+                if (!ocupadaEnTorneoActual && !ocupadaEnOtrosTorneos) {
+                  canchasDisponiblesParaHorario.push(cancha)
+                }
+              }
+              
+              // Seleccionar cancha y verificar antes de asignar
+              if (canchasDisponiblesParaHorario.length > 0) {
+                // Encontrar la cancha menos usada
+                let mejorCancha = canchasDisponiblesParaHorario[0]
+                let menorUso = Infinity
+                
+                for (const cancha of canchasDisponiblesParaHorario) {
+                  const usoTotal = usoHorariosPorCancha[cancha.nombre] || 0
+                  if (usoTotal < menorUso) {
+                    menorUso = usoTotal
+                    mejorCancha = cancha
+                  }
+                }
+                
+              // VERIFICACIÓN FINAL: Antes de asignar, verificar una vez más que la cancha no esté ocupada
+              const verificaciónFinal = await verificarCanchaOcupadaEnTodosTorneos(
+                mejorCancha.nombre,
+                horaInicio,
+                jornada,
+                torneoId,
+                encuentro.id,
+                diaSemana,
+                fechaProgramada
+              )
+                
+                // También verificar en el estado local (encuentros asignados en este bucle)
+                const ocupadaLocalmente = canchasOcupadasParaEsteHorario[mejorCancha.nombre]
+                
+                if (!verificaciónFinal && !ocupadaLocalmente) {
+                  const nombreCancha = mejorCancha.nombre
+                  canchaAsignada = nombreCancha
+                  
+                  // Actualizar contadores
+                  if (nombreCancha) {
+                    if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                    }
+                    if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                    }
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCancha] = 
+                      (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCancha] || 0) + 1
+                    contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCancha] = 
+                    (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCancha] || 0) + 1
+                    usoHorariosPorCancha[nombreCancha] = (usoHorariosPorCancha[nombreCancha] || 0) + 1
+                  }
+                } else {
+                  console.warn('⚠️ Cancha seleccionada ya está ocupada (secundarias), buscando alternativa:', {
+                    cancha: mejorCancha.nombre,
+                    horaInicio,
+                    jornada,
+                    encuentroId: encuentro.id,
+                    ocupadaEnBD: verificaciónFinal,
+                    ocupadaLocalmente
+                  })
+                  
+                  // Buscar otra cancha disponible
+                  for (const cancha of canchasDisponiblesParaHorario) {
+                    if (cancha.nombre === mejorCancha.nombre) continue
+                    
+                    const verifAlternativa = await verificarCanchaOcupadaEnTodosTorneos(
+                      cancha.nombre,
+                      horaInicio,
+                      jornada,
+                      torneoId,
+                      encuentro.id,
+                      diaSemana,
+                      fechaProgramada
+                    )
+                    const ocupadaLocalAlt = canchasOcupadasParaEsteHorario[cancha.nombre]
+                    
+                    if (!verifAlternativa && !ocupadaLocalAlt) {
+                      const nombreCanchaAlt = cancha.nombre
+                      canchaAsignada = nombreCanchaAlt
+                      
+                      if (nombreCanchaAlt) {
+                        usoHorariosPorCancha[nombreCanchaAlt] = (usoHorariosPorCancha[nombreCanchaAlt] || 0) + 1
+                        
+                        // Actualizar contadores
+                        if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                          contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                        }
+                        if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                          contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                        }
+                        contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaAlt] = 
+                          (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaAlt] || 0) + 1
+                        contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaAlt] = 
+                          (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaAlt] || 0) + 1
+                      }
+                      
+                      break
+                    }
+                  }
+                }
+              }
+              
+              // FALLBACK MEJORADO: Si aún no se asignó ninguna cancha, buscar una cancha disponible con verificación
+              if (!canchaAsignada && canchasRestantes.length > 0) {
+                for (const cancha of canchasRestantes) {
+                  // Verificar que no esté ocupada localmente
+                  const ocupadaLocalmente = canchasOcupadasParaEsteHorario[cancha.nombre]
+                  
+                  // Verificar que no esté ocupada en BD
+                  const ocupadaEnBD = await verificarCanchaOcupadaEnTodosTorneos(
+                    cancha.nombre,
+                    horaInicio,
+                    jornada,
+                    torneoId,
+                    encuentro.id,
+                    diaSemana
+                  )
+                  
+                  if (!ocupadaLocalmente && !ocupadaEnBD) {
+                    const nombreCanchaFallback = cancha.nombre
+                    canchaAsignada = nombreCanchaFallback
+                    
+                    if (nombreCanchaFallback) {
+                      usoHorariosPorCancha[nombreCanchaFallback] = (usoHorariosPorCancha[nombreCanchaFallback] || 0) + 1
+                      
+                      // Actualizar contadores
+                      if (!contadorEquipoCanchaEspecifica[encuentro.equipo_local_id]) {
+                        contadorEquipoCanchaEspecifica[encuentro.equipo_local_id] = {}
+                      }
+                      if (!contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id]) {
+                        contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id] = {}
+                      }
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaFallback] = 
+                        (contadorEquipoCanchaEspecifica[encuentro.equipo_local_id][nombreCanchaFallback] || 0) + 1
+                      contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaFallback] = 
+                        (contadorEquipoCanchaEspecifica[encuentro.equipo_visitante_id][nombreCanchaFallback] || 0) + 1
+                    }
+                    
+                    break // Encontrar una cancha disponible, salir del bucle
+                  }
+                }
+                
+                if (!canchaAsignada) {
+                  console.warn('⚠️ No se pudo asignar cancha al encuentro (secundarias, todas ocupadas):', {
+                    encuentroId: encuentro.id,
+                    horaInicio,
+                    jornada,
+                    canchasDisponibles: canchasRestantes.length,
+                    motivo: 'Todas las canchas están ocupadas en este horario'
+                  })
+                  
+                  // ÚLTIMO INTENTO: Asignar la primera cancha disponible sin verificación estricta
+                  if (canchasRestantes.length > 0 && horaInicio) {
+                    const canchaEmergencia = canchasRestantes[0]?.nombre
+                    if (canchaEmergencia) {
+                      console.warn('⚠️ Asignando cancha de emergencia (último recurso, secundarias):', {
+                        encuentroId: encuentro.id,
+                        cancha: canchaEmergencia,
+                        horaInicio,
+                        jornada
+                      })
+                      canchaAsignada = canchaEmergencia
+                    }
+                  }
+                }
+              }
+              
+              // Asignar cancha solo si se encontró una disponible
+              if (canchaAsignada && horaInicio) {
+                // Verificación final antes de guardar en BD (solo si tenemos horaInicio)
+                const verificaciónPreGuardado = await verificarCanchaOcupadaEnTodosTorneos(
+                  canchaAsignada,
+                  horaInicio,
+                  jornada,
+                  torneoId,
+                  encuentro.id,
+                  diaSemana
+                )
+                
+                if (verificaciónPreGuardado) {
+                  console.error('❌ Error: Cancha ocupada detectada justo antes de guardar (secundarias):', {
+                    cancha: canchaAsignada,
+                    horaInicio,
+                    jornada,
+                    encuentroId: encuentro.id
+                  })
+                  
+                  // Intentar otra cancha si la primera está ocupada
+                  let canchaAlternativa: string | null = null
+                  for (const cancha of canchasRestantes) {
+                    if (cancha.nombre === canchaAsignada) continue
+                    
+                    const verifAlt = await verificarCanchaOcupadaEnTodosTorneos(
+                      cancha.nombre,
+                      horaInicio,
+                      jornada,
+                      torneoId,
+                      encuentro.id,
+                      diaSemana
+                    )
+                    
+                    if (!verifAlt) {
+                      canchaAlternativa = cancha.nombre
+                      break
+                    }
+                  }
+                  
+                  if (canchaAlternativa) {
+                    console.log('✅ Cancha alternativa encontrada (secundarias):', {
+                      original: canchaAsignada,
+                      alternativa: canchaAlternativa,
+                      encuentroId: encuentro.id
+                    })
+                    canchaAsignada = canchaAlternativa
+                  } else {
+                    console.error('❌ No se encontró cancha alternativa (secundarias), saltando asignación')
+                    continue
+                  }
+                }
+                
+                if (!canchasPorHorarioEnJornada[horarioKey]) {
+                  canchasPorHorarioEnJornada[horarioKey] = {}
+                }
+                canchasPorHorarioEnJornada[horarioKey][canchaAsignada] = true
+                
+                const formData = new FormData()
+                formData.append('cancha', canchaAsignada)
+                await updateEncuentro(encuentro.id, formData)
+                asignacionesRealizadas++
+                
+                console.log('✅ Cancha asignada exitosamente (secundarias):', {
+                  encuentroId: encuentro.id,
+                  cancha: canchaAsignada,
+                  horaInicio,
+                  jornada
+                })
+              } else if (!horaInicio) {
+                console.warn('⚠️ No se puede asignar cancha (secundarias): falta horaInicio:', {
+                  encuentroId: encuentro.id,
+                  horarioId: encuentro.horario_id,
+                  jornada
+                })
+              } else {
+                console.warn('⚠️ No se pudo asignar cancha al encuentro (secundarias):', {
+                  encuentroId: encuentro.id,
+                  horaInicio,
+                  jornada,
+                  motivo: 'No se encontró cancha disponible'
+                })
+              }
               
               if (canchasDisponiblesParaHorario.length > 0) {
                 // Calcular puntuación para cada cancha secundaria
@@ -2364,12 +3337,102 @@ export async function asignarCanchasAutomaticamente(
       }
     }
     
+    // ===========================
+    // SEGUNDA PASADA (RE-ASIGNAR)
+    // ===========================
+    // Objetivo: si aún quedan encuentros sin cancha pero existen otros horarios/canchas libres
+    // en el MISMO día, intentar moverlos a otro horario disponible (sin repetir cancha+hora+fecha).
+    // Reutilizamos los horarios ya cargados anteriormente en esta misma función.
+    const horariosTorneo = horariosDisponibles
+
+    // Releer encuentros desde BD para tener el estado final tras la primera pasada
+    let encuentrosFinales = await encuentroQueries.getByTorneoId(torneoId)
+
+    const encuentrosCandidatosReasignacion = encuentrosFinales.filter(
+      (e: any) =>
+        (!e.cancha || e.cancha.trim() === '') &&
+        e.horario_id && // solo podemos mover si tiene horario
+        e.horario && e.horario.dia_semana // necesitamos el día
+    ) as any[]
+
+    let reasignacionesRealizadas = 0
+
+    for (const encuentro of encuentrosCandidatosReasignacion) {
+      const diaSemanaOriginal = encuentro.horario?.dia_semana
+      const jornada = encuentro.jornada || 1
+      const fechaProgramada = encuentro.fecha_programada ?? null
+
+      // Buscar todos los horarios del mismo día, ordenados por hora
+      const horariosMismoDia = horariosTorneo
+        .filter((h: any) => h.dia_semana === diaSemanaOriginal)
+        .sort((a: any, b: any) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''))
+
+      let reasignado = false
+
+      for (const horarioNuevo of horariosMismoDia) {
+        const horaInicioNueva = horarioNuevo.hora_inicio
+
+        // Probar todas las canchas activas para este nuevo horario
+        for (const cancha of canchasActivas) {
+          const canchaNombre = cancha.nombre
+
+          // Verificar que la combinación (cancha, hora, fecha/día/jornada) esté libre en TODOS los torneos
+          const ocupada = await verificarCanchaOcupadaEnTodosTorneos(
+            canchaNombre,
+            horaInicioNueva,
+            jornada,
+            torneoId,
+            encuentro.id,
+            diaSemanaOriginal,
+            fechaProgramada
+          )
+
+          if (!ocupada) {
+            // Actualizar horario y cancha del encuentro
+            const formData = new FormData()
+            formData.append('cancha', canchaNombre)
+            formData.append('horario_id', String(horarioNuevo.id))
+            await updateEncuentro(encuentro.id, formData)
+
+            asignacionesRealizadas++
+            reasignacionesRealizadas++
+            reasignado = true
+            break
+          }
+        }
+
+        if (reasignado) break
+      }
+    }
+
+    // Revalidar paths después de todas las asignaciones
     revalidatePath(`/torneos/${torneoId}`)
+    
+    // Calcular encuentros sin cancha asignada tras la segunda pasada
+    encuentrosFinales = await encuentroQueries.getByTorneoId(torneoId)
+    const encuentrosSinCancha = encuentrosFinales.filter(
+      (e: any) => !e.cancha || e.cancha.trim() === ''
+    )
+    const encuentrosSinHorario = encuentrosFinales.filter((e: any) => !e.horario_id)
+    
+    let mensaje = `Se asignaron canchas a ${asignacionesRealizadas} encuentro(s)`
+    if (reasignacionesRealizadas > 0) {
+      mensaje += ` (incluye ${reasignacionesRealizadas} encuentro(s) reprogramados a otro horario del mismo día)`
+    }
+    if (encuentrosSinCancha.length > 0) {
+      mensaje += `. ${encuentrosSinCancha.length} encuentro(s) quedaron sin cancha asignada`
+      if (encuentrosSinHorario.length > 0) {
+        mensaje += ` (${encuentrosSinHorario.length} sin horario asignado)`
+      }
+    }
     
     return {
       success: true,
       asignacionesRealizadas,
-      mensaje: `Se asignaron canchas a ${asignacionesRealizadas} encuentro(s)`
+      encuentrosReasignados: reasignacionesRealizadas,
+      encuentrosSinCancha: encuentrosSinCancha.length,
+      encuentrosSinHorario: encuentrosSinHorario.length,
+      mensaje
     }
   } catch (error) {
     console.error('Error al asignar canchas automáticamente:', error)

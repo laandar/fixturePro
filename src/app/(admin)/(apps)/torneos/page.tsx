@@ -21,12 +21,13 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Badge, ProgressBar } from 'react-bootstrap'
-import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuClock, LuCheck, LuX } from 'react-icons/lu'
+import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Badge, ProgressBar, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
+import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuClock, LuCheck, LuX, LuMapPin } from 'react-icons/lu'
 import { TbEdit, TbEye, TbPlus, TbTrash, TbSettings } from 'react-icons/tb'
-import { getTorneos, deleteTorneo, createTorneo, updateTorneo, getMapaGeneralHorarios, getMapaHorariosCanchasGeneral } from './actions'
+import { getTorneos, deleteTorneo, createTorneo, updateTorneo, getMapaGeneralHorarios, getMapaHorariosCanchasGeneral, getAllEncuentrosTodosTorneos, getAllHorariosTodosTorneos } from './actions'
 import { getCategorias } from '../categorias/actions'
-import type { TorneoWithRelations, Categoria } from '@/db/types'
+import type { TorneoWithRelations, Categoria, EncuentroWithRelations, Horario } from '@/db/types'
+import TablaHorariosCanchas from '@/components/TablaHorariosCanchas'
 
 type MapaHorarioTorneo = {
   torneoId: number
@@ -89,6 +90,10 @@ const Page = () => {
   const [mapaHorarios, setMapaHorarios] = useState<MapaHorarioTorneo[]>([])
   const [mapaHorariosCanchas, setMapaHorariosCanchas] = useState<MapaHorariosCanchas[]>([])
   const [loading, setLoading] = useState(true)
+  const [showTablaGlobal, setShowTablaGlobal] = useState(false)
+  const [encuentrosGlobales, setEncuentrosGlobales] = useState<EncuentroWithRelations[]>([])
+  const [horariosGlobales, setHorariosGlobales] = useState<Horario[]>([])
+  const [loadingTablaGlobal, setLoadingTablaGlobal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
@@ -494,13 +499,48 @@ const Page = () => {
                       {mapaHorarios.length} torneo(s) planificados o en curso · {totalHorariosMapa} horarios totales
                     </small>
                   </div>
-                  <div className="text-md-end">
-                    <div className="fw-semibold text-success">
-                      {totalCubiertosMapa} horarios cubiertos
+                  <div className="d-flex flex-column gap-2">
+                    <div className="text-md-end">
+                      <div className="fw-semibold text-success">
+                        {totalCubiertosMapa} horarios cubiertos
+                      </div>
+                      <div className="text-danger fw-semibold">
+                        {totalLibresMapa} sin encuentros
+                      </div>
                     </div>
-                    <div className="text-danger fw-semibold">
-                      {totalLibresMapa} sin encuentros
-                    </div>
+                    <Button 
+                      variant="primary" 
+                      size="sm"
+                      onClick={async () => {
+                        setLoadingTablaGlobal(true)
+                        try {
+                          const [encuentros, horarios] = await Promise.all([
+                            getAllEncuentrosTodosTorneos(),
+                            getAllHorariosTodosTorneos()
+                          ])
+                          setEncuentrosGlobales(encuentros)
+                          setHorariosGlobales(horarios)
+                          setShowTablaGlobal(true)
+                        } catch (err) {
+                          setError('Error al cargar la tabla global')
+                        } finally {
+                          setLoadingTablaGlobal(false)
+                        }
+                      }}
+                      disabled={loadingTablaGlobal}
+                    >
+                      {loadingTablaGlobal ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-1" />
+                          Cargando...
+                        </>
+                      ) : (
+                        <>
+                          <LuMapPin className="me-1" />
+                          Ver Tabla Global
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -1066,6 +1106,35 @@ const Page = () => {
           )}
         </OffcanvasBody>
       </Offcanvas>
+
+      {/* Modal: Tabla Global Horarios vs Canchas */}
+      <Modal 
+        show={showTablaGlobal} 
+        onHide={() => setShowTablaGlobal(false)}
+        centered
+        fullscreen
+      >
+        <ModalHeader closeButton>
+          <ModalTitle>
+            <LuMapPin className="me-2" />
+            Tabla Global de Horarios vs Canchas (Todos los Torneos)
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          <TablaHorariosCanchas 
+            encuentros={encuentrosGlobales}
+            horarios={horariosGlobales}
+            canchas={encuentrosGlobales
+              .map(e => e.cancha)
+              .filter((c): c is string => c !== null && c !== undefined && c.trim() !== '')}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowTablaGlobal(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
     </Container>
   )
 }

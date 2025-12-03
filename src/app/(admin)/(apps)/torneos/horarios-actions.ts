@@ -962,11 +962,28 @@ export async function asignarHorariosPorJornada(torneoId: number, jornada: numbe
       })
       
       // Jerarquía de selección: Ultra filtrados > Filtrados > Todos
-      const horariosParaEvaluar = horariosPrioritarios.length > 0 ? horariosPrioritarios : 
-                                 horariosUltraFiltrados.length > 0 ? horariosUltraFiltrados :
-                                 horariosFiltrados.length > 0 ? horariosFiltrados : horariosDisponibles
+      let horariosParaEvaluar = horariosPrioritarios.length > 0 ? horariosPrioritarios : 
+                               horariosUltraFiltrados.length > 0 ? horariosUltraFiltrados :
+                               horariosFiltrados.length > 0 ? horariosFiltrados : horariosDisponibles
+
+      // ===============================
+      // PREFERENCIA FUERTE POR DOMINGO
+      // ===============================
+      // Regla solicitada: primero llenar todos los horarios de los días domingo,
+      // y solo cuando no haya ninguno disponible pasar a sábado u otros días.
+      const horariosDomingo = horariosParaEvaluar.filter((h: any) => h.dia_semana === 'domingo')
+      if (horariosDomingo.length > 0) {
+        horariosParaEvaluar = horariosDomingo
+      } else {
+        // Si no hay domingo disponible, preferir sábado antes que otros días
+        const horariosSabado = horariosParaEvaluar.filter((h: any) => h.dia_semana === 'sabado')
+        if (horariosSabado.length > 0) {
+          horariosParaEvaluar = horariosSabado
+        }
+      }
       
       // Calcular puntuación combinada para cada horario
+      // NOTA: menor puntuación = mejor opción
       const horariosConPuntuacion = horariosParaEvaluar.map((horario: any) => {
         let puntuacionTotal = 0
         
@@ -1063,6 +1080,20 @@ export async function asignarHorariosPorJornada(torneoId: number, jornada: numbe
         
         // Bajo: Penalizar según desviación de la distribución ideal (ajuste fino)
         puntuacionTotal += (desviacionLocal + desviacionVisitante) * 20
+
+        // PREFERENCIA POR DOMINGO LUEGO SÁBADO
+        // Queremos que, a igualdad de condiciones, los horarios del domingo se llenen primero,
+        // luego los del sábado y finalmente cualquier otro día (por ejemplo viernes).
+        if (horario.dia_semana === 'domingo') {
+          // Bonificación fuerte: priorizar siempre domingo
+          puntuacionTotal -= 2000
+        } else if (horario.dia_semana === 'sabado') {
+          // Neutro: dejar sábado en medio
+          puntuacionTotal += 0
+        } else {
+          // Penalizar levemente otros días (ej. viernes) para que queden al final
+          puntuacionTotal += 500
+        }
         
         return {
           horario,

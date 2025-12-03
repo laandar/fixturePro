@@ -29,6 +29,22 @@ const NavigationLoader = () => {
         return // No activar loading para cambios de pestañas
       }
       
+      // Ignorar clicks en botones de paginación - elementos dentro de .pagination o con clase .page-link
+      const paginationContainer = target.closest('.pagination') || target.closest('.pagination-boxed')
+      const isPaginationButton = target.tagName === 'BUTTON' && (
+        target.classList.contains('page-link') ||
+        target.closest('.page-link') ||
+        paginationContainer
+      )
+      const isPaginationElement = target.classList.contains('page-link') ||
+                                  target.closest('.page-link') ||
+                                  target.closest('.page-item') ||
+                                  paginationContainer
+      
+      if (isPaginationButton || isPaginationElement) {
+        return // No activar loading para cambios de paginación
+      }
+      
       if (link && link.href && !link.href.startsWith('javascript:') && !link.target) {
         const currentUrl = window.location.href
         const linkUrl = link.href

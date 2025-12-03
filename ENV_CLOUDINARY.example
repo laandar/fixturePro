@@ -1,0 +1,14 @@
+# Configuración de Cloudinary
+# Copia este archivo a .env.local y completa con tus credenciales
+
+# Cloudinary - Obtén estas credenciales en https://console.cloudinary.com/
+CLOUDINARY_CLOUD_NAME=Cloudinary
+CLOUDINARY_API_KEY=595817586185766
+CLOUDINARY_API_SECRET=19ExMCk7LUfzpYrHN7I3AGtCpIc
+
+# Instrucciones:
+# 1. Crea una cuenta gratuita en https://cloudinary.com/
+# 2. Ve al Dashboard y copia tus credenciales
+# 3. Pega las credenciales en este archivo
+# 4. Renombra este archivo a .env.local (o agrega estas variables a tu .env.local existente)
+

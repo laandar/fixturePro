@@ -21,6 +21,7 @@ import DynamicFixtureModal from '@/components/DynamicFixtureModal'
 import EmparejamientosFaltantesModal from '@/components/EmparejamientosFaltantesModal'
 import EncuentroCard from '@/components/EncuentroCard'
 import TorneoFixtureSection from '@/components/TorneoFixtureSection'
+import TablaHorariosCanchas from '@/components/TablaHorariosCanchas'
 import { saveAs } from 'file-saver'
 import { exportFixtureToExcel } from '@/lib/excel-exporter'
 import { 
@@ -99,6 +100,7 @@ const TorneoDetailPage = () => {
   const [canchaPrioritariaId, setCanchaPrioritariaId] = useState<number | null>(null)
   const [showTablaDistribucionCanchas, setShowTablaDistribucionCanchas] = useState(false)
   const [tablaDistribucionCanchas, setTablaDistribucionCanchas] = useState<any>(null)
+  const [showTablaHorariosCanchas, setShowTablaHorariosCanchas] = useState(false)
   
   // Estados para el sistema dinámico
   const [showDynamicFixtureModal, setShowDynamicFixtureModal] = useState(false)
@@ -1071,61 +1073,49 @@ const TorneoDetailPage = () => {
                         <NavLink 
                           eventKey="fixture"
                           className="px-2 px-md-3 py-2"
-                          disabled={equiposParticipantes.length < 2}
                           style={{ 
                             fontSize: '0.875rem',
                             whiteSpace: 'nowrap',
                             minWidth: 'fit-content',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            opacity: equiposParticipantes.length < 2 ? 0.5 : 1,
-                            cursor: equiposParticipantes.length < 2 ? 'not-allowed' : 'pointer'
+                            justifyContent: 'center'
                           }}
                         >
                           2. Fixture
-                          {equiposParticipantes.length < 2 && <LuX className="ms-1 text-danger" size={14} />}
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
                         <NavLink 
                           eventKey="canchas"
                           className="px-2 px-md-3 py-2"
-                          disabled={encuentros.length === 0}
                           style={{ 
                             fontSize: '0.875rem',
                             whiteSpace: 'nowrap',
                             minWidth: 'fit-content',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            opacity: encuentros.length === 0 ? 0.5 : 1,
-                            cursor: encuentros.length === 0 ? 'not-allowed' : 'pointer'
+                            justifyContent: 'center'
                           }}
                         >
                           <span className="d-none d-sm-inline">3. Asignar Canchas</span>
                           <span className="d-sm-none">Canchas</span>
-                          {encuentros.length === 0 && <LuX className="ms-1 text-danger" size={14} />}
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
                         <NavLink 
                           eventKey="horarios"
                           className="px-2 px-md-3 py-2"
-                          disabled={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0}
                           style={{ 
                             fontSize: '0.875rem',
                             whiteSpace: 'nowrap',
                             minWidth: 'fit-content',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            opacity: encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 ? 0.5 : 1,
-                            cursor: encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 ? 'not-allowed' : 'pointer'
+                            justifyContent: 'center'
                           }}
                         >
                           4. Horarios
-                          {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 && <LuX className="ms-1 text-danger" size={14} />}
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -1259,25 +1249,7 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Fixture */}
                 <Tab.Pane eventKey="fixture">
-                  {equiposParticipantes.length < 2 ? (
-                    <Alert variant="warning" className="text-center py-5">
-                      <LuTriangle size={48} className="mb-3 text-warning" />
-                      <h4>⚠️ Paso Bloqueado</h4>
-                      <p className="mb-3">
-                        Necesitas completar el <strong>Paso 1: Equipos Participantes</strong> antes de generar el fixture.
-                      </p>
-                      <p className="text-muted mb-3">
-                        Debes agregar al menos <strong>2 equipos</strong> al torneo para poder generar el calendario de encuentros.
-                      </p>
-                      <Button 
-                        variant="primary" 
-                        onClick={() => setActiveTab('equipos')}>
-                        <LuUsers className="me-2" />
-                        Ir a Agregar Equipos
-                      </Button>
-                    </Alert>
-                  ) : (
-                    <TorneoFixtureSection
+                  <TorneoFixtureSection
                     torneo={torneo}
                     encuentros={encuentros}
                     equiposParticipantes={equiposParticipantes}
@@ -1311,7 +1283,6 @@ const TorneoDetailPage = () => {
                     }}
                     showActions={true}
                   />
-                  )}
                 </Tab.Pane>
 
                 {/* Tab: Sistema Dinámico */}
@@ -1396,40 +1367,7 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Horarios */}
                 <Tab.Pane eventKey="horarios">
-                  {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0 ? (
-                    <Alert variant="warning" className="text-center py-5">
-                      <LuTriangle size={48} className="mb-3 text-warning" />
-                      <h4>⚠️ Paso Bloqueado</h4>
-                      <p className="mb-3">
-                        Necesitas completar los pasos anteriores antes de asignar horarios.
-                      </p>
-                      <div className="text-start mx-auto" style={{ maxWidth: '500px' }}>
-                        <p className="mb-2"><strong>Pasos requeridos (en orden):</strong></p>
-                        <ol>
-                          <li className={equiposParticipantes.length >= 2 ? 'text-success' : 'text-danger'}>
-                            {equiposParticipantes.length >= 2 ? '✓' : '✗'} <strong>Paso 1:</strong> Agregar al menos 2 equipos
-                          </li>
-                          <li className={encuentros.length > 0 ? 'text-success' : 'text-danger'}>
-                            {encuentros.length > 0 ? '✓' : '✗'} <strong>Paso 2:</strong> Generar el fixture
-                          </li>
-                          <li className={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length > 0 ? 'text-success' : 'text-danger'}>
-                            {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length > 0 ? '✓' : '✗'} <strong>Paso 3:</strong> Asignar canchas a los encuentros
-                          </li>
-                        </ol>
-                      </div>
-                      <Button 
-                        variant="primary" 
-                        onClick={() => {
-                          if (equiposParticipantes.length < 2) setActiveTab('equipos')
-                          else if (encuentros.length === 0) setActiveTab('fixture')
-                          else setActiveTab('canchas')
-                        }}
-                        className="mt-3">
-                        Ir al Paso Pendiente
-                      </Button>
-                    </Alert>
-                  ) : (
-                    <>
+                  <>
                     <div className="d-flex justify-content-between align-items-center mb-3">
                       <h4 className="fw-bold text-primary mb-0">🕐 Paso 4: Gestión de Horarios</h4>
                       <div className="d-flex gap-2">
@@ -1576,38 +1514,12 @@ const TorneoDetailPage = () => {
                     </Col>
                   </Row>
                     </>
-                  )}
+                  
                 </Tab.Pane>
 
                 {/* Tab: Asignar Canchas */}
                 <Tab.Pane eventKey="canchas">
-                  {encuentros.length === 0 ? (
-                    <Alert variant="warning" className="text-center py-5">
-                      <LuTriangle size={48} className="mb-3 text-warning" />
-                      <h4>⚠️ Paso Bloqueado</h4>
-                      <p className="mb-3">
-                        Necesitas completar los pasos anteriores antes de asignar canchas.
-                      </p>
-                      <div className="text-start mx-auto" style={{ maxWidth: '400px' }}>
-                        <p className="mb-2"><strong>Pasos requeridos:</strong></p>
-                        <ol>
-                          <li className={equiposParticipantes.length >= 2 ? 'text-success' : 'text-danger'}>
-                            {equiposParticipantes.length >= 2 ? '✓' : '✗'} Agregar al menos 2 equipos
-                          </li>
-                          <li className={encuentros.length > 0 ? 'text-success' : 'text-danger'}>
-                            {encuentros.length > 0 ? '✓' : '✗'} Generar el fixture
-                          </li>
-                        </ol>
-                      </div>
-                      <Button 
-                        variant="primary" 
-                        onClick={() => setActiveTab(equiposParticipantes.length < 2 ? 'equipos' : 'fixture')}
-                        className="mt-3">
-                        Ir al Paso Pendiente
-                      </Button>
-                    </Alert>
-                  ) : (
-                    <>
+                  <>
                     <div className="d-flex justify-content-between align-items-center mb-3">
                       <h4 className="fw-bold text-primary mb-0">🏟️ Paso 3: Asignación Automática de Canchas</h4>
                       <div className="d-flex gap-2">
@@ -1619,6 +1531,15 @@ const TorneoDetailPage = () => {
                         className="px-3">
                         <LuInfo className="me-1" size={16} />
                         Ver Distribución
+                      </Button>
+                      <Button 
+                        variant="primary" 
+                        size="sm"
+                        onClick={() => setShowTablaHorariosCanchas(true)}
+                        disabled={encuentros.length === 0 || horarios.length === 0}
+                        className="px-3">
+                        <LuClock className="me-1" size={16} />
+                        Ver Tabla Horarios/Canchas
                       </Button>
                       <Button 
                         variant="success" 
@@ -1799,7 +1720,7 @@ const TorneoDetailPage = () => {
                     </Col>
                   </Row>
                     </>
-                  )}
+                  
                 </Tab.Pane>
 
                 {/* Tab: Sanciones */}
@@ -2797,6 +2718,36 @@ const TorneoDetailPage = () => {
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setShowTablaDistribucionCanchas(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal: Tabla Horarios vs Canchas */}
+      <Modal 
+        show={showTablaHorariosCanchas} 
+        onHide={() => setShowTablaHorariosCanchas(false)}
+        size="xl"
+        centered
+        fullscreen="lg-down"
+      >
+        <ModalHeader closeButton>
+          <Modal.Title>
+            <LuClock className="me-2" />
+            Tabla de Horarios vs Canchas
+          </Modal.Title>
+        </ModalHeader>
+        <ModalBody>
+          <TablaHorariosCanchas 
+            encuentros={encuentros}
+            horarios={horarios}
+            canchas={encuentros
+              .map(e => e.cancha)
+              .filter((c): c is string => c !== null && c !== undefined && c.trim() !== '')}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowTablaHorariosCanchas(false)}>
             Cerrar
           </Button>
         </ModalFooter>

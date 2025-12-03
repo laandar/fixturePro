@@ -21,7 +21,7 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
+import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
 import { LuSearch, LuMapPin } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash } from 'react-icons/tb'
 import { getCanchasWithCategorias, createCancha, updateCancha, deleteCancha } from './actions'
@@ -45,6 +45,8 @@ const Page = () => {
   const [editingCancha, setEditingCancha] = useState<CanchaWithCategorias | null>(null)
   const [editFormError, setEditFormError] = useState<string | null>(null)
   const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
+  const [selectedCategorias, setSelectedCategorias] = useState<number[]>([])
+  const [editSelectedCategorias, setEditSelectedCategorias] = useState<number[]>([])
   
   const columns = [
     columnHelper.accessor('nombre', {
@@ -84,14 +86,14 @@ const Page = () => {
         </div>
       ),
     }),
-    columnHelper.accessor('ubicacion', {
-      header: 'Ubicación',
-      cell: ({ row }) => (
-        <span className="text-muted">
-          {row.original.ubicacion || 'No especificada'}
-        </span>
-      ),
-    }),
+    // columnHelper.accessor('ubicacion', {
+    //   header: 'Ubicación',
+    //   cell: ({ row }) => (
+    //     <span className="text-muted">
+    //       {row.original.ubicacion || 'No especificada'}
+    //     </span>
+    //   ),
+    // }),
     columnHelper.accessor('tipo', {
       header: 'Tipo',
       filterFn: 'equalsString',
@@ -113,14 +115,14 @@ const Page = () => {
         )
       },
     }),
-    columnHelper.accessor('capacidad', {
-      header: 'Capacidad',
-      cell: ({ row }) => (
-        <span className="fw-semibold">
-          {row.original.capacidad ? `${row.original.capacidad} personas` : 'No especificada'}
-        </span>
-      ),
-    }),
+    // columnHelper.accessor('capacidad', {
+    //   header: 'Capacidad',
+    //   cell: ({ row }) => (
+    //     <span className="fw-semibold">
+    //       {row.original.capacidad ? `${row.original.capacidad} personas` : 'No especificada'}
+    //     </span>
+    //   ),
+    // }),
     columnHelper.accessor('estado', {
       header: 'Estado',
       filterFn: 'equalsString',
@@ -260,6 +262,7 @@ const Page = () => {
     }
     
     setEditingCancha(cancha)
+    setEditSelectedCategorias(cancha.categorias?.map(c => c.id) || [])
     setEditFormError(null)
     setEditFormSuccess(null)
     toggleEditOffcanvas()
@@ -278,8 +281,14 @@ const Page = () => {
       setEditFormError(null)
       setEditFormSuccess(null)
       
+      // Agregar las categorías seleccionadas al formData
+      editSelectedCategorias.forEach((id) => {
+        formData.append('categorias', id.toString())
+      })
+      
       await updateCancha(editingCancha.id, formData)
       setEditFormSuccess('Cancha actualizada exitosamente')
+      setEditSelectedCategorias([]) // Resetear selección
       
       // Recargar datos después de un breve delay
       setTimeout(async () => {
@@ -303,7 +312,9 @@ const Page = () => {
         getCategorias(),
       ])
       setData(canchasData as any)
-      setCategorias(categoriasData)
+      // Filtrar solo categorías activas
+      const categoriasActivas = categoriasData.filter(categoria => categoria.estado === true)
+      setCategorias(categoriasActivas)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar canchas')
     } finally {
@@ -322,8 +333,14 @@ const Page = () => {
       setFormError(null)
       setFormSuccess(null)
       
+      // Agregar las categorías seleccionadas al formData
+      selectedCategorias.forEach((id) => {
+        formData.append('categorias', id.toString())
+      })
+      
       await createCancha(formData)
       setFormSuccess('Cancha creada exitosamente')
+      setSelectedCategorias([]) // Resetear selección
       
       // Recargar datos después de un breve delay
       setTimeout(async () => {
@@ -340,6 +357,39 @@ const Page = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Resetear categorías seleccionadas cuando se abre el offcanvas de crear
+  useEffect(() => {
+    if (showOffcanvas) {
+      setSelectedCategorias([])
+    }
+  }, [showOffcanvas])
+
+  // Resetear categorías seleccionadas cuando se abre el offcanvas de editar
+  useEffect(() => {
+    if (showEditOffcanvas && editingCancha) {
+      setEditSelectedCategorias(editingCancha.categorias?.map(c => c.id) || [])
+    } else if (!showEditOffcanvas) {
+      setEditSelectedCategorias([])
+    }
+  }, [showEditOffcanvas, editingCancha])
+
+  // Función para manejar el cierre del offcanvas de crear
+  const handleCloseCreateOffcanvas = () => {
+    setSelectedCategorias([])
+    setFormError(null)
+    setFormSuccess(null)
+    toggleOffcanvas()
+  }
+
+  // Función para manejar el cierre del offcanvas de editar
+  const handleCloseEditOffcanvas = () => {
+    setEditSelectedCategorias([])
+    setEditFormError(null)
+    setEditFormSuccess(null)
+    setEditingCancha(null)
+    toggleEditOffcanvas()
+  }
 
   if (cargandoPermisos) {
     return (
@@ -548,7 +598,7 @@ const Page = () => {
       </Row>
 
       {/* Offcanvas Right con Formulario de Floating Labels para Crear */}
-      <Offcanvas show={showOffcanvas} onHide={toggleOffcanvas} placement="end" className="offcanvas-end">
+      <Offcanvas show={showOffcanvas} onHide={handleCloseCreateOffcanvas} placement="end" className="offcanvas-end">
         <OffcanvasHeader closeButton>
           <OffcanvasTitle as="h5" className="mt-0">
             Agregar Nueva Cancha
@@ -574,11 +624,11 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={12}>
+              {/* <Col lg={12}>
                 <FloatingLabel label="Ubicación">
                   <FormControl type="text" name="ubicacion" placeholder="Ingrese la ubicación de la cancha" />
                 </FloatingLabel>
-              </Col>
+              </Col> */}
 
               <Col lg={12}>
                 <FloatingLabel label="Tipo de Cancha">
@@ -594,11 +644,11 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={12}>
+              {/* <Col lg={12}>
                 <FloatingLabel label="Capacidad">
                   <FormControl type="number" name="capacidad" placeholder="Ingrese la capacidad de la cancha" min="1" />
                 </FloatingLabel>
-              </Col>
+              </Col> */}
 
               <Col lg={12}>
                 <FloatingLabel label="Descripción">
@@ -616,23 +666,62 @@ const Page = () => {
               </Col>
 
               <Col lg={12}>
-                <FloatingLabel label="Categorías (Mantén Ctrl/Cmd para seleccionar múltiples)">
-                  <FormSelect name="categorias" multiple style={{ height: `${Math.min(categorias.length, 6) * 2.5}rem` }}>
-                    {categorias.map((categoria) => (
-                      <option key={categoria.id} value={categoria.id}>
-                        {categoria.nombre}
-                      </option>
-                    ))}
-                  </FormSelect>
-                </FloatingLabel>
-                <small className="text-muted">
-                  Selecciona las categorías que pueden usar esta cancha
-                </small>
+                <label className="form-label fw-semibold mb-2">
+                  Categorías Disponibles
+                </label>
+                <div 
+                  className="border rounded p-3"
+                  style={{
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    backgroundColor: '#f8f9fa',
+                    border: '2px solid #e0e0e0',
+                  }}
+                >
+                  {categorias.length > 0 ? (
+                    <div className="d-flex flex-column gap-2">
+                      {categorias.map((categoria) => (
+                        <FormCheck
+                          key={categoria.id}
+                          type="checkbox"
+                          id={`categoria-create-${categoria.id}`}
+                          label={categoria.nombre}
+                          checked={selectedCategorias.includes(categoria.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCategorias([...selectedCategorias, categoria.id])
+                            } else {
+                              setSelectedCategorias(selectedCategorias.filter(id => id !== categoria.id))
+                            }
+                          }}
+                          className="p-2 rounded"
+                          style={{
+                            backgroundColor: selectedCategorias.includes(categoria.id) ? '#e7f3ff' : 'white',
+                            border: selectedCategorias.includes(categoria.id) ? '2px solid #0d6efd' : '1px solid #dee2e6',
+                            transition: 'all 0.2s ease',
+                            cursor: 'pointer'
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted py-3">
+                      No hay categorías activas disponibles
+                    </div>
+                  )}
+                </div>
+                {selectedCategorias.length > 0 && (
+                  <div className="mt-2">
+                    <small className="text-muted">
+                      <strong>{selectedCategorias.length}</strong> categoría{selectedCategorias.length > 1 ? 's' : ''} seleccionada{selectedCategorias.length > 1 ? 's' : ''}
+                    </small>
+                  </div>
+                )}
               </Col>
 
               <Col lg={12}>
                 <div className="d-flex gap-2 justify-content-end">
-                  <Button variant="light" onClick={toggleOffcanvas}>
+                  <Button variant="light" onClick={handleCloseCreateOffcanvas}>
                     Cancelar
                   </Button>
                   <Button variant="success" type="submit">
@@ -646,7 +735,7 @@ const Page = () => {
       </Offcanvas>
 
       {/* Offcanvas Right con Formulario de Floating Labels para Editar */}
-      <Offcanvas show={showEditOffcanvas} onHide={toggleEditOffcanvas} placement="end" className="offcanvas-end">
+      <Offcanvas show={showEditOffcanvas} onHide={handleCloseEditOffcanvas} placement="end" className="offcanvas-end">
         <OffcanvasHeader closeButton>
           <OffcanvasTitle as="h5" className="mt-0">
             Editar Cancha
@@ -679,7 +768,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={12}>
+                {/* <Col lg={12}>
                   <FloatingLabel label="Ubicación">
                     <FormControl 
                       type="text" 
@@ -688,7 +777,7 @@ const Page = () => {
                       defaultValue={editingCancha.ubicacion || ''}
                     />
                   </FloatingLabel>
-                </Col>
+                </Col> */}
 
                 <Col lg={12}>
                   <FloatingLabel label="Tipo de Cancha">
@@ -704,7 +793,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={12}>
+                {/* <Col lg={12}>
                   <FloatingLabel label="Capacidad">
                     <FormControl 
                       type="number" 
@@ -714,7 +803,7 @@ const Page = () => {
                       min="1" 
                     />
                   </FloatingLabel>
-                </Col>
+                </Col> */}
 
                 <Col lg={12}>
                   <FloatingLabel label="Descripción">
@@ -738,23 +827,62 @@ const Page = () => {
                 </Col>
 
                 <Col lg={12}>
-                  <FloatingLabel label="Categorías (Mantén Ctrl/Cmd para seleccionar múltiples)">
-                    <FormSelect name="categorias" multiple defaultValue={editingCancha.categorias?.map(c => c.id.toString()) || []} style={{ height: `${Math.min(categorias.length, 6) * 2.5}rem` }}>
-                      {categorias.map((categoria) => (
-                        <option key={categoria.id} value={categoria.id}>
-                          {categoria.nombre}
-                        </option>
-                      ))}
-                    </FormSelect>
-                  </FloatingLabel>
-                  <small className="text-muted">
-                    Selecciona las categorías que pueden usar esta cancha
-                  </small>
+                  <label className="form-label fw-semibold mb-2">
+                    Categorías Disponibles
+                  </label>
+                  <div 
+                    className="border rounded p-3"
+                    style={{
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      backgroundColor: '#f8f9fa',
+                      border: '2px solid #e0e0e0',
+                    }}
+                  >
+                    {categorias.length > 0 ? (
+                      <div className="d-flex flex-column gap-2">
+                        {categorias.map((categoria) => (
+                          <FormCheck
+                            key={categoria.id}
+                            type="checkbox"
+                            id={`categoria-edit-${categoria.id}`}
+                            label={categoria.nombre}
+                            checked={editSelectedCategorias.includes(categoria.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditSelectedCategorias([...editSelectedCategorias, categoria.id])
+                              } else {
+                                setEditSelectedCategorias(editSelectedCategorias.filter(id => id !== categoria.id))
+                              }
+                            }}
+                            className="p-2 rounded"
+                            style={{
+                              backgroundColor: editSelectedCategorias.includes(categoria.id) ? '#e7f3ff' : 'white',
+                              border: editSelectedCategorias.includes(categoria.id) ? '2px solid #0d6efd' : '1px solid #dee2e6',
+                              transition: 'all 0.2s ease',
+                              cursor: 'pointer'
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center text-muted py-3">
+                        No hay categorías activas disponibles
+                      </div>
+                    )}
+                  </div>
+                  {editSelectedCategorias.length > 0 && (
+                    <div className="mt-2">
+                      <small className="text-muted">
+                        <strong>{editSelectedCategorias.length}</strong> categoría{editSelectedCategorias.length > 1 ? 's' : ''} seleccionada{editSelectedCategorias.length > 1 ? 's' : ''}
+                      </small>
+                    </div>
+                  )}
                 </Col>
 
                 <Col lg={12}>
                   <div className="d-flex gap-2 justify-content-end">
-                    <Button variant="light" onClick={toggleEditOffcanvas}>
+                    <Button variant="light" onClick={handleCloseEditOffcanvas}>
                       Cancelar
                     </Button>
                     <Button variant="primary" type="submit">

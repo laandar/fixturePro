@@ -62,6 +62,10 @@ export async function createEquipo(formData: FormData) {
   // 🔐 Verificar permiso de crear
   await requirePermiso('equipos', 'crear')
   
+  // Variables para logging de errores (definidas fuera del try)
+  let equipoData: NewEquipo | undefined
+  let categoriaIds: number[] | undefined
+  
   try {
     const nombre = formData.get('nombre') as string
     const categoria_ids = formData.getAll('categoria_ids') as string[]
@@ -85,22 +89,102 @@ export async function createEquipo(formData: FormData) {
       throw new Error('Debe seleccionar al menos una categoría')
     }
 
-    const equipoData: NewEquipo = {
+    // Validar que el entrenador existe
+    const entrenador = await entrenadorQueries.getById(entrenador_id)
+    if (!entrenador) {
+      throw new Error(`El entrenador con ID ${entrenador_id} no existe. Por favor, selecciona un entrenador válido.`)
+    }
+
+    // Normalizar imagen_equipo: convertir cadena vacía a null
+    const imagenEquipoNormalizada = imagen_equipo && imagen_equipo.trim() !== '' ? imagen_equipo.trim() : null
+
+    equipoData = {
       nombre,
       entrenador_id,
-      imagen_equipo: imagen_equipo || null,
+      imagen_equipo: imagenEquipoNormalizada,
       estado,
     }
 
     // Convertir string IDs a números y eliminar duplicados
-    const categoriaIds = [...new Set(categoria_ids.map(id => parseInt(id)))]
+    categoriaIds = [...new Set(categoria_ids.map(id => parseInt(id)))]
 
     // Crear equipo con múltiples categorías
     await equipoCategoriaQueries.crearEquipoConCategorias(equipoData, categoriaIds)
     revalidatePath('/equipos')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al crear equipo:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al crear equipo')
+    
+    // Obtener mensaje de error más detallado
+    let errorMessage = 'Error al crear equipo'
+    
+    // Intentar extraer información del error de PostgreSQL
+    if (error) {
+      // Errores de postgres.js suelen tener propiedades específicas
+      const postgresError = error as any
+      
+      // Extraer error real de 'cause' si existe (donde postgres.js pone el error real)
+      const realError = postgresError.cause || postgresError
+      
+      // Extraer mensaje de diferentes posibles fuentes
+      if (realError.message) {
+        errorMessage = realError.message
+      } else if (postgresError.message) {
+        errorMessage = postgresError.message
+      }
+      
+      // Si tiene código de error de PostgreSQL, añadirlo
+      if (realError.code) {
+        errorMessage += ` (Código: ${realError.code})`
+      } else if (postgresError.code) {
+        errorMessage += ` (Código: ${postgresError.code})`
+      }
+      
+      // Si tiene detalle del error, añadirlo
+      if (realError.detail) {
+        errorMessage += ` - ${realError.detail}`
+      } else if (postgresError.detail) {
+        errorMessage += ` - ${postgresError.detail}`
+      }
+      
+      // Si tiene hint, añadirlo
+      if (realError.hint) {
+        errorMessage += ` (Hint: ${realError.hint})`
+      } else if (postgresError.hint) {
+        errorMessage += ` (Hint: ${postgresError.hint})`
+      }
+      
+      // Errores comunes de PostgreSQL
+      const errorCode = realError.code || postgresError.code
+      
+      if (errorCode === '23503') {
+        errorMessage = 'Error de integridad referencial: El entrenador seleccionado no existe o hay un problema con las relaciones.'
+      } else if (errorCode === '23505') {
+        // Error de clave primaria duplicada (problema de secuencia)
+        if (realError.message?.includes('equipos_pkey') || realError.message?.includes('llave duplicada')) {
+          errorMessage = 'Error de base de datos: La secuencia de IDs está desincronizada. Contacta al administrador para corregir la secuencia de la tabla equipos.'
+        } else {
+          errorMessage = 'Error de unicidad: Ya existe un equipo con estos datos.'
+        }
+      } else if (errorCode === '23502') {
+        errorMessage = 'Error de constraint: Faltan datos obligatorios.'
+      }
+    }
+    
+    // Log detallado para debugging
+    console.error('Detalles del error:', {
+      error,
+      errorCode: (error as any)?.code,
+      errorDetail: (error as any)?.detail,
+      errorHint: (error as any)?.hint,
+      errorMessage: (error as any)?.message,
+      equipoData: equipoData || 'No definido',
+      categoriaIds: categoriaIds || 'No definido',
+      errorType: typeof error,
+      errorKeys: error ? Object.keys(error) : [],
+      errorString: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    })
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -132,10 +216,13 @@ export async function updateEquipo(id: number, formData: FormData) {
       throw new Error('Debe seleccionar al menos una categoría')
     }
 
+    // Normalizar imagen_equipo: convertir cadena vacía a null
+    const imagenEquipoNormalizada = imagen_equipo && imagen_equipo.trim() !== '' ? imagen_equipo.trim() : null
+
     const equipoData: Partial<NewEquipo> = {
       nombre,
       entrenador_id,
-      imagen_equipo: imagen_equipo || null,
+      imagen_equipo: imagenEquipoNormalizada,
       estado,
     }
 
@@ -183,9 +270,62 @@ export async function deleteEquipo(id: number) {
     
     await equipoQueries.delete(id)
     revalidatePath('/equipos')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al eliminar equipo:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al eliminar equipo')
+    
+    // Obtener mensaje de error más detallado
+    let errorMessage = 'Error al eliminar equipo'
+    
+    // Intentar extraer información del error de PostgreSQL
+    if (error) {
+      const postgresError = error as any
+      
+      // Extraer error real de 'cause' si existe
+      const realError = postgresError.cause || postgresError
+      
+      // Extraer mensaje de diferentes posibles fuentes
+      if (realError.message) {
+        errorMessage = realError.message
+      } else if (postgresError.message) {
+        errorMessage = postgresError.message
+      }
+      
+      // Si tiene código de error de PostgreSQL, añadirlo
+      const errorCode = realError.code || postgresError.code
+      if (errorCode) {
+        errorMessage += ` (Código: ${errorCode})`
+      }
+      
+      // Si tiene detalle del error, añadirlo
+      if (realError.detail) {
+        errorMessage += ` - ${realError.detail}`
+      } else if (postgresError.detail) {
+        errorMessage += ` - ${postgresError.detail}`
+      }
+      
+      // Mensajes específicos por código de error
+      if (errorCode === '23503') {
+        errorMessage = 'No se puede eliminar el equipo porque tiene registros relacionados (torneos, encuentros, etc.). Elimina primero estas relaciones.'
+      } else if (errorCode === '23502') {
+        errorMessage = 'Error de constraint: Faltan datos necesarios para la operación.'
+      }
+      
+      // Si el error ya tiene un mensaje descriptivo (de nuestras validaciones), mantenerlo
+      if (error instanceof Error && error.message && !error.message.includes('Failed query')) {
+        errorMessage = error.message
+      }
+    }
+    
+    // Log detallado para debugging
+    console.error('Detalles del error al eliminar:', {
+      error,
+      errorCode: (error as any)?.cause?.code || (error as any)?.code,
+      errorDetail: (error as any)?.cause?.detail || (error as any)?.detail,
+      errorMessage: (error as any)?.cause?.message || (error as any)?.message,
+      equipoId: id
+    })
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -240,9 +380,19 @@ export async function deleteMultipleEquipos(ids: number[]) {
       try {
         await equipoQueries.delete(id)
         resultados.push({ id, success: true })
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Error al eliminar equipo ${id}:`, error)
-        resultados.push({ id, success: false, error: error instanceof Error ? error.message : 'Error desconocido' })
+        
+        // Extraer mensaje de error más detallado
+        let errorMsg = 'Error desconocido'
+        const realError = error?.cause || error
+        if (realError?.message) {
+          errorMsg = realError.message
+        } else if (error?.message) {
+          errorMsg = error.message
+        }
+        
+        resultados.push({ id, success: false, error: errorMsg })
       }
     }
     
@@ -253,9 +403,29 @@ export async function deleteMultipleEquipos(ids: number[]) {
     }
     
     revalidatePath('/equipos')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al eliminar equipos:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al eliminar equipos')
+    
+    // Obtener mensaje de error más detallado
+    let errorMessage = 'Error al eliminar equipos'
+    
+    if (error) {
+      const postgresError = error as any
+      const realError = postgresError.cause || postgresError
+      
+      if (realError.message) {
+        errorMessage = realError.message
+      } else if (postgresError.message) {
+        errorMessage = postgresError.message
+      }
+      
+      // Si el error ya tiene un mensaje descriptivo, mantenerlo
+      if (error instanceof Error && error.message && !error.message.includes('Failed query')) {
+        errorMessage = error.message
+      }
+    }
+    
+    throw new Error(errorMessage)
   }
 }
 

@@ -120,7 +120,12 @@ export const equipoQueries = {
       .select({ count: count() })
       .from(equiposTorneo)
       .where(eq(equiposTorneo.equipo_id, id));
-    if (equiposTorneoResult[0]?.count && equiposTorneoResult[0].count > 0) {
+    // Convertir a número explícitamente (count puede devolver bigint o string)
+    const countTorneos = Number(equiposTorneoResult[0]?.count || 0);
+    
+    console.log(`[checkDependencies] Equipo ${id} - Torneos: ${countTorneos} (tipo: ${typeof countTorneos})`);
+    
+    if (countTorneos > 0) {
       dependencias.push('torneos');
     }
     
@@ -134,8 +139,12 @@ export const equipoQueries = {
       .from(encuentros)
       .where(eq(encuentros.equipo_visitante_id, id));
     
-    if ((encuentrosLocal[0]?.count && encuentrosLocal[0].count > 0) || 
-        (encuentrosVisitante[0]?.count && encuentrosVisitante[0].count > 0)) {
+    const countLocal = Number(encuentrosLocal[0]?.count || 0);
+    const countVisitante = Number(encuentrosVisitante[0]?.count || 0);
+    
+    console.log(`[checkDependencies] Equipo ${id} - Encuentros local: ${countLocal}, visitante: ${countVisitante}`);
+    
+    if (countLocal > 0 || countVisitante > 0) {
       dependencias.push('encuentros');
     }
     
@@ -144,9 +153,15 @@ export const equipoQueries = {
       .select({ count: count() })
       .from(equiposDescansan)
       .where(eq(equiposDescansan.equipo_id, id));
-    if (equiposDescansanCount[0]?.count && equiposDescansanCount[0].count > 0) {
+    const countDescansos = Number(equiposDescansanCount[0]?.count || 0);
+    
+    console.log(`[checkDependencies] Equipo ${id} - Descansos: ${countDescansos}`);
+    
+    if (countDescansos > 0) {
       dependencias.push('descansos');
     }
+    
+    console.log(`[checkDependencies] Equipo ${id} - Dependencias encontradas:`, dependencias);
     
     return {
       tieneDependencias: dependencias.length > 0,
@@ -156,6 +171,10 @@ export const equipoQueries = {
 
   // Eliminar equipo
   delete: async (id: number) => {
+    // Primero eliminar las relaciones con categorías
+    await db.delete(equipoCategoria).where(eq(equipoCategoria.equipo_id, id));
+    
+    // Luego eliminar el equipo
     return await db.delete(equipos).where(eq(equipos.id, id));
   },
 };

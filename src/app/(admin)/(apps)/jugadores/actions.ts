@@ -12,32 +12,89 @@ import { verificarRangoEdad, obtenerMensajeErrorEdad } from '@/lib/age-helpers'
 import { historialJugadores } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
+import { uploadFileToCloudinary, isCloudinaryUrl, extractPublicIdFromUrl, deleteImageFromCloudinary } from '@/lib/cloudinary'
 
 // ===== FUNCIONES AUXILIARES =====
 
+/**
+ * Guarda una imagen usando Cloudinary (preferido) o almacenamiento local (fallback)
+ * @param file Archivo de imagen
+ * @param jugadorId ID del jugador
+ * @returns URL de la imagen (Cloudinary o ruta local)
+ */
 async function saveImage(file: File, jugadorId: number): Promise<string> {
   try {
-    // Crear directorio si no existe
+    // SIEMPRE intentar usar Cloudinary primero
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+    const apiKey = process.env.CLOUDINARY_API_KEY
+    const apiSecret = process.env.CLOUDINARY_API_SECRET
+    
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new Error(
+        'Cloudinary no está configurado. Verifica que .env.local tenga:\n' +
+        'CLOUDINARY_CLOUD_NAME=dj2qhm6ru\n' +
+        'CLOUDINARY_API_KEY=647218391852358\n' +
+        'CLOUDINARY_API_SECRET=Cq6tRH_Dy8je_QaMybQbydsBN-M'
+      )
+    }
+    
+    // Subir a Cloudinary
+    // Asegurar que jugadorId sea string para el public_id
+    const jugadorIdStr = typeof jugadorId === 'number' ? jugadorId.toString() : jugadorId
+    const publicId = `jugador_${jugadorIdStr}`
+    console.log(`📤 Subiendo imagen a Cloudinary para jugador ${jugadorIdStr}...`)
+    console.log(`   Public ID: ${publicId}`)
+    const cloudinaryUrl = await uploadFileToCloudinary(file, publicId, 'jugadores')
+    console.log(`✅ Imagen subida a Cloudinary: ${cloudinaryUrl}`)
+    console.log(`   Verifica que la URL sea accesible antes de continuar`)
+    return cloudinaryUrl
+
+    // Fallback: Almacenamiento local
     const uploadDir = join(process.cwd(), 'public', 'uploads', 'jugadores')
     if (!existsSync(uploadDir)) {
       await mkdir(uploadDir, { recursive: true })
     }
 
-    // Generar nombre único para la imagen
     const timestamp = Date.now()
     const fileName = `jugador_${jugadorId}_${timestamp}.jpg`
     const filePath = join(uploadDir, fileName)
     
-    // Convertir File a Buffer y guardar
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await writeFile(filePath, buffer)
     
-    // Retornar la ruta relativa para la base de datos
     return `/uploads/jugadores/${fileName}`
   } catch (error) {
     console.error('Error al guardar imagen:', error)
     throw new Error('Error al guardar la imagen')
+  }
+}
+
+/**
+ * Elimina una imagen (Cloudinary o local)
+ * @param imageUrl URL de la imagen a eliminar
+ */
+async function deleteImage(imageUrl: string): Promise<void> {
+  try {
+    if (isCloudinaryUrl(imageUrl)) {
+      // Eliminar de Cloudinary
+      const publicId = extractPublicIdFromUrl(imageUrl)
+      if (publicId) {
+        await deleteImageFromCloudinary(publicId, 'jugadores')
+        console.log(`✅ Imagen eliminada de Cloudinary: ${publicId}`)
+      }
+    } else if (imageUrl.startsWith('/uploads/')) {
+      // Eliminar archivo local
+      const { unlink } = await import('fs/promises')
+      const filePath = join(process.cwd(), 'public', imageUrl)
+      if (existsSync(filePath)) {
+        await unlink(filePath)
+        console.log(`✅ Imagen local eliminada: ${imageUrl}`)
+      }
+    }
+  } catch (error) {
+    console.error('Error al eliminar imagen:', error)
+    // No lanzar error para no interrumpir el flujo principal
   }
 }
 
@@ -326,6 +383,10 @@ export async function updateJugador(id: number | string, formData: FormData) {
       }
     };
 
+    // Obtener el jugador actual para eliminar su foto anterior si existe
+    const jugadorActual = await jugadorQueries.getById(typeof id === 'string' ? parseInt(id) : id)
+    const fotoAnterior = jugadorActual?.foto
+
     const jugadorData = {
       cedula,
       apellido_nombre,
@@ -343,11 +404,37 @@ export async function updateJugador(id: number | string, formData: FormData) {
       foto: null as any, // Se actualizará después si hay una nueva foto
     }
 
-    // Si hay una nueva foto, guardarla
+    // Si hay una nueva foto, guardarla y eliminar la anterior
     if (foto && foto.size > 0) {
       try {
-        const fotoPath = await saveImage(foto, typeof id === 'string' ? parseInt(id) : id)
+        const jugadorIdNum = typeof id === 'string' ? parseInt(id) : id
+        const fotoPath = await saveImage(foto, jugadorIdNum)
         jugadorData.foto = fotoPath as any
+        
+        // Eliminar la foto anterior solo si es diferente
+        // IMPORTANTE: Si ambas son de Cloudinary con el mismo public_id, NO eliminar
+        // porque Cloudinary ya la reemplazó con overwrite: true
+        if (fotoAnterior && fotoAnterior !== fotoPath) {
+          // Si ambas son de Cloudinary, verificar el public_id
+          if (isCloudinaryUrl(fotoAnterior) && isCloudinaryUrl(fotoPath)) {
+            const publicIdAnterior = extractPublicIdFromUrl(fotoAnterior)
+            const publicIdNuevo = extractPublicIdFromUrl(fotoPath)
+            // NO eliminar si tienen el mismo public_id (Cloudinary ya la reemplazó)
+            if (publicIdAnterior && publicIdNuevo && publicIdAnterior === publicIdNuevo) {
+              console.log(`ℹ️  No se elimina la imagen anterior (mismo public_id, Cloudinary la reemplazó): ${publicIdAnterior}`)
+            } else if (publicIdAnterior && publicIdNuevo && publicIdAnterior !== publicIdNuevo) {
+              // Solo eliminar si el public_id es diferente
+              console.log(`🗑️  Eliminando imagen anterior con public_id diferente: ${publicIdAnterior} (nueva: ${publicIdNuevo})`)
+              await deleteImage(fotoAnterior)
+            }
+          } else {
+            // Si la anterior es local y la nueva es Cloudinary, eliminar la local
+            if (!isCloudinaryUrl(fotoAnterior) && isCloudinaryUrl(fotoPath)) {
+              console.log(`🗑️  Eliminando imagen local anterior: ${fotoAnterior}`)
+              await deleteImage(fotoAnterior)
+            }
+          }
+        }
       } catch (error) {
         console.error('Error al guardar la foto:', error)
         // No lanzar error aquí para no impedir la actualización del jugador
@@ -377,6 +464,11 @@ export async function deleteJugador(id: number | string) {
     const jugador = await jugadorQueries.getById(jugadorId)
     if (!jugador) {
       throw new Error('El jugador no existe')
+    }
+    
+    // Eliminar la foto del jugador si existe
+    if (jugador.foto) {
+      await deleteImage(jugador.foto)
     }
     
     await jugadorQueries.delete(parseInt(jugadorId))
