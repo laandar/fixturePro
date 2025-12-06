@@ -121,12 +121,53 @@ export default function TorneoFixtureSection({
     }
 
     try {
-      const fecha = new Date(fechaStr + 'T00:00:00')
+      let fecha = new Date(fechaStr + 'T00:00:00')
+      
+      // Si es sábado, restar un día
+      if (fecha.getDay() === 6) { // 6 = sábado
+        fecha.setDate(fecha.getDate() - 1)
+      }
+      
       await onUpdateFechaJornada(torneo.id, jornada, fecha)
       cancelarEdicionFecha(jornada)
     } catch (error) {
       console.error('Error al actualizar fecha de jornada:', error)
       alert('Error al actualizar la fecha de la jornada')
+    }
+  }
+
+  // Actualizar fechas de todas las jornadas
+  const actualizarTodasLasFechas = async () => {
+    if (!torneo?.id || !onUpdateFechaJornada) return
+
+    const jornadasUnicas = Object.keys(jornadas).map(j => parseInt(j))
+    let actualizadas = 0
+    let errores = 0
+
+    for (const jornada of jornadasUnicas) {
+      const fechaStr = getFechaJornada(jornada)
+      if (!fechaStr) continue
+
+      try {
+        let fecha = new Date(fechaStr + 'T00:00:00')
+        
+        // Si es sábado, restar un día (igual que guardarFechaJornada)
+        if (fecha.getDay() === 6) { // 6 = sábado
+          fecha.setDate(fecha.getDate() - 1)
+        }
+        
+        await onUpdateFechaJornada(torneo.id, jornada, fecha)
+        actualizadas++
+      } catch (error) {
+        console.error(`Error al actualizar fecha de jornada ${jornada}:`, error)
+        errores++
+      }
+    }
+
+    if (errores > 0) {
+      alert(`Se actualizaron ${actualizadas} jornadas. ${errores} jornadas tuvieron errores.`)
+    } else if (actualizadas > 0) {
+      alert(`Se actualizaron correctamente ${actualizadas} jornadas.`)
     }
   }
 
@@ -199,6 +240,18 @@ export default function TorneoFixtureSection({
                 <LuPlus className="me-1" />
                 <span className="d-none d-sm-inline">Crear Emparejamiento</span>
                 <span className="d-sm-none">Crear</span>
+              </Button>
+            )}
+            {onUpdateFechaJornada && encuentros.length > 0 && (
+              <Button 
+                variant="outline-warning" 
+                size="sm"
+                onClick={actualizarTodasLasFechas}
+                className="px-2 px-md-3 flex-fill flex-md-grow-0"
+                style={{ minWidth: '120px', maxWidth: '200px' }}>
+                <LuCalendar className="me-1" />
+                <span className="d-none d-sm-inline">Actualizar Fechas</span>
+                <span className="d-sm-none">Fechas</span>
               </Button>
             )}
           </div>

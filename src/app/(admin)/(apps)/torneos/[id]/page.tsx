@@ -680,7 +680,48 @@ const TorneoDetailPage = () => {
       })
 
       if (resultadoAsignacion?.success) {
-        // Recargar datos
+        // Recargar datos para obtener los encuentros actualizados
+        await loadData()
+        
+        // Actualizar fechas de todas las jornadas (igual que actualizarTodasLasFechas)
+        const jornadasUnicas = [...new Set(encuentros
+          .filter(e => e.jornada !== null && e.horario_id !== null)
+          .map(e => e.jornada)
+          .filter(j => j !== null)
+        )] as number[]
+        
+        for (const jornada of jornadasUnicas) {
+          // Obtener los encuentros de esta jornada
+          const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
+          
+          if (encuentrosJornada.length === 0) continue
+          
+          // Obtener la fecha de la jornada (del primer encuentro, igual que getFechaJornada)
+          const primerEncuentro = encuentrosJornada[0]
+          if (!primerEncuentro.fecha_programada) continue
+          
+          // Obtener la fecha en formato string (igual que getFechaJornada)
+          const fecha = new Date(primerEncuentro.fecha_programada)
+          const fechaStr = fecha.toISOString().split('T')[0]
+          
+          if (!fechaStr) continue
+          
+          try {
+            // Aplicar la misma lógica que actualizarTodasLasFechas
+            let fechaAjustada = new Date(fechaStr + 'T00:00:00')
+            
+            // Si es sábado, restar un día (igual que guardarFechaJornada)
+            if (fechaAjustada.getDay() === 6) { // 6 = sábado
+              fechaAjustada.setDate(fechaAjustada.getDate() - 1)
+            }
+            
+            await updateFechaJornada(torneoId, jornada, fechaAjustada)
+          } catch (err) {
+            console.error(`Error al actualizar fecha de jornada ${jornada}:`, err)
+          }
+        }
+        
+        // Recargar datos nuevamente después de actualizar las fechas
         await loadData()
         
         // Generar nueva tabla de distribución
