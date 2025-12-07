@@ -9,7 +9,7 @@ import { moverEncuentroGlobal } from '@/app/(admin)/(apps)/torneos/actions'
 interface TablaHorariosCanchasProps {
   encuentros: EncuentroWithRelations[]
   horarios: Horario[]
-  canchas: string[]
+  canchas: string[] // Nombres de todas las canchas disponibles
 }
 
 const obtenerEtiquetaDia = (dia?: string | null) => {
@@ -204,7 +204,9 @@ export default function TablaHorariosCanchas({
               {fechasOrdenadas.map((fechaKey, fechaIndex) => {
                 const encuentrosFecha = encuentrosPorFecha.get(fechaKey) || []
                 const encuentrosPorCancha = agruparPorCancha(encuentrosFecha)
-                const canchasFecha = Array.from(encuentrosPorCancha.keys()).sort()
+                // Incluir todas las canchas disponibles, no solo las que tienen encuentros
+                const canchasConEncuentros = Array.from(encuentrosPorCancha.keys())
+                const canchasFecha = Array.from(new Set([...canchas, ...canchasConEncuentros])).sort()
                 const horasDeEsteDia = obtenerHorasParaFecha(fechaKey)
 
                 return (

@@ -21,7 +21,6 @@ import DynamicFixtureModal from '@/components/DynamicFixtureModal'
 import EmparejamientosFaltantesModal from '@/components/EmparejamientosFaltantesModal'
 import EncuentroCard from '@/components/EncuentroCard'
 import TorneoFixtureSection from '@/components/TorneoFixtureSection'
-import TablaHorariosCanchas from '@/components/TablaHorariosCanchas'
 import { saveAs } from 'file-saver'
 import { exportFixtureToExcel } from '@/lib/excel-exporter'
 import { 
@@ -100,7 +99,6 @@ const TorneoDetailPage = () => {
   const [canchaPrioritariaId, setCanchaPrioritariaId] = useState<number | null>(null)
   const [showTablaDistribucionCanchas, setShowTablaDistribucionCanchas] = useState(false)
   const [tablaDistribucionCanchas, setTablaDistribucionCanchas] = useState<any>(null)
-  const [showTablaHorariosCanchas, setShowTablaHorariosCanchas] = useState(false)
   
   // Estados para el sistema dinámico
   const [showDynamicFixtureModal, setShowDynamicFixtureModal] = useState(false)
@@ -1106,7 +1104,7 @@ const TorneoDetailPage = () => {
                             justifyContent: 'center'
                           }}
                         >
-                          <span className="d-none d-sm-inline">1. Equipos Participantes</span>
+                          <span className="d-none d-sm-inline">Equipos Participantes</span>
                           <span className="d-sm-none">Equipos</span>
                         </NavLink>
                       </NavItem>
@@ -1123,7 +1121,7 @@ const TorneoDetailPage = () => {
                             justifyContent: 'center'
                           }}
                         >
-                          2. Fixture
+                          Fixture
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -1139,7 +1137,7 @@ const TorneoDetailPage = () => {
                             justifyContent: 'center'
                           }}
                         >
-                          <span className="d-none d-sm-inline">3. Asignar Canchas</span>
+                          <span className="d-none d-sm-inline">Asignar Canchas</span>
                           <span className="d-sm-none">Canchas</span>
                         </NavLink>
                       </NavItem>
@@ -1156,7 +1154,7 @@ const TorneoDetailPage = () => {
                             justifyContent: 'center'
                           }}
                         >
-                          4. Horarios
+                          Horarios
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -1572,15 +1570,6 @@ const TorneoDetailPage = () => {
                         className="px-3">
                         <LuInfo className="me-1" size={16} />
                         Ver Distribución
-                      </Button>
-                      <Button 
-                        variant="primary" 
-                        size="sm"
-                        onClick={() => setShowTablaHorariosCanchas(true)}
-                        disabled={encuentros.length === 0 || horarios.length === 0}
-                        className="px-3">
-                        <LuClock className="me-1" size={16} />
-                        Ver Tabla Horarios/Canchas
                       </Button>
                       <Button 
                         variant="success" 
@@ -2759,36 +2748,6 @@ const TorneoDetailPage = () => {
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setShowTablaDistribucionCanchas(false)}>
-            Cerrar
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* Modal: Tabla Horarios vs Canchas */}
-      <Modal 
-        show={showTablaHorariosCanchas} 
-        onHide={() => setShowTablaHorariosCanchas(false)}
-        size="xl"
-        centered
-        fullscreen="lg-down"
-      >
-        <ModalHeader closeButton>
-          <Modal.Title>
-            <LuClock className="me-2" />
-            Tabla de Horarios vs Canchas
-          </Modal.Title>
-        </ModalHeader>
-        <ModalBody>
-          <TablaHorariosCanchas 
-            encuentros={encuentros}
-            horarios={horarios}
-            canchas={encuentros
-              .map(e => e.cancha)
-              .filter((c): c is string => c !== null && c !== undefined && c.trim() !== '')}
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setShowTablaHorariosCanchas(false)}>
             Cerrar
           </Button>
         </ModalFooter>

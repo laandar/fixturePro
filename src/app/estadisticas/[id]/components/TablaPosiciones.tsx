@@ -137,9 +137,6 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
                 <td className="align-middle py-2" style={{ width: '200px', maxWidth: '200px' }}>
                   <div style={{ minWidth: 0, overflow: 'hidden' }}>
                     <h5 className="mb-1 fw-bold text-white" style={{ fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{equipo.equipo.nombre}</h5>
-                    {equipo.equipo.entrenador && (
-                      <small className="text-white-75 d-block" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{equipo.equipo.entrenador.nombre}</small>
-                    )}
                   </div>
                 </td>
                 <td className="text-center align-middle py-2">

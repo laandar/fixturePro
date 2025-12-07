@@ -21,62 +21,15 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Badge, ProgressBar, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
-import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuClock, LuCheck, LuX, LuMapPin } from 'react-icons/lu'
+import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Badge, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
+import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuMapPin } from 'react-icons/lu'
 import { TbEdit, TbEye, TbPlus, TbTrash, TbSettings } from 'react-icons/tb'
-import { getTorneos, deleteTorneo, createTorneo, updateTorneo, getMapaGeneralHorarios, getMapaHorariosCanchasGeneral, getAllEncuentrosTodosTorneos, getAllHorariosTodosTorneos } from './actions'
+import { getTorneos, deleteTorneo, createTorneo, updateTorneo, getAllEncuentrosTodosTorneos, getAllHorariosTodosTorneos } from './actions'
 import { getCategorias } from '../categorias/actions'
 import type { TorneoWithRelations, Categoria, EncuentroWithRelations, Horario } from '@/db/types'
 import TablaHorariosCanchas from '@/components/TablaHorariosCanchas'
 
-type MapaHorarioTorneo = {
-  torneoId: number
-  torneo: string
-  estado: string | null
-  categoria: string | null
-  totales: {
-    totalHorarios: number
-    horariosCubiertos: number
-    horariosLibres: number
-    coberturaPorcentaje: number
-  }
-  dias: Array<{
-    dia: string
-    label: string
-    totalHorarios: number
-    cubiertos: number
-    libres: number
-  }>
-  horarios: Array<{
-    id: number
-    dia: string
-    labelDia: string
-    hora: string
-    cubierto: boolean
-    totalEncuentros: number
-  }>
-}
 
-type MapaHorariosCanchas = {
-  torneoId: number
-  torneo: string
-  estado: string | null
-  categoria: string | null
-  canchas: Array<{ id: number; nombre: string }>
-  filas: Array<{
-    horarioId: number
-    dia: string
-    labelDia: string
-    hora: string
-    celdas: Array<{
-      canchaId: number
-      cancha: string
-      cubierto: boolean
-      totalEncuentros: number
-    }>
-    resumen: { cubiertas: number; libres: number }
-  }>
-}
 
 const columnHelper = createColumnHelper<TorneoWithRelations>()
 
@@ -87,8 +40,6 @@ const Page = () => {
   
   const [data, setData] = useState<TorneoWithRelations[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [mapaHorarios, setMapaHorarios] = useState<MapaHorarioTorneo[]>([])
-  const [mapaHorariosCanchas, setMapaHorariosCanchas] = useState<MapaHorariosCanchas[]>([])
   const [loading, setLoading] = useState(true)
   const [showTablaGlobal, setShowTablaGlobal] = useState(false)
   const [encuentrosGlobales, setEncuentrosGlobales] = useState<EncuentroWithRelations[]>([])
@@ -385,16 +336,12 @@ const Page = () => {
     try {
       setLoading(true)
       setError(null)
-      const [torneosData, categoriasData, mapaData, mapaHCanchas] = await Promise.all([
+      const [torneosData, categoriasData] = await Promise.all([
         getTorneos(),
-        getCategorias(),
-        getMapaGeneralHorarios(),
-        getMapaHorariosCanchasGeneral()
+        getCategorias()
       ])
       setData(torneosData as any)
       setCategorias(categoriasData)
-      setMapaHorarios(mapaData)
-      setMapaHorariosCanchas(mapaHCanchas)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar datos')
     } finally {
@@ -453,20 +400,6 @@ const Page = () => {
     )
   }
 
-  const totalHorariosMapa = mapaHorarios.reduce((acc, torneo) => acc + torneo.totales.totalHorarios, 0)
-  const totalCubiertosMapa = mapaHorarios.reduce((acc, torneo) => acc + torneo.totales.horariosCubiertos, 0)
-  const totalLibresMapa = Math.max(totalHorariosMapa - totalCubiertosMapa, 0)
-  const coberturaGlobal = totalHorariosMapa === 0 ? 0 : Math.round((totalCubiertosMapa / totalHorariosMapa) * 100)
-
-  const getEstadoBadgeConfig = (estado?: string | null) => {
-    const estadoConfig: Record<string, { bg: string; text: string; label: string }> = {
-      planificado: { bg: 'warning', text: 'dark', label: 'Planificado' },
-      en_curso: { bg: 'success', text: 'white', label: 'En Curso' },
-      finalizado: { bg: 'primary', text: 'white', label: 'Finalizado' },
-      cancelado: { bg: 'danger', text: 'white', label: 'Cancelado' }
-    }
-    return estado ? estadoConfig[estado] || { bg: 'secondary', text: 'white', label: estado } : { bg: 'secondary', text: 'white', label: 'Sin estado' }
-  }
 
   return (
     <Container fluid>
@@ -484,268 +417,46 @@ const Page = () => {
         </Alert>
       )}
 
-      {mapaHorarios.length > 0 && (
-        <Row className="justify-content-center mb-4">
-          <Col xxl={10}>
-            <Card className="shadow-sm border-0">
-              <CardHeader className="bg-white border-light">
-                <div className="d-flex flex-column flex-md-row justify-content-between gap-2">
-                  <div>
-                    <h5 className="mb-1 d-flex align-items-center gap-2">
-                      <LuClock />
-                      Mapa general de horarios activos
-                    </h5>
-                    <small className="text-muted">
-                      {mapaHorarios.length} torneo(s) planificados o en curso · {totalHorariosMapa} horarios totales
-                    </small>
-                  </div>
-                  <div className="d-flex flex-column gap-2">
-                    <div className="text-md-end">
-                      <div className="fw-semibold text-success">
-                        {totalCubiertosMapa} horarios cubiertos
-                      </div>
-                      <div className="text-danger fw-semibold">
-                        {totalLibresMapa} sin encuentros
-                      </div>
-                    </div>
-                    <Button 
-                      variant="primary" 
-                      size="sm"
-                      onClick={async () => {
-                        setLoadingTablaGlobal(true)
-                        try {
-                          const [encuentros, horarios] = await Promise.all([
-                            getAllEncuentrosTodosTorneos(),
-                            getAllHorariosTodosTorneos()
-                          ])
-                          setEncuentrosGlobales(encuentros)
-                          setHorariosGlobales(horarios)
-                          setShowTablaGlobal(true)
-                        } catch (err) {
-                          setError('Error al cargar la tabla global')
-                        } finally {
-                          setLoadingTablaGlobal(false)
-                        }
-                      }}
-                      disabled={loadingTablaGlobal}
-                    >
-                      {loadingTablaGlobal ? (
-                        <>
-                          <span className="spinner-border spinner-border-sm me-1" />
-                          Cargando...
-                        </>
-                      ) : (
-                        <>
-                          <LuMapPin className="me-1" />
-                          Ver Tabla Global
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardBody>
-                <div className="mb-4">
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <span className="fw-semibold">Cobertura global</span>
-                    <span className="fw-semibold">{coberturaGlobal}%</span>
-                  </div>
-                  <ProgressBar
-                    now={coberturaGlobal}
-                    variant={coberturaGlobal >= 80 ? 'success' : coberturaGlobal >= 50 ? 'warning' : 'danger'}
-                    style={{ height: '10px' }}
-                  />
-                </div>
+      <Row className="justify-content-center mb-4">
+        <Col xxl={10}>
+          <div className="d-flex justify-content-end">
+            <Button 
+              variant="primary" 
+              size="sm"
+              onClick={async () => {
+                setLoadingTablaGlobal(true)
+                try {
+                  const [encuentros, horarios] = await Promise.all([
+                    getAllEncuentrosTodosTorneos(),
+                    getAllHorariosTodosTorneos()
+                  ])
+                  setEncuentrosGlobales(encuentros)
+                  setHorariosGlobales(horarios)
+                  setShowTablaGlobal(true)
+                } catch (err) {
+                  setError('Error al cargar la tabla global')
+                } finally {
+                  setLoadingTablaGlobal(false)
+                }
+              }}
+              disabled={loadingTablaGlobal}
+            >
+              {loadingTablaGlobal ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-1" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <LuMapPin className="me-1" />
+                  Ver Tabla Global
+                </>
+              )}
+            </Button>
+          </div>
+        </Col>
+      </Row>
 
-                <div className="d-flex flex-column gap-3">
-                  {mapaHorarios.map(torneo => {
-                    const estadoBadge = getEstadoBadgeConfig(torneo.estado)
-                    return (
-                      <div key={torneo.torneoId} className="border rounded-3 p-3 bg-light-subtle">
-                        <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
-                          <div>
-                            <h5 className="mb-1">{torneo.torneo}</h5>
-                            <div className="d-flex flex-wrap gap-2 align-items-center">
-                              <Badge bg={estadoBadge.bg} className={`text-${estadoBadge.text}`}>
-                                {estadoBadge.label}
-                              </Badge>
-                              <small className="text-muted">{torneo.categoria || 'Sin categoría'}</small>
-                            </div>
-                          </div>
-                          <div className="text-md-end">
-                            <div className="fw-semibold">{torneo.totales.totalHorarios} horarios configurados</div>
-                            <small className="text-muted">
-                              {torneo.totales.horariosCubiertos} cubiertos · {torneo.totales.horariosLibres} libres
-                            </small>
-                            <ProgressBar
-                              now={torneo.totales.coberturaPorcentaje}
-                              variant={torneo.totales.coberturaPorcentaje >= 80 ? 'success' : torneo.totales.coberturaPorcentaje >= 50 ? 'warning' : 'danger'}
-                              className="mt-2"
-                              style={{ height: '8px', minWidth: '220px' }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="d-flex flex-wrap gap-2 mt-3">
-                          {torneo.dias.map(dia => (
-                            <div
-                              key={`${torneo.torneoId}-${dia.dia}`}
-                              className="flex-grow-1 p-2 bg-white rounded border text-center"
-                              style={{ minWidth: '150px' }}
-                            >
-                              <div className="fw-semibold">{dia.label}</div>
-                              {dia.totalHorarios > 0 ? (
-                                <small className="text-muted">
-                                  {dia.cubiertos}/{dia.totalHorarios} cubiertos
-                                </small>
-                              ) : (
-                                <small className="text-muted">Sin horarios</small>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-
-                        {torneo.totales.horariosLibres > 0 && (
-                          <div className="mt-3">
-                            <small className="text-muted d-block mb-1">Horarios sin encuentros:</small>
-                            <div className="d-flex flex-wrap gap-2">
-                              {torneo.horarios
-                                .filter(h => !h.cubierto)
-                                .map(horario => (
-                                  <Badge
-                                    key={horario.id}
-                                    bg="light"
-                                    text="danger"
-                                    className="border border-danger-subtle rounded-pill px-3 py-2"
-                                  >
-                                    {horario.labelDia} · {horario.hora}
-                                  </Badge>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-      )}
-
-      {mapaHorariosCanchas.length > 0 && (
-        <Row className="justify-content-center mb-4">
-          <Col xxl={10}>
-            <Card className="shadow-sm border-0">
-              <CardHeader className="bg-white border-light">
-                <h5 className="mb-0 d-flex align-items-center gap-2">
-                  <LuClock />
-                  Cobertura por horario y cancha
-                </h5>
-              </CardHeader>
-              <CardBody>
-                <div className="d-flex flex-column gap-4">
-                  {mapaHorariosCanchas.map(t => (
-                    <div key={t.torneoId} className="border rounded-3 overflow-auto">
-                      <div className="p-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
-                        <div className="d-flex flex-column">
-                          <div className="fw-semibold">{t.torneo}</div>
-                          <small className="text-muted">{t.categoria || 'Sin categoría'}</small>
-                        </div>
-                        <div className="d-flex align-items-center gap-2">
-                          <span className="badge bg-primary text-white d-flex align-items-center gap-1 px-3 py-2">
-                            <LuCheck /> <span className="fw-semibold">Cubierto</span>
-                          </span>
-                          <span className="badge bg-white border border-secondary-subtle text-secondary d-flex align-items-center gap-1 px-3 py-2">
-                            <LuX /> <span className="fw-semibold">Libre</span>
-                          </span>
-                        </div>
-                      </div>
-                      <div className="p-3 pt-0">
-                        <div className="table-responsive">
-                          <table className="table table-sm align-middle mb-0" style={{ tableLayout: 'fixed', minWidth: '640px' }}>
-                            <thead>
-                              <tr style={{ position: 'sticky', top: 0, zIndex: 1 }} className="bg-white">
-                                <th style={{ minWidth: '180px', position: 'sticky', left: 0, zIndex: 2 }} className="bg-white">
-                                  Horario
-                                </th>
-                                {t.canchas.map(c => (
-                                  <th key={c.id} className="text-center" style={{ minWidth: '140px' }}>{c.nombre}</th>
-                                ))}
-                                <th className="text-center" style={{ minWidth: '110px' }}>Cubiertas</th>
-                                <th className="text-center" style={{ minWidth: '90px' }}>Libres</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(() => {
-                                // Agrupar filas por día para mostrar separadores
-                                const grupos = t.filas.reduce<Record<string, typeof t.filas>>((acc, f) => {
-                                  acc[f.labelDia] = acc[f.labelDia] || []
-                                  acc[f.labelDia].push(f)
-                                  return acc
-                                }, {})
-                                const ordenDias = ['Viernes', 'Sábado', 'Domingo']
-                                const secciones = Object.entries(grupos).sort(
-                                  (a, b) => ordenDias.indexOf(a[0]) - ordenDias.indexOf(b[0])
-                                )
-                                return secciones.flatMap(([labelDia, filas], idxSec) => [
-                                  <tr key={`sep-${labelDia}`} className="table-light">
-                                    <td colSpan={t.canchas.length + 3} className="fw-semibold">
-                                      {labelDia}
-                                    </td>
-                                  </tr>,
-                                  ...filas.map((f, idx) => (
-                                    <tr key={f.horarioId} className={idx % 2 === 1 ? 'table-striped' : ''}>
-                                      <td className="fw-semibold" style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>
-                                        {f.hora}
-                                      </td>
-                                      {t.canchas.map(c => {
-                                        const celda = f.celdas.find(x => x.canchaId === c.id)
-                                        const cubierto = celda?.cubierto
-                                        const total = celda?.totalEncuentros ?? 0
-                                        return (
-                                          <td key={`${f.horarioId}-${c.id}`} className="text-center">
-                                            {cubierto ? (
-                                              <span className="badge text-bg-success-subtle border border-success-subtle d-inline-flex align-items-center gap-2 px-3 py-2">
-                                                <span className="rounded-circle bg-success" style={{ width: 8, height: 8 }} />
-                                                <span className="fw-semibold text-dark">{total}</span>
-                                              </span>
-                                            ) : (
-                                              <span className="badge text-bg-light border border-secondary-subtle d-inline-flex align-items-center gap-2 px-3 py-2">
-                                                <span className="rounded-circle bg-secondary" style={{ width: 8, height: 8 }} />
-                                                <span className="fw-semibold text-secondary">0</span>
-                                              </span>
-                                            )}
-                                          </td>
-                                        )
-                                      })}
-                                  <td className="text-center" style={{ minWidth: '86px' }}>
-                                    <span className="badge text-bg-success-subtle border border-success-subtle px-3 py-2">
-                                      <span className="fw-bold text-success">{f.resumen.cubiertas}</span>
-                                    </span>
-                                  </td>
-                                  <td className="text-center" style={{ minWidth: '86px' }}>
-                                    <span className="badge text-bg-danger-subtle border border-danger-subtle px-3 py-2">
-                                      <span className="fw-bold text-danger">{f.resumen.libres}</span>
-                                    </span>
-                                  </td>
-                                    </tr>
-                                  ))
-                                ])
-                              })()}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       <Row className="justify-content-center">
         <Col xxl={10}>

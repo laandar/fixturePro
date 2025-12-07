@@ -29,9 +29,10 @@ interface TablaFixtureProps {
 	encuentros: Encuentro[]
 	equiposDescansan?: Record<number, number[]>
 	equiposMap?: Record<number, { id: number; nombre: string; imagen_equipo?: string | null }>
+	filtrarPorFechaActual?: boolean
 }
 
-export default function TablaFixture({ encuentros, equiposDescansan = {}, equiposMap = {} }: TablaFixtureProps) {
+export default function TablaFixture({ encuentros, equiposDescansan = {}, equiposMap = {}, filtrarPorFechaActual = true }: TablaFixtureProps) {
 	const formatFechaConDia = (iso?: string | null) => {
 		if (!iso) return 'Sin fecha'
 		const d = new Date(iso)
@@ -81,6 +82,23 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 		}
 		return palette[hash % palette.length]
 	}
+	const getFechaColor = (fechaIso?: string | null) => {
+		if (!fechaIso) return '#6c757d'
+		// Normalizar fecha (solo día, sin hora)
+		const fecha = new Date(fechaIso)
+		fecha.setHours(0, 0, 0, 0)
+		const fechaString = fecha.toISOString().split('T')[0] // YYYY-MM-DD
+		
+		// Usar solo naranja y verde, alternando según la fecha
+		const colors = ['#f39c12', '#2ecc71'] // naranja y verde
+		
+		// Hash simple por fecha para determinar el color
+		let hash = 0
+		for (let i = 0; i < fechaString.length; i++) {
+			hash = (hash * 31 + fechaString.charCodeAt(i)) >>> 0
+		}
+		return colors[hash % 2] // Alterna entre los dos colores
+	}
 	// Crear mapa de equipos desde los encuentros y el mapa de equipos del torneo
 	const equiposMapCompleto = useMemo(() => {
 		const map = new Map<number, Equipo>()
@@ -107,10 +125,30 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			if (!grupos[j]) grupos[j] = []
 			grupos[j].push(e)
 		}
-		return Object.entries(grupos)
+		
+		let jornadasFiltradas = Object.entries(grupos)
 			.map(([j, lista]) => [parseInt(j), lista] as [number, Encuentro[]])
-			.sort((a, b) => a[0] - b[0])
-	}, [encuentros])
+		
+		// Si la bandera está activada, filtrar jornadas por fecha actual
+		if (filtrarPorFechaActual) {
+			// Obtener fecha actual (solo fecha, sin hora)
+			const fechaActual = new Date()
+			fechaActual.setHours(0, 0, 0, 0)
+			
+			// Filtrar jornadas que tengan al menos un encuentro con fecha >= fecha actual
+			jornadasFiltradas = jornadasFiltradas.filter(([jornada, lista]) => {
+				// Si la jornada tiene al menos un encuentro con fecha >= fecha actual, incluirla
+				return lista.some(encuentro => {
+					if (!encuentro.fecha_programada) return false
+					const fechaEncuentro = new Date(encuentro.fecha_programada)
+					fechaEncuentro.setHours(0, 0, 0, 0)
+					return fechaEncuentro >= fechaActual
+				})
+			})
+		}
+		
+		return jornadasFiltradas.sort((a, b) => a[0] - b[0])
+	}, [encuentros, filtrarPorFechaActual])
 
 	// Obtener equipos que descansan en una jornada
 	const getEquiposQueDescansan = (jornada: number): Equipo[] => {
@@ -150,20 +188,42 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 		return []
 	}
 
-	const getSortValue = (e: Encuentro) => {
-		// 1) PRIORIZAR horario.hora_inicio (siempre usar la hora del horario asignado)
-		if (e.horario?.hora_inicio && /^\d{2}:\d{2}/.test(e.horario.hora_inicio)) {
-			const [hh, mm] = e.horario.hora_inicio.split(':').map(Number)
-			// Convertir a minutos del día para ordenar correctamente
-			return hh * 60 + mm
+	const sortEncuentros = (a: Encuentro, b: Encuentro) => {
+		// 1) Primero ordenar por fecha (solo día, sin hora)
+		const fechaA = a.fecha_programada ? new Date(a.fecha_programada) : null
+		const fechaB = b.fecha_programada ? new Date(b.fecha_programada) : null
+		
+		if (fechaA && fechaB) {
+			// Normalizar fechas (solo día, sin hora)
+			fechaA.setHours(0, 0, 0, 0)
+			fechaB.setHours(0, 0, 0, 0)
+			
+			const diffFecha = fechaA.getTime() - fechaB.getTime()
+			if (diffFecha !== 0) {
+				return diffFecha
+			}
+		} else if (fechaA && !fechaB) {
+			return -1
+		} else if (!fechaA && fechaB) {
+			return 1
 		}
-		// 2) Si no hay horario, usar fecha_programada como respaldo
-		if (e.fecha_programada) {
-			const ts = new Date(e.fecha_programada).getTime()
-			if (!isNaN(ts)) return ts
+		
+		// 2) Si las fechas son iguales, ordenar por hora
+		// PRIORIZAR horario.hora_inicio (siempre usar la hora del horario asignado)
+		let horaA = 0
+		let horaB = 0
+		
+		if (a.horario?.hora_inicio && /^\d{2}:\d{2}/.test(a.horario.hora_inicio)) {
+			const [hh, mm] = a.horario.hora_inicio.split(':').map(Number)
+			horaA = hh * 60 + mm
 		}
-		// 3) Último recurso: 0 (sin hora)
-		return 0
+		
+		if (b.horario?.hora_inicio && /^\d{2}:\d{2}/.test(b.horario.hora_inicio)) {
+			const [hh, mm] = b.horario.hora_inicio.split(':').map(Number)
+			horaB = hh * 60 + mm
+		}
+		
+		return horaA - horaB
 	}
 
 	if (encuentros.length === 0) {
@@ -265,7 +325,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 												fontWeight: 'bold'
 											}}>
 												<th className="fw-bold py-2" style={{ width: '220px', fontSize: '1rem', color: '#ffffff' }}>Fecha</th>
-												<th className="fw-bold py-2" style={{ width: '280px', fontSize: '1rem', color: '#ffffff' }}>Local</th>
+												<th className="fw-bold py-2 text-end" style={{ width: '280px', fontSize: '1rem', color: '#ffffff' }}>Local</th>
 												<th className="text-center fw-bold py-2" style={{ width: '80px', fontSize: '1rem', color: '#ffffff' }}>vs</th>
 												<th className="fw-bold py-2" style={{ width: '280px', fontSize: '1rem', color: '#ffffff' }}>Visitante</th>
 												<th className="fw-bold py-2" style={{ width: '220px', fontSize: '1rem', color: '#ffffff' }}>Cancha</th>
@@ -273,15 +333,27 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 											</tr>
 										</thead>
 										<tbody>
-											{lista
-												.sort((a, b) => getSortValue(a) - getSortValue(b))
-												.map((encuentro, index) => (
+											{(() => {
+												const listaOrdenada = [...lista].sort(sortEncuentros)
+												return listaOrdenada.map((encuentro, index) => {
+													// Detectar si la fecha cambia respecto al encuentro anterior
+													const fechaActual = encuentro.fecha_programada 
+														? new Date(encuentro.fecha_programada).toISOString().split('T')[0]
+														: null
+													const fechaProgAnterior = index > 0 ? listaOrdenada[index - 1]?.fecha_programada : null
+													const fechaAnterior = fechaProgAnterior != null && fechaProgAnterior
+														? new Date(fechaProgAnterior).toISOString().split('T')[0]
+														: null
+													const esNuevaFecha = fechaActual && fechaActual !== fechaAnterior
+													
+													return (
 													<tr 
 														key={encuentro.id}
 														className="animate-slide-in-up"
 														style={{
 															animationDelay: `${index * 0.05}s`,
 															background: 'rgba(255, 255, 255, 0.02)',
+															borderTop: esNuevaFecha ? '2px solid rgba(255, 255, 255, 0.3)' : 'none',
 															borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
 															transition: 'background 0.3s ease'
 														}}
@@ -292,7 +364,12 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 															<div className="d-flex align-items-center gap-2 text-white">
 																<LuClock className="text-white-50" />
 																<div className="d-flex flex-column">
-																	<span>{formatFechaConDia(encuentro.fecha_programada)}</span>
+																	<span 
+																		className="fw-semibold"
+																		style={{ color: getFechaColor(encuentro.fecha_programada) }}
+																	>
+																		{formatFechaConDia(encuentro.fecha_programada)}
+																	</span>
 																	{(formatHora(encuentro.fecha_programada, encuentro.horario?.hora_inicio)) && (
 																		<small className="text-white-50">
 																			{formatHora(encuentro.fecha_programada, encuentro.horario?.hora_inicio)} hs
@@ -351,7 +428,9 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 															</Badge>
 														</td>
 													</tr>
-												))}
+													)
+												})
+											})()}
 										</tbody>
 									</Table>
 								</div>

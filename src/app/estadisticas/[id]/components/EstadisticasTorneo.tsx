@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button, Nav, NavItem, NavLink, TabContent, TabPane } from 'react-bootstrap'
-import { LuTrophy, LuTarget, LuUsers, LuCalendar, LuTrendingUp, LuShare2, LuDownload, LuStar, LuZap, LuCrown, LuMonitor, LuSmartphone, LuCalendarDays } from 'react-icons/lu'
+import { LuTrendingUp, LuStar, LuGamepad2, LuUsers, LuCalendar, LuShare2, LuMonitor, LuSmartphone } from 'react-icons/lu'
 import TablaPosiciones from './TablaPosiciones'
 import TablaGoleadores from './TablaGoleadores'
 import TablaFixture from './TablaFixture'
@@ -69,8 +69,18 @@ interface EstadisticasTorneoProps {
 }
 
 export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores, encuentros = [], equiposDescansan = {}, equiposMap = {} }: EstadisticasTorneoProps) {
+  // TODO: Bandera temporal - Cambiar a true para mostrar la tabla de goleadores
+  const SHOW_GOLEADORES = false
+  
   const [activeTab, setActiveTab] = useState('posiciones')
   const [isDesktopView, setIsDesktopView] = useState(false)
+  
+  // Si la tabla de goleadores está oculta y está activa, cambiar a posiciones
+  useEffect(() => {
+    if (!SHOW_GOLEADORES && activeTab === 'goleadores') {
+      setActiveTab('posiciones')
+    }
+  }, [SHOW_GOLEADORES, activeTab])
 
   const getEstadoBadge = (estado: string | null) => {
     const estadoConfig = {
@@ -108,6 +118,12 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
 
   const toggleViewMode = () => {
     setIsDesktopView(!isDesktopView)
+  }
+
+  const handleTabSelect = (key: string | null) => {
+    if (key && (SHOW_GOLEADORES || key !== 'goleadores')) {
+      setActiveTab(key)
+    }
   }
 
   return (
@@ -260,30 +276,6 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   <span className="d-none d-sm-inline">Compartir Estadísticas</span>
                   <span className="d-inline d-sm-none">Compartir</span>
                 </Button>
-                <Button 
-                  variant="outline-light"
-                  className="d-flex align-items-center justify-content-center gap-2 px-3 py-2 rounded-pill fw-semibold"
-                  style={{
-                    border: '2px solid rgba(255, 255, 255, 0.3)',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    color: 'white',
-                    backdropFilter: 'blur(10px)',
-                    transition: 'all 0.3s ease',
-                    fontSize: '0.9rem'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                    e.currentTarget.style.transform = 'translateY(0)'
-                  }}
-                >
-                  <LuDownload />
-                  <span className="d-none d-sm-inline">Exportar Datos</span>
-                  <span className="d-inline d-sm-none">Exportar</span>
-                </Button>
               </div>
             </Col>
           </Row>
@@ -338,7 +330,7 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
           }} />
           
           <CardHeader className="border-0 bg-transparent p-0">
-            <Nav variant="tabs" className="nav-tabs-custom border-0 d-flex flex-row" activeKey={activeTab} onSelect={(k) => k && setActiveTab(k)}>
+            <Nav variant="tabs" className="nav-tabs-custom border-0 d-flex flex-row" activeKey={activeTab} onSelect={handleTabSelect}>
               <NavItem className="flex-fill">
                 <NavLink 
                   eventKey="posiciones" 
@@ -373,7 +365,7 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                     }
                   }}
                 >
-                  <LuTrophy className="fs-4 fs-md-5" />
+                  <LuTrendingUp className="fs-4 fs-md-5" />
                   <span className="fw-bold d-none d-lg-inline">Tabla de Posiciones</span>
                   <span className="fw-bold d-inline d-lg-none">Posiciones</span>
                   {activeTab === 'posiciones' && (
@@ -387,54 +379,56 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   )}
                 </NavLink>
               </NavItem>
-              <NavItem className="flex-fill">
-                <NavLink 
-                  eventKey="goleadores" 
-                  className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
-                  style={{
-                    background: activeTab === 'goleadores' 
-                      ? 'rgba(255, 255, 255, 0.2)' 
-                      : 'transparent',
-                    color: '#ffffff',
-                    borderRadius: activeTab === 'goleadores' ? '15px 15px 0 0' : '0',
-                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                    fontSize: '0.95rem',
-                    minHeight: '60px',
-                    textAlign: 'center',
-                    boxShadow: activeTab === 'goleadores' 
-                      ? '0 4px 15px rgba(0, 0, 0, 0.2)' 
-                      : 'none',
-                    marginBottom: '1px'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTab !== 'goleadores') {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                      e.currentTarget.style.transform = 'translateY(-2px)'
-                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.2)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTab !== 'goleadores') {
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.transform = 'translateY(0)'
-                      e.currentTarget.style.boxShadow = 'none'
-                    }
-                  }}
-                >
-                  <LuTarget className="fs-4 fs-md-5" />
-                  <span className="fw-bold d-none d-lg-inline">Tabla de Goleadores</span>
-                  <span className="fw-bold d-inline d-lg-none">Goleadores</span>
-                  {activeTab === 'goleadores' && (
-                    <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
-                      width: '80px',
-                      height: '4px',
-                      background: 'linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%)',
-                      borderRadius: '2px',
-                      boxShadow: '0 2px 8px rgba(255, 255, 255, 0.3)'
-                    }} />
-                  )}
-                </NavLink>
-              </NavItem>
+              {SHOW_GOLEADORES && (
+                <NavItem className="flex-fill">
+                  <NavLink 
+                    eventKey="goleadores" 
+                    className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
+                    style={{
+                      background: activeTab === 'goleadores' 
+                        ? 'rgba(255, 255, 255, 0.2)' 
+                        : 'transparent',
+                      color: '#ffffff',
+                      borderRadius: activeTab === 'goleadores' ? '15px 15px 0 0' : '0',
+                      transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                      fontSize: '0.95rem',
+                      minHeight: '60px',
+                      textAlign: 'center',
+                      boxShadow: activeTab === 'goleadores' 
+                        ? '0 4px 15px rgba(0, 0, 0, 0.2)' 
+                        : 'none',
+                      marginBottom: '1px'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (activeTab !== 'goleadores') {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                        e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.2)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== 'goleadores') {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.boxShadow = 'none'
+                      }
+                    }}
+                  >
+                    <LuStar className="fs-4 fs-md-5" />
+                    <span className="fw-bold d-none d-lg-inline">Tabla de Goleadores</span>
+                    <span className="fw-bold d-inline d-lg-none">Goleadores</span>
+                    {activeTab === 'goleadores' && (
+                      <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
+                        width: '80px',
+                        height: '4px',
+                        background: 'linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%)',
+                        borderRadius: '2px',
+                        boxShadow: '0 2px 8px rgba(255, 255, 255, 0.3)'
+                      }} />
+                    )}
+                  </NavLink>
+                </NavItem>
+              )}
               <NavItem className="flex-fill">
                 <NavLink 
                   eventKey="fixture" 
@@ -469,8 +463,8 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                     }
                   }}
                 >
-                  <LuCalendarDays className="fs-4 fs-md-5" />
-                  <span className="fw-bold d-none d-lg-inline">Fixture por categoría</span>
+                  <LuGamepad2 className="fs-4 fs-md-5" />
+                  <span className="fw-bold d-none d-lg-inline">Fixture</span>
                   <span className="fw-bold d-inline d-lg-none">Fixture</span>
                   {activeTab === 'fixture' && (
                     <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
@@ -495,13 +489,15 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   <TablaPosiciones equipos={tablaPosiciones} />
                 </div>
               </TabPane>
-              <TabPane eventKey="goleadores" active={activeTab === 'goleadores'}>
-                <div style={{
-                  background: 'rgba(255, 255, 255, 0.02)'
-                }}>
-                  <TablaGoleadores goleadores={tablaGoleadores} />
-                </div>
-              </TabPane>
+              {SHOW_GOLEADORES && (
+                <TabPane eventKey="goleadores" active={activeTab === 'goleadores'}>
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.02)'
+                  }}>
+                    <TablaGoleadores goleadores={tablaGoleadores} />
+                  </div>
+                </TabPane>
+              )}
               <TabPane eventKey="fixture" active={activeTab === 'fixture'}>
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.02)'
