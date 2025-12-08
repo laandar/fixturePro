@@ -97,6 +97,7 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
               <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>PG</th>
               <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>PE</th>
               <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>PP</th>
+              <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>PJ</th>
             </tr>
           </thead>
           <tbody>
@@ -183,6 +184,9 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
                 </td>
                 <td className="text-center align-middle py-2">
                   <span className="fw-bold fs-6 text-white">{equipo.partidosPerdidos}</span>
+                </td>
+                <td className="text-center align-middle py-2">
+                  <span className="fw-bold fs-6 text-white">{equipo.partidosJugados}</span>
                 </td>
               </tr>
             ))}

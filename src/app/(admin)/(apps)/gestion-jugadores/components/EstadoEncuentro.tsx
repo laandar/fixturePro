@@ -130,6 +130,16 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
             formData.append('goles_local', golesLocal.toString())
             formData.append('goles_visitante', golesVisitante.toString())
             formData.append('estado', 'finalizado')
+            // Preservar la cancha y otros campos importantes
+            if (encuentro.cancha) {
+              formData.append('cancha', encuentro.cancha)
+            }
+            if (encuentro.arbitro) {
+              formData.append('arbitro', encuentro.arbitro)
+            }
+            if (encuentro.horario_id) {
+              formData.append('horario_id', encuentro.horario_id.toString())
+            }
             
             // Usar la función existente para actualizar el encuentro
             const { updateEncuentro } = await import('../../torneos/actions')
@@ -142,6 +152,16 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
           // Si no hay goles, solo actualizar el estado
           const formData = new FormData()
           formData.append('estado', nuevoEstado)
+          // Preservar la cancha y otros campos importantes
+          if (encuentro.cancha) {
+            formData.append('cancha', encuentro.cancha)
+          }
+          if (encuentro.arbitro) {
+            formData.append('arbitro', encuentro.arbitro)
+          }
+          if (encuentro.horario_id) {
+            formData.append('horario_id', encuentro.horario_id.toString())
+          }
           
           const { updateEncuentro } = await import('../../torneos/actions')
           await updateEncuentro(encuentro.id, formData)
