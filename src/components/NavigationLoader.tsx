@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { Spinner } from 'react-bootstrap'
 
 const NavigationLoader = () => {
   const [loading, setLoading] = useState(false)
@@ -14,44 +15,29 @@ const NavigationLoader = () => {
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      const link = target.closest('a')
       
-      // Ignorar clicks en pestañas (tabs) - elementos dentro de .nav, .tab, o con eventKey
-      const isTab = target.closest('.nav') || 
-                    target.closest('.tab') || 
-                    target.closest('[role="tab"]') ||
-                    target.closest('[data-tab]') ||
-                    link?.closest('.nav') ||
-                    link?.closest('.tab') ||
-                    link?.hasAttribute('role') && link.getAttribute('role') === 'tab'
+      // Solo activar loading si el click es en un enlace del sidebar
+      const sidebarLink = target.closest('.side-nav-link')
+      const sidebarItem = target.closest('.side-nav-item')
       
-      if (isTab) {
-        return // No activar loading para cambios de pestañas
-      }
-      
-      // Ignorar clicks en botones de paginación - elementos dentro de .pagination o con clase .page-link
-      const paginationContainer = target.closest('.pagination') || target.closest('.pagination-boxed')
-      const isPaginationButton = target.tagName === 'BUTTON' && (
-        target.classList.contains('page-link') ||
-        target.closest('.page-link') ||
-        paginationContainer
-      )
-      const isPaginationElement = target.classList.contains('page-link') ||
-                                  target.closest('.page-link') ||
-                                  target.closest('.page-item') ||
-                                  paginationContainer
-      
-      if (isPaginationButton || isPaginationElement) {
-        return // No activar loading para cambios de paginación
-      }
-      
-      if (link && link.href && !link.href.startsWith('javascript:') && !link.target) {
-        const currentUrl = window.location.href
-        const linkUrl = link.href
+      // Verificar que sea un enlace del sidebar (no un botón para abrir/cerrar menús)
+      if (sidebarLink && sidebarItem) {
+        const link = sidebarLink.closest('a')
         
-        // Solo mostrar loading si es una navegación interna diferente
-        if (linkUrl !== currentUrl && linkUrl.startsWith(window.location.origin)) {
-          setLoading(true)
+        // Ignorar si es un botón (para abrir/cerrar submenús)
+        if (sidebarLink.tagName === 'BUTTON') {
+          return
+        }
+        
+        // Solo activar si es un enlace válido y es navegación interna
+        if (link && link.href && !link.href.startsWith('javascript:')) {
+          const currentUrl = window.location.href
+          const linkUrl = link.href
+          
+          // Solo mostrar loading si es una navegación interna diferente
+          if (linkUrl !== currentUrl && linkUrl.startsWith(window.location.origin)) {
+            setLoading(true)
+          }
         }
       }
     }
@@ -78,30 +64,7 @@ const NavigationLoader = () => {
       alignItems: 'center',
       zIndex: 99999
     }}>
-      <style>{`
-        @keyframes football-bounce-nav {
-          0%, 100% {
-            transform: translateY(0) rotate(0deg);
-          }
-          25% {
-            transform: translateY(-30px) rotate(90deg);
-          }
-          50% {
-            transform: translateY(0) rotate(180deg);
-          }
-          75% {
-            transform: translateY(-30px) rotate(270deg);
-          }
-        }
-        .football-navigation-loading {
-          animation: football-bounce-nav 1.5s ease-in-out infinite;
-          font-size: 60px;
-          filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-        }
-      `}</style>
-      <div className="football-navigation-loading">
-        ⚽
-      </div>
+      <Spinner animation="border" variant="light" style={{ width: '3rem', height: '3rem' }} />
     </div>
   )
 }

@@ -429,7 +429,7 @@ const Page = () => {
             backdropFilter: 'blur(2px)'
           }}
         >
-          <Loader height="100vh" width="100%" overlay={false} useFootball={true} />
+          <Loader height="100vh" width="100%" overlay={false} />
         </div>
       )}
 
