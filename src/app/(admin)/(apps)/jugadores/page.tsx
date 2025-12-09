@@ -23,8 +23,9 @@ import {
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
-import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock } from 'react-icons/lu'
+import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock, LuDownload } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash, TbCamera } from 'react-icons/tb'
+import ExcelJS from 'exceljs'
 import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias } from './actions'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
@@ -527,6 +528,164 @@ const Page = () => {
     setGlobalFilter('')
   }
 
+  const handleExportToExcel = async () => {
+    try {
+      // Obtener los jugadores filtrados de la tabla
+      const jugadoresFiltrados = table.getFilteredRowModel().rows.map(row => row.original)
+      
+      if (jugadoresFiltrados.length === 0) {
+        setError('No hay jugadores para exportar')
+        return
+      }
+
+      // Crear un nuevo libro de trabajo
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Jugadores')
+
+      // Agregar título
+      worksheet.addRow(['LISTADO DE JUGADORES'])
+      worksheet.addRow([])
+      worksheet.addRow(['Generado el:', new Date().toLocaleString('es-ES')])
+      worksheet.addRow(['Total de jugadores:', jugadoresFiltrados.length])
+      worksheet.addRow([])
+
+      // Agregar encabezados
+      const headers = [
+        'Cédula',
+        'Apellido y Nombre',
+        'Nacionalidad',
+        'Liga',
+        'Sexo',
+        'Número',
+        'Teléfono',
+        'Provincia',
+        'Dirección',
+        'Foráneo',
+        'Categoría',
+        'Equipo',
+        'Estado',
+        'Fecha de Nacimiento',
+        'Observaciones'
+      ]
+      worksheet.addRow(headers)
+
+      // Agregar datos
+      jugadoresFiltrados.forEach(jugador => {
+        const categoria = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre || 'Sin categoría'
+        const equipo = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || 'Sin equipo'
+        const fechaNacimiento = jugador.fecha_nacimiento 
+          ? new Date(jugador.fecha_nacimiento).toLocaleDateString('es-ES') 
+          : ''
+
+        worksheet.addRow([
+          jugador.cedula || '',
+          jugador.apellido_nombre || '',
+          jugador.nacionalidad || '',
+          jugador.liga || '',
+          jugador.sexo || 'No especificado',
+          jugador.numero_jugador || 'Sin número',
+          jugador.telefono || 'Sin teléfono',
+          jugador.provincia || 'Sin provincia',
+          jugador.direccion || '',
+          jugador.foraneo ? 'Sí' : 'No',
+          categoria,
+          equipo,
+          jugador.estado ? 'Activo' : 'Inactivo',
+          fechaNacimiento,
+          jugador.observacion || ''
+        ])
+      })
+
+      // Aplicar estilos
+      // Título
+      const titleCell = worksheet.getCell('A1')
+      titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+      worksheet.mergeCells('A1:O1')
+
+      // Encabezados
+      const headerRow = 6
+      headers.forEach((header, colIndex) => {
+        const cell = worksheet.getCell(headerRow, colIndex + 1)
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } }
+        }
+      })
+
+      // Filas de datos con colores alternados
+      for (let row = headerRow + 1; row <= worksheet.rowCount; row++) {
+        for (let col = 1; col <= headers.length; col++) {
+          const cell = worksheet.getCell(row, col)
+          const isEvenRow = (row - headerRow) % 2 === 0
+          cell.fill = { 
+            type: 'pattern', 
+            pattern: 'solid', 
+            fgColor: { argb: isEvenRow ? 'FFF9FAFB' : 'FFFFFFFF' } 
+          }
+          cell.alignment = { 
+            horizontal: col === 2 || col === 9 || col === 15 ? 'left' : 'center', 
+            vertical: 'middle' 
+          }
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+          }
+        }
+      }
+
+      // Ajustar ancho de columnas
+      worksheet.getColumn(1).width = 15  // Cédula
+      worksheet.getColumn(2).width = 30 // Apellido y Nombre
+      worksheet.getColumn(3).width = 15 // Nacionalidad
+      worksheet.getColumn(4).width = 15 // Liga
+      worksheet.getColumn(5).width = 12 // Sexo
+      worksheet.getColumn(6).width = 10 // Número
+      worksheet.getColumn(7).width = 15 // Teléfono
+      worksheet.getColumn(8).width = 15 // Provincia
+      worksheet.getColumn(9).width = 30 // Dirección
+      worksheet.getColumn(10).width = 10 // Foráneo
+      worksheet.getColumn(11).width = 20 // Categoría
+      worksheet.getColumn(12).width = 25 // Equipo
+      worksheet.getColumn(13).width = 12 // Estado
+      worksheet.getColumn(14).width = 15 // Fecha de Nacimiento
+      worksheet.getColumn(15).width = 40 // Observaciones
+
+      // Congelar la fila de encabezados
+      worksheet.views = [{ state: 'frozen', ySplit: headerRow }]
+
+      // Generar el archivo Excel
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      })
+
+      // Crear enlace de descarga
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const fecha = new Date().toISOString().split('T')[0]
+      link.download = `Jugadores_${fecha}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      setFormSuccess(`Excel descargado exitosamente. Total: ${jugadoresFiltrados.length} jugadores`)
+    } catch (error) {
+      console.error('Error al exportar a Excel:', error)
+      setError('Error al exportar a Excel: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+    }
+  }
+
   const handleCreateJugador = async (formData: FormData) => {
     if (!puedeCrear) {
       setFormError('No tienes permiso para crear jugadores')
@@ -667,6 +826,17 @@ const Page = () => {
                   onClick={() => setViewMode('list')}
                 >
                   <LuList className="fs-lg" />
+                </Button>
+                <Button 
+                  variant="success" 
+                  className="ms-1" 
+                  onClick={handleExportToExcel}
+                  disabled={table.getFilteredRowModel().rows.length === 0}
+                  title="Descargar jugadores filtrados en Excel"
+                >
+                  <LuDownload className="fs-sm me-2" /> 
+                  <span className="d-none d-sm-inline">Descargar Excel</span>
+                  <span className="d-sm-none">Excel</span>
                 </Button>
                 {puedeCrear ? (
                   <Button variant="danger" className="ms-1" onClick={toggleCreateModal}>

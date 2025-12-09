@@ -144,15 +144,22 @@ export async function getJugadoresActivosByEquipos(equipoIds: number[], categori
 }
 
 export async function getEquiposCategorias() {
-  // Obtener todas las combinaciones equipo-categoría disponibles
+  // Obtener todas las combinaciones equipo-categoría disponibles (solo activos)
   try {
+    // Obtener todas las relaciones equipo-categoría con sus relaciones
     const equiposCategorias = await db.query.equipoCategoria.findMany({
       with: {
         equipo: true,
         categoria: true
       }
     })
-    return equiposCategorias
+    
+    // Filtrar solo los que tienen equipo y categoría activos
+    const equiposCategoriasActivos = equiposCategorias.filter(
+      ec => ec.equipo?.estado === true && ec.categoria?.estado === true
+    )
+    
+    return equiposCategoriasActivos
   } catch (error) {
     console.error('Error al obtener equipos-categorías:', error)
     throw new Error('Error al obtener equipos-categorías')

@@ -266,7 +266,7 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
       pendiente: ['en_curso', 'finalizado', 'cancelado', 'aplazado']
     }
     const estadosDisponibles = estados[estadoActual] || []
-    console.log(`Estados disponibles para "${estadoActual}" (Admin: ${isAdmin()}):`, estadosDisponibles)
+    
     return estadosDisponibles
   }
 
