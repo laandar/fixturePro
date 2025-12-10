@@ -149,20 +149,6 @@ export default function TorneoCard({ torneo }: TorneoCardProps) {
         </div>
       </CardHeader>
       <CardBody className="p-2 pt-1 position-relative">
-        {torneo.descripcion && (
-          <p className="text-muted small mb-2" style={{ 
-            fontSize: '0.75rem',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            lineHeight: '1.3',
-            minHeight: '1.95rem'
-          }}>
-            {torneo.descripcion}
-          </p>
-        )}
-        
         <div className="d-flex align-items-center mb-2 rounded" style={{
           gap: '0.5rem',
           padding: '0.375rem',

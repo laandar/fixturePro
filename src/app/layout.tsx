@@ -3,7 +3,6 @@ import type { Metadata } from 'next'
 import AppWrapper from '@/components/AppWrapper'
 import { SessionProvider } from '@/components/SessionProvider'
 
-import favicon from '@/assets/images/favicon.ico'
 import { appDescription, appTitle } from '@/helpers'
 import { ChildrenType } from '@/types'
 
@@ -35,7 +34,11 @@ export const metadata: Metadata = {
     template: '%s | ' + appTitle,
   },
   description: appDescription,
-  icons: [favicon.src],
+  icons: {
+    icon: '/uploads/campeonato-de-futbol.png',
+    shortcut: '/uploads/campeonato-de-futbol.png',
+    apple: '/uploads/campeonato-de-futbol.png',
+  },
 }
 
 const RootLayout = ({ children }: ChildrenType) => {

@@ -77,10 +77,23 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
 
   return (
     <div className="p-3">
-      
+      <style dangerouslySetInnerHTML={{__html: `
+        @media (min-width: 768px) {
+          .th-position { width: 60px !important; min-width: 60px !important; font-size: 1rem !important; }
+          .th-equipo { width: 200px !important; min-width: 200px !important; max-width: 200px !important; font-size: 1rem !important; }
+          .th-pts { width: 80px !important; min-width: 80px !important; font-size: 1rem !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+          .th-dg { width: 80px !important; min-width: 80px !important; font-size: 1rem !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+          .td-position { width: 60px !important; min-width: 60px !important; }
+          .td-equipo { width: 200px !important; min-width: 200px !important; max-width: 200px !important; }
+          .td-equipo h5 { font-size: 0.95rem !important; }
+          .td-pts { width: 80px !important; min-width: 80px !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+          .td-dg { width: 80px !important; min-width: 80px !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+          .badge-pts, .badge-dg { width: auto !important; min-width: 60px !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+        }
+      `}} />
       {/* Tabla responsive */}
-      <div className="table-responsive">
-        <Table className="table-fifa mb-0">
+      <div className="table-responsive" style={{ minWidth: '300px' }}>
+        <Table className="table-fifa mb-0" style={{ minWidth: '300px' }}>
           <thead>
             <tr style={{
               background: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)',
@@ -88,10 +101,10 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
               borderBottom: '2px solid #ffffff',
               fontWeight: 'bold'
             }}>
-              <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>#</th>
-              <th className="fw-bold py-2" style={{ width: '200px', maxWidth: '200px', fontSize: '1rem', color: '#ffffff' }}>Equipo</th>
-              <th className="text-center fw-bold py-2" style={{ width: '70px', fontSize: '1rem', color: '#ffffff' }}>PTS</th>
-              <th className="text-center fw-bold py-2" style={{ width: '70px', fontSize: '1rem', color: '#ffffff' }}>DG</th>
+              <th className="text-center fw-bold py-2 th-position" style={{ width: '40px', minWidth: '40px', fontSize: '0.875rem', color: '#ffffff' }}>#</th>
+              <th className="fw-bold py-2 th-equipo" style={{ width: 'auto', minWidth: '140px', fontSize: '0.875rem', color: '#ffffff' }}>Equipo</th>
+              <th className="text-center fw-bold py-2 th-pts" style={{ width: '55px', minWidth: '55px', fontSize: '1rem', color: '#ffffff', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>PTS</th>
+              <th className="text-center fw-bold py-2 th-dg" style={{ width: '55px', minWidth: '55px', fontSize: '1rem', color: '#ffffff', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>DG</th>
               <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>GF</th>
               <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>GC</th>
               <th className="text-center fw-bold py-2" style={{ width: '60px', fontSize: '1rem', color: '#ffffff' }}>PG</th>
@@ -130,32 +143,37 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
                   }
                 }}
               >
-                <td className="text-center align-middle py-2">
+                <td className="text-center align-middle py-2 td-position" style={{ width: '40px', minWidth: '40px' }}>
                   <div className="d-flex justify-content-center align-items-center">
                     {getPosicionIcon(equipo.posicion)}
                   </div>
                 </td>
-                <td className="align-middle py-2" style={{ width: '200px', maxWidth: '200px' }}>
+                <td className="align-middle py-2 td-equipo" style={{ width: 'auto', minWidth: '140px' }}>
                   <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                    <h5 className="mb-1 fw-bold text-white" style={{ fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{equipo.equipo.nombre}</h5>
+                    <h5 className="mb-1 fw-bold text-white" style={{ fontSize: '0.875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{equipo.equipo.nombre}</h5>
                   </div>
                 </td>
-                <td className="text-center align-middle py-2">
+                <td className="text-center align-middle py-2 td-pts" style={{ width: '55px', minWidth: '55px', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>
                   <Badge 
-                    className="px-3 py-2 fw-bold fs-6"
+                    className="px-2 py-1 fw-bold badge-pts"
                     style={{
                       background: '#4a4a4a',
                       color: '#ffffff',
                       border: 'none',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                      display: 'inline-block',
+                      width: '45px',
+                      textAlign: 'center',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.5'
                     }}
                   >
                     {equipo.puntos}
                   </Badge>
                 </td>
-                <td className="text-center align-middle py-2">
+                <td className="text-center align-middle py-2 td-dg" style={{ width: '55px', minWidth: '55px', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>
                   <Badge 
-                    className="px-3 py-2 fw-bold fs-6"
+                    className="px-2 py-1 fw-bold badge-dg"
                     style={{
                       background: equipo.diferenciaGoles > 0 
                         ? '#666666' 
@@ -164,7 +182,12 @@ export default function TablaPosiciones({ equipos }: TablaPosicionesProps) {
                         : '#4a4a4a',
                       color: '#ffffff',
                       border: 'none',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                      display: 'inline-block',
+                      width: '45px',
+                      textAlign: 'center',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.5'
                     }}
                   >
                     {equipo.diferenciaGoles > 0 ? '+' : ''}{equipo.diferenciaGoles}

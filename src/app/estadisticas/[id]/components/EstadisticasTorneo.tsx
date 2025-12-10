@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button, Nav, NavItem, NavLink, TabContent, TabPane } from 'react-bootstrap'
-import { LuTrendingUp, LuStar, LuGamepad2, LuUsers, LuCalendar, LuShare2, LuMonitor, LuSmartphone } from 'react-icons/lu'
+import { LuTrendingUp, LuStar, LuGamepad2, LuUsers, LuCalendar, LuShare2, LuMonitor, LuSmartphone, LuArrowLeft } from 'react-icons/lu'
 import TablaPosiciones from './TablaPosiciones'
 import TablaGoleadores from './TablaGoleadores'
 import TablaFixture from './TablaFixture'
@@ -72,6 +73,7 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
   // TODO: Bandera temporal - Cambiar a true para mostrar la tabla de goleadores
   const SHOW_GOLEADORES = false
   
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState('posiciones')
   const [isDesktopView, setIsDesktopView] = useState(false)
   
@@ -225,6 +227,33 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
             
             <Col xs={12} md={4} className="text-center text-md-end mt-4 mt-md-0">
               <div className="d-flex flex-column flex-md-column gap-2 gap-md-3">
+                {/* Botón para regresar a estadísticas */}
+                <Button 
+                  variant="outline-light" 
+                  onClick={() => router.push('/estadisticas')}
+                  className="d-flex align-items-center justify-content-center gap-2 px-3 py-2 rounded-pill fw-semibold"
+                  style={{
+                    border: '2px solid rgba(255, 255, 255, 0.3)',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    backdropFilter: 'blur(10px)',
+                    transition: 'all 0.3s ease',
+                    fontSize: '0.9rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                  }}
+                >
+                  <LuArrowLeft />
+                  <span className="d-none d-sm-inline">Regresar a Estadísticas</span>
+                  <span className="d-inline d-sm-none">Regresar</span>
+                </Button>
+                
                 {/* Botón de cambio de vista - Solo visible en móvil */}
                 <Button 
                   variant="outline-light"
