@@ -243,17 +243,47 @@ export const equipoCategoriaQueries = {
   // Actualizar categorías de un equipo
   actualizarCategoriasDeEquipo: async (equipoId: number, categoriaIds: number[]) => {
     // Eliminar todas las categorías actuales
-    await db.delete(equipoCategoria).where(eq(equipoCategoria.equipo_id, equipoId));
     
-    // Agregar las nuevas categorías
-    if (categoriaIds.length > 0) {
-      const relacionesData = categoriaIds.map(categoriaId => ({
-        equipo_id: equipoId,
-        categoria_id: categoriaId
-      }));
-      
-      await db.insert(equipoCategoria).values(relacionesData);
-    }
+
+    const categoriasActuales = await db
+    .select({ categoria_id: equipoCategoria.categoria_id })
+    .from(equipoCategoria)
+    .where(eq(equipoCategoria.equipo_id, equipoId));
+
+    const actualesIds = categoriasActuales.map(c => c.categoria_id);
+
+     // 2️⃣ Calcular diferencias
+    const categoriasAInsertar = categoriaIds.filter(
+      id => !actualesIds.includes(id)
+    );
+
+    const categoriasAEliminar = actualesIds.filter(
+      id => !categoriaIds.includes(id)
+    );
+
+
+    // 3️⃣ Eliminar solo las que ya no existen
+      if (categoriasAEliminar.length > 0) {
+        await db
+          .delete(equipoCategoria)
+          .where(
+            and(
+              eq(equipoCategoria.equipo_id, equipoId),
+              inArray(equipoCategoria.categoria_id, categoriasAEliminar)
+            )
+          );
+      }
+
+          // 4️⃣ Insertar solo las nuevas
+      if (categoriasAInsertar.length > 0) {
+        const data = categoriasAInsertar.map(categoriaId => ({
+          equipo_id: equipoId,
+          categoria_id: categoriaId
+        }));
+
+        await db.insert(equipoCategoria).values(data);
+      }
+
   }
 };
 
@@ -675,17 +705,43 @@ export const jugadorEquipoCategoriaQueries = {
 
   // Actualizar equipos-categorías de un jugador
   actualizarEquiposCategoriasDeJugador: async (jugadorId: number, equipoCategoriaIds: number[]) => {
-    // Eliminar todas las relaciones actuales
-    await db.delete(jugadorEquipoCategoria).where(eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()));
-    
-    // Agregar las nuevas relaciones
-    if (equipoCategoriaIds.length > 0) {
-      const relacionesData = equipoCategoriaIds.map(equipoCategoriaId => ({
+    // 1️⃣ Obtener las relaciones actuales de la BD (ANTES)
+    const relacionesActuales = await db
+      .select({ equipo_categoria_id: jugadorEquipoCategoria.equipo_categoria_id })
+      .from(jugadorEquipoCategoria)
+      .where(eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()));
+
+    const actualesIds = relacionesActuales.map(r => r.equipo_categoria_id);
+
+    // 2️⃣ Calcular diferencias
+    const relacionesAInsertar = equipoCategoriaIds.filter(
+      id => !actualesIds.includes(id)
+    );
+
+    const relacionesAEliminar = actualesIds.filter(
+      id => !equipoCategoriaIds.includes(id)
+    );
+
+    // 3️⃣ Eliminar solo las que ya no existen
+    if (relacionesAEliminar.length > 0) {
+      await db
+        .delete(jugadorEquipoCategoria)
+        .where(
+          and(
+            eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()),
+            inArray(jugadorEquipoCategoria.equipo_categoria_id, relacionesAEliminar)
+          )
+        );
+    }
+
+    // 4️⃣ Insertar solo las nuevas
+    if (relacionesAInsertar.length > 0) {
+      const data = relacionesAInsertar.map(equipoCategoriaId => ({
         jugador_id: jugadorId.toString(),
         equipo_categoria_id: equipoCategoriaId
       }));
-      
-      await db.insert(jugadorEquipoCategoria).values(relacionesData);
+
+      await db.insert(jugadorEquipoCategoria).values(data);
     }
   }
 };
@@ -1157,7 +1213,7 @@ export const canchaQueries = {
       .returning();
     return result[0];
   },
-
+  
   // Actualizar cancha con categorías
   updateWithCategorias: async (id: number, canchaData: Partial<NewCancha>, categoriaIds: number[]) => {
     // Actualizar datos de la cancha
@@ -1167,17 +1223,43 @@ export const canchaQueries = {
       .where(eq(canchas.id, id))
       .returning();
     
-    // Eliminar categorías existentes
-    await db.delete(canchasCategorias).where(eq(canchasCategorias.cancha_id, id));
-    
-    // Insertar nuevas categorías
-    if (categoriaIds.length > 0) {
-      const categoriasData = categoriaIds.map(categoriaId => ({
+    // 1️⃣ Obtener las categorías actuales de la BD (ANTES)
+    const categoriasActuales = await db
+      .select({ categoria_id: canchasCategorias.categoria_id })
+      .from(canchasCategorias)
+      .where(eq(canchasCategorias.cancha_id, id));
+
+    const actualesIds = categoriasActuales.map(c => c.categoria_id);
+
+    // 2️⃣ Calcular diferencias
+    const categoriasAInsertar = categoriaIds.filter(
+      id => !actualesIds.includes(id)
+    );
+
+    const categoriasAEliminar = actualesIds.filter(
+      id => !categoriaIds.includes(id)
+    );
+
+    // 3️⃣ Eliminar solo las que ya no existen
+    if (categoriasAEliminar.length > 0) {
+      await db
+        .delete(canchasCategorias)
+        .where(
+          and(
+            eq(canchasCategorias.cancha_id, id),
+            inArray(canchasCategorias.categoria_id, categoriasAEliminar)
+          )
+        );
+    }
+
+    // 4️⃣ Insertar solo las nuevas
+    if (categoriasAInsertar.length > 0) {
+      const data = categoriasAInsertar.map(categoriaId => ({
         cancha_id: id,
         categoria_id: categoriaId,
       }));
-      
-      await db.insert(canchasCategorias).values(categoriasData);
+
+      await db.insert(canchasCategorias).values(data);
     }
     
     return result[0];

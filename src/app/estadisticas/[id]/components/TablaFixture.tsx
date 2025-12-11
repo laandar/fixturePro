@@ -315,7 +315,8 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 								</div>
 							</CardHeader>
 							<CardBody className="p-0" style={{ background: 'transparent' }}>
-								<div className="table-responsive">
+								{/* Vista de tabla para desktop */}
+								<div className="table-responsive d-none d-md-block">
 									<Table className="table-fifa mb-0">
 										<thead>
 											<tr style={{
@@ -433,6 +434,109 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 											})()}
 										</tbody>
 									</Table>
+								</div>
+								
+								{/* Vista de tarjetas para móvil */}
+								<div className="d-md-none p-2">
+									{(() => {
+										const listaOrdenada = [...lista].sort(sortEncuentros)
+										return listaOrdenada.map((encuentro, index) => {
+											const fechaActual = encuentro.fecha_programada 
+												? new Date(encuentro.fecha_programada).toISOString().split('T')[0]
+												: null
+											const fechaProgAnterior = index > 0 ? listaOrdenada[index - 1]?.fecha_programada : null
+											const fechaAnterior = fechaProgAnterior != null && fechaProgAnterior
+												? new Date(fechaProgAnterior).toISOString().split('T')[0]
+												: null
+											const esNuevaFecha = fechaActual && fechaActual !== fechaAnterior
+											const canchaNombre = getCanchaName(encuentro.cancha) || 'Sin asignar'
+											const canchaColor = canchaNombre === 'Sin asignar' ? '#adb5bd' : getCanchaColor(canchaNombre)
+											
+											return (
+												<div
+													key={encuentro.id}
+													className="mb-2 p-3 rounded"
+													style={{
+														background: 'rgba(255, 255, 255, 0.02)',
+														borderTop: esNuevaFecha ? '2px solid rgba(255, 255, 255, 0.3)' : 'none',
+														borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+														animationDelay: `${index * 0.05}s`
+													}}
+												>
+													{/* Fecha y hora */}
+													<div className="d-flex align-items-center gap-2 mb-2">
+														<LuClock className="text-white-50" style={{ fontSize: '1rem' }} />
+														<div className="d-flex flex-column">
+															<span 
+																className="fw-semibold"
+																style={{ 
+																	color: getFechaColor(encuentro.fecha_programada),
+																	fontSize: '0.9rem'
+																}}
+															>
+																{formatFechaConDia(encuentro.fecha_programada)}
+															</span>
+															{(formatHora(encuentro.fecha_programada, encuentro.horario?.hora_inicio)) && (
+																<small className="text-white-50" style={{ fontSize: '0.75rem' }}>
+																	{formatHora(encuentro.fecha_programada, encuentro.horario?.hora_inicio)} hs
+																</small>
+															)}
+														</div>
+													</div>
+													
+													{/* Equipos */}
+													<div className="d-flex align-items-center justify-content-between mb-2">
+														<div className="flex-grow-1 text-end pe-2">
+															<span className="fw-bold text-white" style={{ fontSize: '0.95rem' }}>
+																{encuentro.equipoLocal?.nombre || '-'}
+															</span>
+														</div>
+														<span 
+															className="fw-bold"
+															style={{ 
+																background: '#ffc107',
+																color: '#1a1a1a',
+																borderRadius: '9999px',
+																padding: '4px 8px',
+																fontSize: '0.75rem',
+																minWidth: '36px',
+																textAlign: 'center',
+																flexShrink: 0
+															}}
+														>
+															vs
+														</span>
+														<div className="flex-grow-1 text-start ps-2">
+															<span className="fw-bold text-white" style={{ fontSize: '0.95rem' }}>
+																{encuentro.equipoVisitante?.nombre || '-'}
+															</span>
+														</div>
+													</div>
+													
+													{/* Cancha y Estado */}
+													<div className="d-flex align-items-center justify-content-between">
+														<div className="d-flex align-items-center gap-2">
+															<LuMapPin className="text-white-50" style={{ fontSize: '0.9rem' }} />
+															<span className="fw-semibold" style={{ color: canchaColor, fontSize: '0.85rem' }}>
+																{canchaNombre}
+															</span>
+														</div>
+														<Badge 
+															className="px-2 py-1 fw-semibold"
+															style={{
+																background: getEstadoColors(encuentro.estado).bg,
+																color: '#ffffff',
+																border: 'none',
+																fontSize: '0.75rem'
+															}}
+														>
+															{encuentro.estado || 'programado'}
+														</Badge>
+													</div>
+												</div>
+											)
+										})
+									})()}
 								</div>
 							</CardBody>
 						</Card>
