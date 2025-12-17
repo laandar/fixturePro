@@ -357,9 +357,6 @@ export default function TablaHorariosCanchas({
                                         <LuUsers size={14} className="me-1" />
                                         EQUIPO 2
                                       </th>
-                                      {encuentrosCancha.some(e => (e.torneo as any)?.categoria?.nombre) && (
-                                        <th className="text-center fw-bold" style={{ width: '100px' }}>CATEGORÍA</th>
-                                      )}
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -412,13 +409,6 @@ export default function TablaHorariosCanchas({
                                                   <span>{encuentro.equipoVisitante?.nombre || 'N/A'}</span>
                                                 </div>
                                               </td>
-                                              {encuentrosCancha.some(e => (e.torneo as any)?.categoria?.nombre) && (
-                                                <td className="text-center align-middle">
-                                                  <Badge bg="secondary" className="text-white">
-                                                    {(encuentro.torneo as any)?.categoria?.nombre || '-'}
-                                                  </Badge>
-                                                </td>
-                                              )}
                                             </tr>
                                           )
                                         })
@@ -449,7 +439,7 @@ export default function TablaHorariosCanchas({
                                             </div>
                                           </td>
                                           <td
-                                            colSpan={encuentrosCancha.some(e => (e.torneo as any)?.categoria?.nombre) ? 3 : 2}
+                                            colSpan={2}
                                             className="text-center align-middle"
                                           >
                                             <div className="d-flex align-items-center justify-content-center py-2">

@@ -61,7 +61,11 @@ export async function getAllEncuentrosTodosTorneos() {
           },
         },
         horario: true,
-        torneo: true,
+        torneo: {
+          with: {
+            categoria: true,
+          },
+        },
       },
       orderBy: [encuentros.torneo_id, encuentros.jornada, encuentros.id],
     })

@@ -45,6 +45,7 @@ const Page = () => {
   const [encuentrosGlobales, setEncuentrosGlobales] = useState<EncuentroWithRelations[]>([])
   const [horariosGlobales, setHorariosGlobales] = useState<Horario[]>([])
   const [loadingTablaGlobal, setLoadingTablaGlobal] = useState(false)
+  const [torneosSeleccionados, setTorneosSeleccionados] = useState<number[]>([])
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
@@ -122,7 +123,7 @@ const Page = () => {
         const estado = row.original.estado
         const estadoConfig: Record<string, { bg: string; text: string; label: string; icon: string }> = {
           planificado: { bg: 'warning', text: 'dark', label: 'Planificado', icon: '⏳' },
-          en_curso: { bg: 'success', text: 'white', label: 'En Curso', icon: '▶️' },
+          en_curso: { bg: 'info', text: 'white', label: 'En Curso', icon: '▶️' },
           finalizado: { bg: 'primary', text: 'white', label: 'Finalizado', icon: '✅' },
           cancelado: { bg: 'danger', text: 'white', label: 'Cancelado', icon: '❌' }
         }
@@ -432,6 +433,9 @@ const Page = () => {
                   ])
                   setEncuentrosGlobales(encuentros)
                   setHorariosGlobales(horarios)
+                  // Inicializar con todos los torneos activos seleccionados
+                  const torneosActivos = data.filter(t => t.estado === 'en_curso').map(t => t.id)
+                  setTorneosSeleccionados(torneosActivos)
                   setShowTablaGlobal(true)
                 } catch (err) {
                   setError('Error al cargar la tabla global')
@@ -825,25 +829,115 @@ const Page = () => {
         centered
         fullscreen
       >
-        <ModalHeader closeButton>
-          <ModalTitle>
+        <ModalHeader closeButton className="border-bottom">
+          <ModalTitle className="d-flex align-items-center">
             <LuMapPin className="me-2" />
-            Tabla Global de Horarios vs Canchas (Todos los Torneos)
+            Tabla Global de Horarios
           </ModalTitle>
         </ModalHeader>
-        <ModalBody>
-          <TablaHorariosCanchas 
-            encuentros={encuentrosGlobales}
-            horarios={horariosGlobales}
-            canchas={encuentrosGlobales
-              .map(e => e.cancha)
-              .filter((c): c is string => c !== null && c !== undefined && c.trim() !== '')}
-          />
+        <ModalBody className="p-0">
+          {/* Selector de torneos - Barra superior simple */}
+          <div className="bg-light border-bottom p-3">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
+              <div className="d-flex align-items-center gap-2">
+                <LuTrophy className="text-primary" />
+                <span className="fw-semibold">Torneos activos:</span>
+              </div>
+              <div className="d-flex flex-wrap gap-2">
+                {data.filter(torneo => torneo.estado === 'en_curso').length === 0 ? (
+                  <span className="text-muted small">No hay torneos activos</span>
+                ) : (
+                  data.filter(torneo => torneo.estado === 'en_curso').map((torneo) => (
+                    <Button
+                      key={torneo.id}
+                      variant="outline-secondary"
+                      size="sm"
+                      onClick={() => {
+                        if (torneosSeleccionados.includes(torneo.id)) {
+                          setTorneosSeleccionados(torneosSeleccionados.filter(id => id !== torneo.id))
+                        } else {
+                          setTorneosSeleccionados([...torneosSeleccionados, torneo.id])
+                        }
+                      }}
+                      style={torneosSeleccionados.includes(torneo.id) ? {
+                        backgroundColor: 'rgba(24, 127, 205, 0.8)',
+                        borderColor: 'rgba(24, 127, 205, 0.8)',
+                        color: '#fff'
+                      } : {}}
+                      onMouseEnter={(e) => {
+                        if (!torneosSeleccionados.includes(torneo.id)) {
+                          e.currentTarget.style.backgroundColor = 'rgba(24, 127, 205, 0.8)'
+                          e.currentTarget.style.borderColor = 'rgba(24, 127, 205, 0.8)'
+                          e.currentTarget.style.color = '#fff'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!torneosSeleccionados.includes(torneo.id)) {
+                          e.currentTarget.style.backgroundColor = 'transparent'
+                          e.currentTarget.style.borderColor = '#6c757d'
+                          e.currentTarget.style.color = '#6c757d'
+                        }
+                      }}
+                    >
+                      {torneo.nombre}
+                    </Button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Contenido de la tabla */}
+          <div className="p-3">
+            {torneosSeleccionados.length === 0 ? (
+              <Alert variant="info" className="text-center mb-0">
+                <LuTrophy className="me-2" size={20} />
+                <Alert.Heading className="h6">Selecciona al menos un torneo</Alert.Heading>
+                <p className="mb-0 small">Elige uno o más torneos activos para ver su programación</p>
+              </Alert>
+            ) : (() => {
+              // Filtrar encuentros por torneos seleccionados
+              const encuentrosFiltrados = encuentrosGlobales.filter(encuentro => {
+                return encuentro.torneo_id && torneosSeleccionados.includes(encuentro.torneo_id)
+              })
+              
+              // Extraer los horario_id únicos de los encuentros filtrados
+              const horariosIdsUsados = new Set(
+                encuentrosFiltrados
+                  .map(e => e.horario_id)
+                  .filter((id): id is number => id !== null && id !== undefined)
+              )
+              
+              // Filtrar horarios para mostrar solo los usados por los torneos seleccionados
+              const horariosFiltrados = horariosGlobales.filter(horario => 
+                horariosIdsUsados.has(horario.id)
+              )
+              
+              return (
+                <TablaHorariosCanchas 
+                  encuentros={encuentrosFiltrados}
+                  horarios={horariosFiltrados}
+                  canchas={Array.from(new Set(
+                    encuentrosFiltrados
+                      .map(e => e.cancha)
+                      .filter((c): c is string => c !== null && c !== undefined && c.trim() !== '')
+                  )).sort()}
+                />
+              )
+            })()}
+          </div>
         </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setShowTablaGlobal(false)}>
-            Cerrar
-          </Button>
+        <ModalFooter className="border-top">
+          <div className="d-flex justify-content-between align-items-center w-100">
+            <small className="text-muted">
+              {torneosSeleccionados.length > 0 && (
+                <>{torneosSeleccionados.length} torneo{torneosSeleccionados.length !== 1 ? 's' : ''} seleccionado{torneosSeleccionados.length !== 1 ? 's' : ''}</>
+              )}
+            </small>
+            <Button variant="secondary" onClick={() => setShowTablaGlobal(false)}>
+              Cerrar
+            </Button>
+          </div>
         </ModalFooter>
       </Modal>
     </Container>
