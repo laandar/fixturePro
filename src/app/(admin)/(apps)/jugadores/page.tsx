@@ -98,6 +98,7 @@ const Page = () => {
   const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('jugadores')
   
   const [data, setData] = useState<JugadorWithEquipo[]>([])
+  const [allData, setAllData] = useState<JugadorWithEquipo[]>([]) // Almacena todos los jugadores
   const [equiposCategorias, setEquiposCategorias] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -504,7 +505,10 @@ const Page = () => {
         getJugadores(),
         getEquiposCategorias()
       ])
-      setData(jugadoresData)
+      // Guardar todos los jugadores
+      setAllData(jugadoresData)
+      // Inicialmente mostrar solo los primeros 5 jugadores
+      setData(jugadoresData.slice(0, 5))
       setEquiposCategorias(equiposCategoriasData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar jugadores')
@@ -512,6 +516,20 @@ const Page = () => {
       setLoading(false)
     }
   }
+
+  // Detectar si hay filtros activos
+  const hasActiveFilters = selectedCategorias.length > 0 || selectedEquipos.length > 0 || searchQuery.trim().length > 0
+
+  // Actualizar datos mostrados según si hay filtros activos
+  useEffect(() => {
+    if (hasActiveFilters) {
+      // Si hay filtros activos, mostrar todos los jugadores (el filtrado se hace en la tabla)
+      setData(allData)
+    } else {
+      // Si no hay filtros, mostrar solo los primeros 5 jugadores
+      setData(allData.slice(0, 5))
+    }
+  }, [hasActiveFilters, selectedCategorias, selectedEquipos, searchQuery, allData])
 
   // Debounce para la búsqueda local
   useEffect(() => {
@@ -811,7 +829,12 @@ const Page = () => {
                   <LuMenu className="fs-lg" />
                 </Button>
               </div>
-              <h3 className="mb-0 fs-xl flex-grow-1">{data.length} Jugadores</h3>
+              <h3 className="mb-0 fs-xl flex-grow-1">
+                {hasActiveFilters ? table.getFilteredRowModel().rows.length : allData.length} Jugadores
+                {!hasActiveFilters && allData.length > 5 && (
+                  <small className="text-muted ms-2">(mostrando 5 de {allData.length})</small>
+                )}
+              </h3>
               <div className="d-flex gap-1">
                 <Button 
                   variant={viewMode === 'grid' ? 'primary' : 'soft-primary'} 
