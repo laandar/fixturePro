@@ -208,7 +208,6 @@ const TorneoDetailPage = () => {
       // Cargar equipos que descansan desde la base de datos
       setEquiposDescansan(descansosData)
       
-      
       console.log('Equipos que descansan cargados desde BD:', descansosData)
       // Marcar que la carga inicial se completó
       setIsInitialLoad(false)
@@ -351,7 +350,15 @@ const TorneoDetailPage = () => {
     setEditingEncuentro(encuentro)
     // Precargar valores existentes
     setSelectedHorarioId(encuentro.horario_id || null)
-    setSelectedCancha(encuentro.cancha || '')
+    
+    // Asegurar que la cancha seleccionada coincida con una opción válida
+    const canchaInicial = encuentro.cancha || ''
+    const canchasActivas = canchas.filter(cancha => cancha.estado)
+    const canchaValida = canchasActivas.find(c => c.nombre === canchaInicial)
+    const canchaFinal = canchaValida ? canchaValida.nombre : ''
+    
+    setSelectedCancha(canchaFinal)
+    
     // Inicializar fecha si existe, formatear para input datetime-local
     if (encuentro.fecha_programada) {
       const fecha = new Date(encuentro.fecha_programada)
@@ -610,7 +617,15 @@ const TorneoDetailPage = () => {
       // Solo actualizar cancha si cambió
       if (encuentro.cancha !== cancha) {
         const formData = new FormData()
-        formData.append('cancha', cancha || '')
+        const canchaValue = cancha ? String(cancha).trim() : ''
+        formData.append('cancha', canchaValue)
+        
+        // También necesitamos enviar el estado actual para no perderlo
+        const encuentroActual = encuentros.find(e => e.id === encuentroId)
+        if (encuentroActual?.estado) {
+          formData.append('estado', encuentroActual.estado)
+        }
+        
         await updateEncuentro(encuentroId, formData)
         actualizaciones.push('cancha')
       }
@@ -2448,7 +2463,6 @@ const TorneoDetailPage = () => {
             variant="primary" 
             onClick={() => {
               if (editingEncuentro) {
-                // Usar los estados en lugar de obtener del DOM
                 const horarioIdFinal = selectedHorarioId
                 const canchaFinal = selectedCancha || null
                 const fechaFinal = selectedFecha || null

@@ -684,23 +684,37 @@ export async function updateEncuentro(id: number, formData: FormData) {
     const estado = formData.get('estado') as string
     const fecha_jugada = formData.get('fecha_jugada') ? new Date(formData.get('fecha_jugada') as string) : null
     const fecha_programada = formData.get('fecha_programada') ? (formData.get('fecha_programada') as string === '' ? null : new Date(formData.get('fecha_programada') as string)) : undefined
-    const cancha = formData.get('cancha') as string
+    const canchaRaw = formData.get('cancha')
+    const cancha = canchaRaw ? String(canchaRaw).trim() : ''
     const arbitro = formData.get('arbitro') as string
     const observaciones = formData.get('observaciones') as string
     const horario_id = formData.get('horario_id') ? (formData.get('horario_id') as string === '' ? null : parseInt(formData.get('horario_id') as string)) : undefined
 
-    const encuentroData: any = {
-      estado,
-      cancha: cancha || null,
-      arbitro: arbitro || null,
-      observaciones: observaciones || null,
+    const encuentroData: any = {}
+    
+    // Solo actualizar campos que están presentes en el FormData
+    if (formData.has('cancha')) {
+      encuentroData.cancha = cancha && cancha.trim() !== '' ? cancha.trim() : null
+    }
+    
+    if (formData.has('arbitro')) {
+      encuentroData.arbitro = arbitro || null
+    }
+    
+    if (formData.has('observaciones')) {
+      encuentroData.observaciones = observaciones || null
+    }
+    
+    // Solo agregar estado si está presente en el FormData
+    if (formData.has('estado') && estado) {
+      encuentroData.estado = estado
     }
 
-    if (fecha_programada !== undefined) {
+    if (formData.has('fecha_programada') && fecha_programada !== undefined) {
       encuentroData.fecha_programada = fecha_programada
     }
 
-    if (horario_id !== undefined) {
+    if (formData.has('horario_id') && horario_id !== undefined) {
       encuentroData.horario_id = horario_id
     }
 
@@ -1011,7 +1025,6 @@ export async function generateSingleJornada(
     
     // Obtener descansos guardados en la base de datos
     const descansosGuardados = await equiposDescansanQueries.getByTorneoId(torneoId)
-    console.log(`Descansos guardados en BD para torneo ${torneoId}:`, descansosGuardados)
     
     // Obtener equipos del torneo
     const equiposTorneo = torneo.equiposTorneo || []
@@ -1022,9 +1035,6 @@ export async function generateSingleJornada(
     const fechaJornada = new Date(fechaInicio)
     fechaJornada.setDate(fechaInicio.getDate() + (jornada - 1) * (options.diasEntreJornadas || 7))
 
-    console.log(`Generando fixture para jornada ${jornada} con ${equipos.length} equipos`)
-    console.log(`Número de equipos: ${equipos.length} (${equipos.length % 2 === 0 ? 'par' : 'impar'})`)
-    
     // Generar solo esta jornada
     const fixtureResult = await generateFixture(equipos, torneoId, {
       permiteRevancha: Boolean(torneo.permite_revancha ?? false),
@@ -1046,39 +1056,28 @@ export async function generateSingleJornada(
     }
 
     // Guardar el descanso en la base de datos
-    console.log(`FixtureResult equiposDescansan:`, fixtureResult.equiposDescansan)
-    console.log(`Jornada ${jornada} - Equipo que descansa:`, fixtureResult.equiposDescansan?.[jornada])
-    
     if (fixtureResult.equiposDescansan?.[jornada]) {
       const equipoQueDescansa = fixtureResult.equiposDescansan[jornada]
-      console.log(`Intentando guardar descanso para equipo ${equipoQueDescansa} en jornada ${jornada}`)
       
       try {
         // Verificar si ya existe un descanso para esta jornada
         const descansoExistente = await equiposDescansanQueries.getByJornada(torneoId, jornada)
-        console.log(`Descanso existente para jornada ${jornada}:`, descansoExistente)
         
         if (descansoExistente) {
           // Actualizar el descanso existente
-          console.log(`Eliminando descanso existente para jornada ${jornada}`)
           await equiposDescansanQueries.deleteByJornada(torneoId, jornada)
         }
         
         // Crear el nuevo registro de descanso
-        console.log(`Creando nuevo descanso:`, { torneo_id: torneoId, equipo_id: equipoQueDescansa, jornada: jornada })
-        const descansoCreado = await equiposDescansanQueries.create({
+        await equiposDescansanQueries.create({
           torneo_id: torneoId,
           equipo_id: equipoQueDescansa,
           jornada: jornada
         })
-        
-        console.log(`Descanso guardado exitosamente en BD:`, descansoCreado)
       } catch (error) {
         console.error(`Error al guardar descanso:`, error)
         throw new Error(`Error al guardar descanso: ${error instanceof Error ? error.message : 'Error desconocido'}`)
       }
-    } else {
-      console.log(`No hay descanso para guardar en jornada ${jornada}`)
     }
 
     revalidatePath(`/torneos/${torneoId}`)
@@ -1127,7 +1126,6 @@ export async function regenerateSingleJornada(
     
     // Obtener descansos guardados en la base de datos
     const descansosGuardados = await equiposDescansanQueries.getByTorneoId(torneoId)
-    console.log(`Descansos guardados en BD para torneo ${torneoId}:`, descansosGuardados)
     
     // Obtener equipos del torneo
     const equiposTorneo = torneo.equiposTorneo || []
@@ -1138,9 +1136,6 @@ export async function regenerateSingleJornada(
     const fechaJornada = new Date(fechaInicio)
     fechaJornada.setDate(fechaInicio.getDate() + (jornada - 1) * (options.diasEntreJornadas || 7))
 
-    console.log(`Regenerando fixture para jornada ${jornada} con ${equipos.length} equipos`)
-    console.log(`Número de equipos: ${equipos.length} (${equipos.length % 2 === 0 ? 'par' : 'impar'})`)
-    
     // Eliminar encuentros existentes de esta jornada
     for (const encuentro of jornadaExistente) {
       await encuentroQueries.delete(encuentro.id)
@@ -1173,29 +1168,20 @@ export async function regenerateSingleJornada(
     }
 
     // Guardar el descanso en la base de datos
-    console.log(`FixtureResult equiposDescansan:`, fixtureResult.equiposDescansan)
-    console.log(`Jornada ${jornada} - Equipo que descansa:`, fixtureResult.equiposDescansan?.[jornada])
-    
     if (fixtureResult.equiposDescansan?.[jornada]) {
       const equipoQueDescansa = fixtureResult.equiposDescansan[jornada]
-      console.log(`Intentando guardar descanso para equipo ${equipoQueDescansa} en jornada ${jornada}`)
       
       try {
         // Crear el nuevo registro de descanso
-        console.log(`Creando nuevo descanso:`, { torneo_id: torneoId, equipo_id: equipoQueDescansa, jornada: jornada })
-        const descansoCreado = await equiposDescansanQueries.create({
+        await equiposDescansanQueries.create({
           torneo_id: torneoId,
           equipo_id: equipoQueDescansa,
           jornada: jornada
         })
-        
-        console.log(`Descanso guardado exitosamente en BD:`, descansoCreado)
       } catch (error) {
         console.error(`Error al guardar descanso:`, error)
         throw new Error(`Error al guardar descanso: ${error instanceof Error ? error.message : 'Error desconocido'}`)
       }
-    } else {
-      console.log(`No hay descanso para guardar en jornada ${jornada}`)
     }
 
     revalidatePath(`/torneos/${torneoId}`)
@@ -1742,21 +1728,6 @@ async function verificarCanchaOcupadaEnTodosTorneos(
       .limit(5) // Limitar a 5 para logging
 
     if (encuentrosOcupados.length > 0) {
-      console.log('🚫 Cancha ocupada encontrada:', {
-        cancha: canchaNombre,
-        horaInicio,
-        diaSemana,
-        jornada,
-        fechaProgramada,
-        encuentrosEncontrados: encuentrosOcupados.map(e => ({
-          id: e.id,
-          torneo_id: e.torneo_id,
-          jornada: e.jornada,
-          fecha_programada: e.fecha_programada,
-          dia_semana: e.dia_semana
-        })),
-        encuentroIdActual
-      })
       return true
     }
 
@@ -2852,11 +2823,6 @@ export async function asignarCanchasAutomaticamente(
                 }
                 
                 if (canchaAlternativa) {
-                  console.log('✅ Cancha alternativa encontrada:', {
-                    original: canchaAsignada,
-                    alternativa: canchaAlternativa,
-                    encuentroId: encuentro.id
-                  })
                   canchaAsignada = canchaAlternativa
                 } else {
                   console.error('❌ No se encontró cancha alternativa, saltando asignación')
@@ -2873,13 +2839,6 @@ export async function asignarCanchasAutomaticamente(
               formData.append('cancha', canchaAsignada)
               await updateEncuentro(encuentro.id, formData)
               asignacionesRealizadas++
-              
-              console.log('✅ Cancha asignada exitosamente:', {
-                encuentroId: encuentro.id,
-                cancha: canchaAsignada,
-                horaInicio,
-                jornada
-              })
             } else if (!horaInicio) {
               console.warn('⚠️ No se puede asignar cancha: falta horaInicio:', {
                 encuentroId: encuentro.id,
@@ -3150,11 +3109,6 @@ export async function asignarCanchasAutomaticamente(
                   }
                   
                   if (canchaAlternativa) {
-                    console.log('✅ Cancha alternativa encontrada (secundarias):', {
-                      original: canchaAsignada,
-                      alternativa: canchaAlternativa,
-                      encuentroId: encuentro.id
-                    })
                     canchaAsignada = canchaAlternativa
                   } else {
                     console.error('❌ No se encontró cancha alternativa (secundarias), saltando asignación')
@@ -3171,13 +3125,6 @@ export async function asignarCanchasAutomaticamente(
                 formData.append('cancha', canchaAsignada)
                 await updateEncuentro(encuentro.id, formData)
                 asignacionesRealizadas++
-                
-                console.log('✅ Cancha asignada exitosamente (secundarias):', {
-                  encuentroId: encuentro.id,
-                  cancha: canchaAsignada,
-                  horaInicio,
-                  jornada
-                })
               } else if (!horaInicio) {
                 console.warn('⚠️ No se puede asignar cancha (secundarias): falta horaInicio:', {
                   encuentroId: encuentro.id,

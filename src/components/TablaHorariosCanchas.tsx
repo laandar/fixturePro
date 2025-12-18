@@ -69,6 +69,43 @@ export default function TablaHorariosCanchas({
 
   const jornadasOrdenadas = Array.from(encuentrosPorJornada.keys()).sort((a, b) => a - b)
 
+  // Función para obtener equipos que descansan en una jornada
+  const getEquiposQueDescansan = (jornada: number): any[] => {
+    const encuentrosJornada = encuentrosPorJornada.get(jornada) || []
+    
+    // Obtener todos los equipos que juegan en esta jornada
+    const equiposQueJuegan = new Set<number>()
+    encuentrosJornada.forEach(encuentro => {
+      if (encuentro.equipoLocal?.id) equiposQueJuegan.add(encuentro.equipoLocal.id)
+      if (encuentro.equipoVisitante?.id) equiposQueJuegan.add(encuentro.equipoVisitante.id)
+    })
+
+    // Obtener todos los equipos únicos de todos los encuentros del mismo torneo
+    const torneosIds = new Set(encuentrosJornada.map(e => (e as any).torneo_id).filter(Boolean))
+    const todosEquipos = new Map<number, any>()
+    
+    localEncuentros.forEach(encuentro => {
+      if ((encuentro as any).torneo_id && torneosIds.has((encuentro as any).torneo_id)) {
+        if (encuentro.equipoLocal?.id && !todosEquipos.has(encuentro.equipoLocal.id)) {
+          todosEquipos.set(encuentro.equipoLocal.id, encuentro.equipoLocal)
+        }
+        if (encuentro.equipoVisitante?.id && !todosEquipos.has(encuentro.equipoVisitante.id)) {
+          todosEquipos.set(encuentro.equipoVisitante.id, encuentro.equipoVisitante)
+        }
+      }
+    })
+
+    // Encontrar equipos que NO juegan (descansan)
+    const equiposQueDescansan: any[] = []
+    todosEquipos.forEach((equipo, id) => {
+      if (!equiposQueJuegan.has(id)) {
+        equiposQueDescansan.push(equipo)
+      }
+    })
+
+    return equiposQueDescansan
+  }
+
   // ====== HORAS POR DÍA (para mostrar huecos) ======
   // En la vista global puede haber varios registros de horario con la misma hora para distintos torneos.
   // Aquí colapsamos por combinación (dia_semana, hora_inicio) para no repetir filas.
@@ -192,13 +229,33 @@ export default function TablaHorariosCanchas({
 
           const fechasOrdenadas = Array.from(encuentrosPorFecha.keys()).sort()
 
+          const equiposDescansan = getEquiposQueDescansan(jornadaKey)
+
           return (
             <div key={jornadaKey} className={jornadaIndex > 0 ? 'mt-5' : ''}>
               <div className="mb-3 p-3 bg-success bg-opacity-10 rounded-3 border border-success border-opacity-25">
-                <h4 className="fw-bold text-success mb-0 d-flex align-items-center">
-                  <LuCalendar className="me-2" size={18} />
-                  Jornada {jornadaKey === 0 ? '-' : jornadaKey}
-                </h4>
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <h4 className="fw-bold text-success mb-0 d-flex align-items-center">
+                    <LuCalendar className="me-2" size={18} />
+                    Jornada {jornadaKey === 0 ? '-' : jornadaKey}
+                  </h4>
+                  {equiposDescansan.length > 0 && (
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <Badge 
+                        bg="secondary" 
+                        className="d-flex align-items-center gap-2 px-3 py-2 text-white"
+                        style={{ 
+                          backgroundColor: '#6c757d',
+                          fontSize: '0.875rem'
+                        }}
+                      >
+                        <span style={{ fontSize: '1rem' }}>💤</span>
+                        <span className="fw-semibold">Descansan:</span>
+                        <span className="fw-normal">{equiposDescansan.map(e => e.nombre).join(', ')}</span>
+                      </Badge>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {fechasOrdenadas.map((fechaKey, fechaIndex) => {
@@ -208,6 +265,16 @@ export default function TablaHorariosCanchas({
                 const canchasConEncuentros = Array.from(encuentrosPorCancha.keys())
                 const canchasFecha = Array.from(new Set([...canchas, ...canchasConEncuentros])).sort()
                 const horasDeEsteDia = obtenerHorasParaFecha(fechaKey)
+
+                // Función para detectar encuentros duplicados (misma cancha, mismo horario)
+                const esEncuentroDuplicado = (encuentro: EncuentroWithRelations): boolean => {
+                  const mismoHorarioYCacha = encuentrosFecha.filter(e => 
+                    e.cancha === encuentro.cancha && 
+                    e.horario?.hora_inicio === encuentro.horario?.hora_inicio &&
+                    e.id !== encuentro.id
+                  )
+                  return mismoHorarioYCacha.length > 0
+                }
 
                 return (
                   <div key={`${jornadaKey}-${fechaKey}`} className={fechaIndex > 0 ? 'mt-4' : ''}>
@@ -370,6 +437,7 @@ export default function TablaHorariosCanchas({
                                           const slotId = `${cancha}-${hora}-${encuentro.id}`
                                           const isDragging = draggedId === encuentro.id
                                           const isDragOver = dragOverId === slotId
+                                          const esDuplicado = esEncuentroDuplicado(encuentro)
                                           
                                           return (
                                             <tr
@@ -383,30 +451,36 @@ export default function TablaHorariosCanchas({
                                               className={`
                                                 ${isDragging ? 'opacity-50' : ''}
                                                 ${isDragOver ? 'bg-info bg-opacity-25' : ''}
+                                                ${esDuplicado ? 'bg-danger bg-opacity-20' : ''}
                                                 cursor-move
                                                 transition-all
                                               `}
                                               style={{
                                                 cursor: 'grab',
-                                                userSelect: 'none'
+                                                userSelect: 'none',
+                                                ...(esDuplicado ? {
+                                                  borderLeft: '4px solid #dc3545',
+                                                  backgroundColor: 'rgba(220, 53, 69, 0.15)'
+                                                } : {})
                                               }}
                                             >
-                                              <td className="text-center fw-bold bg-light align-middle">
+                                              <td className={`text-center fw-bold align-middle ${esDuplicado ? 'bg-danger bg-opacity-10' : 'bg-light'}`}>
                                                 <div className="d-flex align-items-center justify-content-center">
-                                                  <LuClock size={12} className="me-1 text-muted" />
-                                                  <span>{encuentro.horario?.hora_inicio || '-'}</span>
+                                                  <LuClock size={12} className={`me-1 ${esDuplicado ? 'text-danger' : 'text-muted'}`} />
+                                                  <span className={esDuplicado ? 'text-danger fw-bold' : ''}>{encuentro.horario?.hora_inicio || '-'}</span>
+                                                  {esDuplicado && <span className="ms-1 text-danger">⚠️</span>}
                                                 </div>
                                               </td>
-                                              <td className="fw-bold text-primary align-middle">
+                                              <td className={`fw-bold align-middle ${esDuplicado ? 'text-danger' : 'text-primary'}`}>
                                                 <div className="d-flex align-items-center">
-                                                  <LuUsers size={12} className="me-1 text-primary opacity-75" />
-                                                  <span>{encuentro.equipoLocal?.nombre || 'N/A'}</span>
+                                                  <LuUsers size={12} className={`me-1 ${esDuplicado ? 'text-danger' : 'text-primary opacity-75'}`} />
+                                                  <span className={esDuplicado ? 'fw-bold' : ''}>{encuentro.equipoLocal?.nombre || 'N/A'}</span>
                                                 </div>
                                               </td>
-                                              <td className="fw-bold text-danger align-middle">
+                                              <td className={`fw-bold align-middle ${esDuplicado ? 'text-danger' : 'text-danger'}`}>
                                                 <div className="d-flex align-items-center">
-                                                  <LuUsers size={12} className="me-1 text-danger opacity-75" />
-                                                  <span>{encuentro.equipoVisitante?.nombre || 'N/A'}</span>
+                                                  <LuUsers size={12} className={`me-1 ${esDuplicado ? 'text-danger' : 'text-danger opacity-75'}`} />
+                                                  <span className={esDuplicado ? 'fw-bold' : ''}>{encuentro.equipoVisitante?.nombre || 'N/A'}</span>
                                                 </div>
                                               </td>
                                             </tr>
