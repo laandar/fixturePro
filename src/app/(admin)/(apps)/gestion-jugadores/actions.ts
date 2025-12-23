@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 
 import { db } from '@/db'
-import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, configuraciones, pagosMultas, cargosManuales } from '@/db/schema'
+import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, configuraciones, pagosMultas, cargosManuales, jugadores } from '@/db/schema'
 import { eq, and, inArray, lte } from 'drizzle-orm'
 import type { NewGol, Gol, NewTarjeta, Tarjeta, NewJugadorParticipante, JugadorParticipante, NewCambioJugador, CambioJugador, NewFirmaEncuentro, FirmaEncuentro } from '@/db/types'
 import { getConfiguracionPorClave } from '../configuraciones/actions'
@@ -1134,5 +1134,310 @@ export async function getEncuentroById(encuentroId: number) {
   } catch (error) {
     console.error('Error al obtener encuentro por ID:', error)
     throw new Error('Error al obtener encuentro')
+  }
+}
+
+// ===== FUNCIONES PARA PDF DE HOJA DE VOCALÍA =====
+
+// Obtener todos los encuentros de una categoría y jornada con todos sus datos
+export async function getEncuentrosCompletosPorCategoriaJornada(categoriaId: number, jornada: number) {
+  try {
+    const { torneos, encuentros: encuentrosTable, jugadores } = await import('@/db/schema')
+    
+    // Obtener todos los torneos de la categoría
+    const torneosCategoria = await db
+      .select()
+      .from(torneos)
+      .where(eq(torneos.categoria_id, categoriaId))
+    
+    if (torneosCategoria.length === 0) {
+      return []
+    }
+    
+    const torneoIds = torneosCategoria.map(t => t.id)
+    
+    // Obtener encuentros de esos torneos en la jornada especificada usando query builder
+    const encuentrosData = await db
+      .select()
+      .from(encuentrosTable)
+      .where(
+        and(
+          eq(encuentrosTable.jornada, jornada),
+          inArray(encuentrosTable.torneo_id, torneoIds)
+        )
+      )
+    
+    // Obtener relaciones para cada encuentro
+    const encuentrosConRelaciones = await Promise.all(
+      encuentrosData.map(async (encuentro) => {
+        const encuentroCompleto = await db.query.encuentros.findFirst({
+          where: eq(encuentrosTable.id, encuentro.id),
+          with: {
+            equipoLocal: {
+              with: {
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
+                entrenador: true,
+              },
+            },
+            equipoVisitante: {
+              with: {
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
+                entrenador: true,
+              },
+            },
+            torneo: {
+              with: {
+                categoria: true,
+              },
+            },
+            horario: true,
+          },
+        })
+        
+        return encuentroCompleto
+      })
+    )
+    
+    // Filtrar nulos
+    const encuentrosFiltrados = encuentrosConRelaciones.filter(e => e !== null && e !== undefined) as any[]
+    
+    // Para cada encuentro, obtener jugadores participantes, goles, tarjetas y cambios
+    const encuentrosCompletos = await Promise.all(
+      encuentrosFiltrados.map(async (encuentro) => {
+        const [jugadoresParticipantesData, golesData, tarjetasData, cambiosData, firmasData] = await Promise.all([
+          getJugadoresParticipantes(encuentro.id),
+          getGolesEncuentro(encuentro.id),
+          getTarjetasEncuentro(encuentro.id),
+          getCambiosEncuentro(encuentro.id),
+          getFirmasEncuentro(encuentro.id),
+        ])
+        
+        // Obtener datos completos de jugadores participantes
+        const jugadoresIds = jugadoresParticipantesData.map(jp => jp.jugador_id)
+        const jugadoresData = jugadoresIds.length > 0 
+          ? await db.query.jugadores.findMany({
+              where: inArray(jugadores.id, jugadoresIds),
+            })
+          : []
+        
+        const jugadoresMap = new Map(jugadoresData.map(j => [j.id, j]))
+        
+        // Enriquecer jugadores participantes con datos completos
+        const jugadoresParticipantesCompletos = jugadoresParticipantesData.map(jp => ({
+          ...jp,
+          jugador: jugadoresMap.get(jp.jugador_id) || null,
+        }))
+        
+        // Enriquecer goles con datos de jugadores
+        const golesCompletos = await Promise.all(
+          golesData.map(async (gol) => {
+            const jugador = await db.query.jugadores.findFirst({
+              where: eq(jugadores.id, gol.jugador_id),
+            })
+            return {
+              ...gol,
+              jugador,
+            }
+          })
+        )
+        
+        // Enriquecer tarjetas con datos de jugadores
+        const tarjetasCompletas = await Promise.all(
+          tarjetasData.map(async (tarjeta) => {
+            const jugador = await db.query.jugadores.findFirst({
+              where: eq(jugadores.id, tarjeta.jugador_id),
+            })
+            return {
+              ...tarjeta,
+              jugador,
+            }
+          })
+        )
+        
+        return {
+          ...encuentro,
+          jugadoresParticipantes: jugadoresParticipantesCompletos,
+          goles: golesCompletos,
+          tarjetas: tarjetasCompletas,
+          cambios: cambiosData,
+          firmas: firmasData,
+        }
+      })
+    )
+    
+    return encuentrosCompletos
+  } catch (error) {
+    console.error('Error al obtener encuentros completos:', error)
+    throw new Error('Error al obtener encuentros completos')
+  }
+}
+
+// Obtener jornadas disponibles para una categoría
+export async function getJornadasDisponiblesPorCategoria(categoriaId: number) {
+  try {
+    const { torneos, encuentros } = await import('@/db/schema')
+    const { eq, inArray } = await import('drizzle-orm')
+
+    // Obtener torneos de la categoría
+    const torneosCategoria = await db
+      .select()
+      .from(torneos)
+      .where(eq(torneos.categoria_id, categoriaId))
+
+    if (torneosCategoria.length === 0) {
+      return []
+    }
+
+    const torneoIds = torneosCategoria.map(t => t.id)
+
+    // Obtener jornadas distintas de esos torneos
+    const jornadasData = await db
+      .selectDistinct({ jornada: encuentros.jornada })
+      .from(encuentros)
+      .where(inArray(encuentros.torneo_id, torneoIds))
+
+    const jornadas = jornadasData
+      .map(j => j.jornada)
+      .filter((j): j is number => j !== null)
+      .sort((a, b) => a - b)
+
+    return jornadas
+  } catch (error) {
+    console.error('Error al obtener jornadas disponibles:', error)
+    throw new Error('Error al obtener jornadas disponibles')
+  }
+}
+
+// Obtener encuentro completo con todos los datos para generar PDF
+export async function getEncuentroCompletoParaPDF(encuentroId: number) {
+  try {
+    // Obtener encuentro completo
+    const encuentro = await getEncuentroById(encuentroId)
+    if (!encuentro) {
+      throw new Error('No se encontró el encuentro')
+    }
+
+    // Obtener todos los datos del encuentro
+    const [jugadoresParticipantesData, golesData, tarjetasData, cambiosData, firmasData] = await Promise.all([
+      getJugadoresParticipantes(encuentroId),
+      getGolesEncuentro(encuentroId),
+      getTarjetasEncuentro(encuentroId),
+      getCambiosEncuentro(encuentroId),
+      getFirmasEncuentro(encuentroId),
+    ])
+
+    // Obtener datos completos de jugadores
+    const jugadoresIds = jugadoresParticipantesData.map(jp => jp.jugador_id)
+    const jugadoresData = jugadoresIds.length > 0 
+      ? await db.query.jugadores.findMany({
+          where: inArray(jugadores.id, jugadoresIds),
+        })
+      : []
+    
+    const jugadoresMap = new Map(jugadoresData.map(j => [j.id, j]))
+    
+    const jugadoresParticipantesCompletos = jugadoresParticipantesData.map(jp => ({
+      ...jp,
+      jugador: jugadoresMap.get(jp.jugador_id) || null,
+    }))
+
+    const golesCompletos = await Promise.all(
+      golesData.map(async (gol) => {
+        const jugador = await db.query.jugadores.findFirst({
+          where: eq(jugadores.id, gol.jugador_id),
+        })
+        return {
+          ...gol,
+          jugador,
+        }
+      })
+    )
+
+    const tarjetasCompletas = await Promise.all(
+      tarjetasData.map(async (tarjeta) => {
+        const jugador = await db.query.jugadores.findFirst({
+          where: eq(jugadores.id, tarjeta.jugador_id),
+        })
+        return {
+          ...tarjeta,
+          jugador,
+        }
+      })
+    )
+
+    // Enriquecer cambios con datos de jugadores
+    const cambiosCompletos = await Promise.all(
+      cambiosData.map(async (cambio) => {
+        const [jugadorSale, jugadorEntra] = await Promise.all([
+          db.query.jugadores.findFirst({
+            where: eq(jugadores.id, cambio.jugador_sale_id),
+          }),
+          db.query.jugadores.findFirst({
+            where: eq(jugadores.id, cambio.jugador_entra_id),
+          }),
+        ])
+        
+        // Determinar equipo_tipo basado en equipo_id
+        const equipoTipo = cambio.equipo_id === encuentro.equipo_local_id ? 'local' : 'visitante'
+        
+        return {
+          ...cambio,
+          equipo_tipo: equipoTipo,
+          jugador_sale: jugadorSale ? {
+            id: jugadorSale.id,
+            apellido_nombre: jugadorSale.apellido_nombre,
+            numero_jugador: jugadorSale.numero_jugador,
+          } : null,
+          jugador_entra: jugadorEntra ? {
+            id: jugadorEntra.id,
+            apellido_nombre: jugadorEntra.apellido_nombre,
+            numero_jugador: jugadorEntra.numero_jugador,
+          } : null,
+        }
+      })
+    )
+
+    // Construir objeto de encuentro completo
+    const encuentroCompleto = {
+      id: encuentro.id,
+      fecha_programada: encuentro.fecha_programada,
+      cancha: encuentro.cancha || null,
+      horario: encuentro.horario ? {
+        hora_inicio: encuentro.horario.hora_inicio || null,
+      } : null,
+      equipoLocal: encuentro.equipoLocal ? {
+        id: encuentro.equipoLocal.id,
+        nombre: encuentro.equipoLocal.nombre,
+      } : null,
+      equipoVisitante: encuentro.equipoVisitante ? {
+        id: encuentro.equipoVisitante.id,
+        nombre: encuentro.equipoVisitante.nombre,
+      } : null,
+      jugadoresParticipantes: jugadoresParticipantesCompletos,
+      goles: golesCompletos,
+      tarjetas: tarjetasCompletas,
+      cambios: cambiosCompletos,
+      firmas: firmasData || null,
+      categoriaNombre: encuentro.torneo?.categoria?.nombre || '',
+      jornada: encuentro.jornada || 0,
+    }
+
+    // Debug: verificar que las firmas se estén pasando
+    console.log('Firmas para PDF:', firmasData)
+
+    return encuentroCompleto
+  } catch (error) {
+    console.error('Error al obtener encuentro completo para PDF:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
+    console.error('Detalles del error:', errorMessage)
+    throw new Error(`Error al obtener encuentro completo para PDF: ${errorMessage}`)
   }
 }

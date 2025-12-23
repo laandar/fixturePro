@@ -162,6 +162,10 @@ export type Signature = {
     capitanVisitanteNombre: string
     capitanVisitanteFirma: string
     fechaFirma: string
+    tribunalInforme?: string
+    tribunalPresidenteFirma?: string
+    tribunalSecretarioFirma?: string
+    tribunalVocalFirma?: string
 }
 
 // Tipos para canchas con relaciones

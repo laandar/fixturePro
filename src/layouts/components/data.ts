@@ -105,6 +105,7 @@ export const menuItems: MenuItemType[] = [
       { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores', roles: ['admin'] },
       { key: 'torneos', label: 'Torneos', url: '/torneos', roles: ['admin'] },
       { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores', roles: ['admin', 'arbitro'] },
+      { key: 'descargar-pdfs-vocalia', label: 'Descargar PDFs Vocalía', url: '/descargar-pdfs-vocalia', roles: ['admin', 'arbitro'] },
     ],
   },
   { key: 'administracion', label: 'Administración', isTitle: true, roles: ['admin'] },

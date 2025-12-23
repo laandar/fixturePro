@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
         fs: false,
         path: false,
         os: false,
+        perf_hooks: false,
       };
     }
     return config;

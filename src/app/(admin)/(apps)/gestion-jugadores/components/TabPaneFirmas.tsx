@@ -8,7 +8,7 @@ import SignaturePreview from '@/components/SignaturePreview'
 import { useState } from 'react'
 import './TabPaneFirmas.css'
 
-type SignatureField = 'vocal' | 'arbitro' | 'capitanLocal' | 'capitanVisitante'
+type SignatureField = 'vocal' | 'arbitro' | 'capitanLocal' | 'capitanVisitante' | 'tribunalPresidente' | 'tribunalSecretario' | 'tribunalVocal'
 
 const TabPaneFirmas = () => {
     const { firmas, setFirmas, nombreEquipoA, nombreEquipoB, estadoEncuentro, isAdmin, handleSaveFirmas, isSaving, jugadoresParticipantesA, jugadoresParticipantesB, jugadoresParticipantes, handleDesignarCapitan } = useGestionJugadores()
@@ -40,6 +40,15 @@ const TabPaneFirmas = () => {
             case 'capitanVisitante':
                 setFirmas({ ...firmas, capitanVisitanteFirma: signature })
                 break
+            case 'tribunalPresidente':
+                setFirmas({ ...firmas, tribunalPresidenteFirma: signature })
+                break
+            case 'tribunalSecretario':
+                setFirmas({ ...firmas, tribunalSecretarioFirma: signature })
+                break
+            case 'tribunalVocal':
+                setFirmas({ ...firmas, tribunalVocalFirma: signature })
+                break
         }
 
         setShowSignaturePad(false)
@@ -56,6 +65,12 @@ const TabPaneFirmas = () => {
                 return `Firma del Capitán ${nombreEquipoA || 'Local'}`
             case 'capitanVisitante':
                 return `Firma del Capitán ${nombreEquipoB || 'Visitante'}`
+            case 'tribunalPresidente':
+                return 'Firma del Presidente del Tribunal'
+            case 'tribunalSecretario':
+                return 'Firma del Secretario del Tribunal'
+            case 'tribunalVocal':
+                return 'Firma del Vocal del Tribunal'
         }
     }
 
@@ -69,6 +84,12 @@ const TabPaneFirmas = () => {
                 return firmas.capitanLocalFirma
             case 'capitanVisitante':
                 return firmas.capitanVisitanteFirma
+            case 'tribunalPresidente':
+                return firmas.tribunalPresidenteFirma || ''
+            case 'tribunalSecretario':
+                return firmas.tribunalSecretarioFirma || ''
+            case 'tribunalVocal':
+                return firmas.tribunalVocalFirma || ''
         }
     }
 
@@ -415,6 +436,143 @@ const TabPaneFirmas = () => {
                             </>
                         )}
 
+                </Form>
+            </Card.Body>
+        </Card>
+
+        {/* Sección: Informe del Tribunal de Penas */}
+        <Card className="mt-4">
+            <Card.Header>
+                <h5 className="mb-0 d-flex align-items-center">
+                    <TbSignature className="me-2" /> Informe del Tribunal de Penas
+                </h5>
+            </Card.Header>
+            <Card.Body>
+                <Form>
+                    {/* Informe del Tribunal */}
+                    <div className="firma-section mb-4">
+                        <div className="section-header">
+                            <h5 className="mb-0 text-primary fw-bold">📋 Informe del Tribunal de Penas</h5>
+                        </div>
+                        <Row className="mt-3">
+                            <Col md={12}>
+                                <Form.Group>
+                                    <Form.Label className="fw-semibold">Informe del Tribunal de Penas:</Form.Label>
+                                    <Form.Control 
+                                        as="textarea" 
+                                        rows={8}
+                                        value={firmas.tribunalInforme || ''} 
+                                        onChange={e => setFirmas({ ...firmas, tribunalInforme: e.target.value })} 
+                                        disabled={shouldDisableActions}
+                                        placeholder="Escriba aquí el informe del Tribunal de Penas y Sanciones..."
+                                        className="informe-textarea"
+                                    />
+                                </Form.Group>
+                            </Col>
+                        </Row>
+                    </div>
+
+                    <hr className="my-4" />
+
+                    {/* Firmas del Tribunal */}
+                    <div className="firma-section mb-4">
+                        <div className="section-header">
+                            <h5 className="mb-0 text-primary fw-bold">✍️ Firmas del Tribunal</h5>
+                        </div>
+                        <Row className="mt-3">
+                            <Col md={12}>
+                                <Form.Label className="fw-semibold mb-3">Tribunal de la Comisión de Penas y Sanciones</Form.Label>
+                            </Col>
+                        </Row>
+                        <Row className="mt-2">
+                            {/* Presidente */}
+                            <Col md={4} className="mb-3">
+                                <div className="capitan-card">
+                                    <Form.Group>
+                                        <Form.Label className="fw-semibold small">Firma Digital</Form.Label>
+                                        <div className="d-flex flex-column gap-2">
+                                            <Button 
+                                                variant={firmas.tribunalPresidenteFirma ? "success" : "outline-primary"}
+                                                size="sm"
+                                                onClick={() => openSignaturePad('tribunalPresidente')}
+                                                disabled={shouldDisableActions}
+                                                className="w-100"
+                                            >
+                                                <FaPen className="me-2" />
+                                                {firmas.tribunalPresidenteFirma ? '✓ Firmado' : 'Firmar'}
+                                            </Button>
+                                            {firmas.tribunalPresidenteFirma && (
+                                                <div className="text-center">
+                                                    <SignaturePreview signature={firmas.tribunalPresidenteFirma || null} label="Firma Presidente" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Form.Group>
+                                    <Form.Group className="mt-2">
+                                        <Form.Label className="fw-semibold small">PRESIDENTE DE LA COMISIÓN DE PENAS Y SANCIONES</Form.Label>
+                                    </Form.Group>
+                                </div>
+                            </Col>
+
+                            {/* Secretario */}
+                            <Col md={4} className="mb-3">
+                                <div className="capitan-card">
+                                    <Form.Group>
+                                        <Form.Label className="fw-semibold small">Firma Digital</Form.Label>
+                                        <div className="d-flex flex-column gap-2">
+                                            <Button 
+                                                variant={firmas.tribunalSecretarioFirma ? "success" : "outline-primary"}
+                                                size="sm"
+                                                onClick={() => openSignaturePad('tribunalSecretario')}
+                                                disabled={shouldDisableActions}
+                                                className="w-100"
+                                            >
+                                                <FaPen className="me-2" />
+                                                {firmas.tribunalSecretarioFirma ? '✓ Firmado' : 'Firmar'}
+                                            </Button>
+                                            {firmas.tribunalSecretarioFirma && (
+                                                <div className="text-center">
+                                                    <SignaturePreview signature={firmas.tribunalSecretarioFirma || null} label="Firma Secretario" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Form.Group>
+                                    <Form.Group className="mt-2">
+                                        <Form.Label className="fw-semibold small">SECRETARIO DE LA COMISIÓN DE PENAS Y SANCIONES</Form.Label>
+                                    </Form.Group>
+                                </div>
+                            </Col>
+
+                            {/* Vocal */}
+                            <Col md={4} className="mb-3">
+                                <div className="capitan-card">
+                                    <Form.Group>
+                                        <Form.Label className="fw-semibold small">Firma Digital</Form.Label>
+                                        <div className="d-flex flex-column gap-2">
+                                            <Button 
+                                                variant={firmas.tribunalVocalFirma ? "success" : "outline-primary"}
+                                                size="sm"
+                                                onClick={() => openSignaturePad('tribunalVocal')}
+                                                disabled={shouldDisableActions}
+                                                className="w-100"
+                                            >
+                                                <FaPen className="me-2" />
+                                                {firmas.tribunalVocalFirma ? '✓ Firmado' : 'Firmar'}
+                                            </Button>
+                                            {firmas.tribunalVocalFirma && (
+                                                <div className="text-center">
+                                                    <SignaturePreview signature={firmas.tribunalVocalFirma || null} label="Firma Vocal Tribunal" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Form.Group>
+                                    <Form.Group className="mt-2">
+                                        <Form.Label className="fw-semibold small">VOCAL DE LA COMISIÓN DE PENAS Y SANCIONES</Form.Label>
+                                    </Form.Group>
+                                </div>
+                            </Col>
+                        </Row>
+                    </div>
                 </Form>
             </Card.Body>
         </Card>

@@ -181,7 +181,11 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         capitanLocalFirma: '', 
         capitanVisitanteNombre: '', 
         capitanVisitanteFirma: '', 
-        fechaFirma: '' 
+        fechaFirma: '',
+        tribunalInforme: '',
+        tribunalPresidenteFirma: '',
+        tribunalSecretarioFirma: '',
+        tribunalVocalFirma: ''
     })
 
     const [jugadoresParticipantes, setJugadoresParticipantes] = useState<JugadorParticipante[]>([])
@@ -476,7 +480,11 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
                         capitanLocalFirma: firmasExistentes.capitan_local_firma || '',
                         capitanVisitanteNombre: firmasExistentes.capitan_visitante_nombre || '',
                         capitanVisitanteFirma: firmasExistentes.capitan_visitante_firma || '',
-                        fechaFirma: firmasExistentes.fecha_firma ? new Date(firmasExistentes.fecha_firma).toISOString().split('T')[0] : ''
+                        fechaFirma: firmasExistentes.fecha_firma ? new Date(firmasExistentes.fecha_firma).toISOString().split('T')[0] : '',
+                        tribunalInforme: firmasExistentes.tribunal_informe || '',
+                        tribunalPresidenteFirma: firmasExistentes.tribunal_presidente_firma || '',
+                        tribunalSecretarioFirma: firmasExistentes.tribunal_secretario_firma || '',
+                        tribunalVocalFirma: firmasExistentes.tribunal_vocal_firma || ''
                     })
                 }
             }
@@ -1199,7 +1207,11 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
                 capitan_local_firma: firmas.capitanLocalFirma,
                 capitan_visitante_nombre: firmas.capitanVisitanteNombre,
                 capitan_visitante_firma: firmas.capitanVisitanteFirma,
-                fecha_firma: new Date() // Fecha actual del sistema
+                fecha_firma: new Date(), // Fecha actual del sistema
+                tribunal_informe: firmas.tribunalInforme || null,
+                tribunal_presidente_firma: firmas.tribunalPresidenteFirma || null,
+                tribunal_secretario_firma: firmas.tribunalSecretarioFirma || null,
+                tribunal_vocal_firma: firmas.tribunalVocalFirma || null
             }
 
             const result = await saveFirmasEncuentro(firmasData)
@@ -1306,6 +1318,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         jornada: jornadaNum,
         estadoEncuentro,
         torneoCategoriaId,
+        encuentroIdNum,
         isAdmin,
         showSelectionModalA,
         setShowSelectionModalA,

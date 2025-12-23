@@ -444,6 +444,10 @@ export const firmasEncuentros = pgTable('firmas_encuentros', {
   capitan_visitante_nombre: text('capitan_visitante_nombre'),
   capitan_visitante_firma: text('capitan_visitante_firma'), // Base64 de la imagen de la firma
   fecha_firma: timestamp('fecha_firma'),
+  tribunal_informe: text('tribunal_informe'), // Informe del Tribunal de Penas
+  tribunal_presidente_firma: text('tribunal_presidente_firma'), // Base64 de la firma del Presidente
+  tribunal_secretario_firma: text('tribunal_secretario_firma'), // Base64 de la firma del Secretario
+  tribunal_vocal_firma: text('tribunal_vocal_firma'), // Base64 de la firma del Vocal del Tribunal
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
