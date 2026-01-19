@@ -24,6 +24,7 @@ import {
   TbTrophy,
   TbUserCircle,
   TbUserHexagon,
+  TbUsers,
   TbAdjustments,
 } from 'react-icons/tb'
 
@@ -102,6 +103,7 @@ export const menuItems: MenuItemType[] = [
       { key: 'equipos', label: 'Equipos', url: '/equipos', roles: ['admin'] },
       { key: 'categorias', label: 'Categorías', url: '/categorias', roles: ['admin'] },
       { key: 'jugadores', label: 'Jugadores', url: '/jugadores', roles: ['admin'] },
+      { key: 'ingreso-jugadores', label: 'Ingreso de Jugadores', url: '/ingreso-jugadores', roles: ['admin'] },
       { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores', roles: ['admin'] },
       { key: 'torneos', label: 'Torneos', url: '/torneos', roles: ['admin'] },
       { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores', roles: ['admin', 'arbitro'] },
@@ -114,6 +116,13 @@ export const menuItems: MenuItemType[] = [
     label: 'Usuarios',
     icon: TbUserCircle,
     url: '/usuarios',
+    roles: ['admin'],
+  },
+  {
+    key: 'asignar-equipos-usuarios',
+    label: 'Asignar Equipos a Usuarios',
+    icon: TbUsers,
+    url: '/asignar-equipos-usuarios',
     roles: ['admin'],
   },
   {

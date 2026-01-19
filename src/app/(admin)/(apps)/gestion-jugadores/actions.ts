@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 
 import { db } from '@/db'
-import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, configuraciones, pagosMultas, cargosManuales, jugadores } from '@/db/schema'
+import { goles, encuentros, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, configuraciones, pagosMultas, cargosManuales, jugadores, jugadorEquipoCategoria, equipoCategoria } from '@/db/schema'
 import { eq, and, inArray, lte } from 'drizzle-orm'
 import type { NewGol, Gol, NewTarjeta, Tarjeta, NewJugadorParticipante, JugadorParticipante, NewCambioJugador, CambioJugador, NewFirmaEncuentro, FirmaEncuentro } from '@/db/types'
 import { getConfiguracionPorClave } from '../configuraciones/actions'
@@ -1137,6 +1137,111 @@ export async function getEncuentroById(encuentroId: number) {
   }
 }
 
+// Enriquecer jugadores con numero_jugador desde jugador_equipo_categoria
+export async function enriquecerJugadoresConNumero(
+  jugadoresData: any[],
+  equipoLocalId: number,
+  equipoVisitanteId: number,
+  categoriaId: number
+) {
+  try {
+    if (!jugadoresData || jugadoresData.length === 0 || !categoriaId) {
+      return jugadoresData
+    }
+
+    // Obtener equipo_categoria_id para cada equipo
+    const [equipoCategoriaLocal, equipoCategoriaVisitante] = await Promise.all([
+      db.select()
+        .from(equipoCategoria)
+        .where(and(
+          eq(equipoCategoria.equipo_id, equipoLocalId),
+          eq(equipoCategoria.categoria_id, categoriaId)
+        ))
+        .limit(1)
+        .then(result => result[0] || null),
+      db.select()
+        .from(equipoCategoria)
+        .where(and(
+          eq(equipoCategoria.equipo_id, equipoVisitanteId),
+          eq(equipoCategoria.categoria_id, categoriaId)
+        ))
+        .limit(1)
+        .then(result => result[0] || null)
+    ])
+
+    const equipoCategoriaIds = [
+      equipoCategoriaLocal?.id,
+      equipoCategoriaVisitante?.id
+    ].filter((id): id is number => id !== null && id !== undefined)
+
+    if (equipoCategoriaIds.length === 0) {
+      return jugadoresData
+    }
+
+    // Obtener todas las relaciones de una vez
+    const cedulasJugadores = jugadoresData
+      .map(j => j.cedula)
+      .filter((cedula): cedula is string => cedula !== null && cedula !== undefined)
+
+    if (cedulasJugadores.length === 0) {
+      return jugadoresData
+    }
+
+    const relaciones = await db
+      .select()
+      .from(jugadorEquipoCategoria)
+      .where(and(
+        inArray(jugadorEquipoCategoria.jugador_id, cedulasJugadores),
+        inArray(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaIds)
+      ))
+
+    // Crear un mapa de (cedula, equipo_categoria_id) -> numero_jugador
+    const numeroJugadorMap = new Map<string, number>()
+    relaciones.forEach(rel => {
+      const key = `${rel.jugador_id}-${rel.equipo_categoria_id}`
+      if (rel.numero_jugador !== null && rel.numero_jugador !== undefined) {
+        numeroJugadorMap.set(key, rel.numero_jugador)
+      }
+    })
+
+    // Enriquecer cada jugador con su numero_jugador según su equipo
+    return jugadoresData.map((jugador) => {
+      if (!jugador.cedula) return jugador
+
+      // Determinar a qué equipo pertenece el jugador
+      const perteneceAEquipoLocal = jugador.jugadoresEquipoCategoria?.some(
+        (jec: { equipoCategoria?: { equipo?: { id: number } } }) => jec.equipoCategoria?.equipo?.id === equipoLocalId
+      )
+      const perteneceAEquipoVisitante = jugador.jugadoresEquipoCategoria?.some(
+        (jec: { equipoCategoria?: { equipo?: { id: number } } }) => jec.equipoCategoria?.equipo?.id === equipoVisitanteId
+      )
+
+      // Obtener el equipo_categoria_id correspondiente
+      const equipoCategoriaId = perteneceAEquipoLocal 
+        ? equipoCategoriaLocal?.id 
+        : perteneceAEquipoVisitante 
+          ? equipoCategoriaVisitante?.id 
+          : null
+
+      if (equipoCategoriaId) {
+        const key = `${jugador.cedula}-${equipoCategoriaId}`
+        const numeroJugador = numeroJugadorMap.get(key)
+
+        return {
+          ...jugador,
+          numero_jugador: numeroJugador
+        }
+      }
+
+      return jugador
+    })
+  } catch (error) {
+    console.error('Error al enriquecer jugadores con numero_jugador:', error)
+    // Si hay error, retornar jugadores sin enriquecer
+    return jugadoresData
+  }
+}
+
 // ===== FUNCIONES PARA PDF DE HOJA DE VOCALÍA =====
 
 // Obtener todos los encuentros de una categoría y jornada con todos sus datos
@@ -1388,18 +1493,48 @@ export async function getEncuentroCompletoParaPDF(encuentroId: number) {
         // Determinar equipo_tipo basado en equipo_id
         const equipoTipo = cambio.equipo_id === encuentro.equipo_local_id ? 'local' : 'visitante'
         
+        // Obtener equipo_categoria_id desde el encuentro y el equipo
+        const equipoCategoriaId = encuentro.torneo?.categoria_id && cambio.equipo_id
+          ? await db.query.equipoCategoria.findFirst({
+              where: and(
+                eq(equipoCategoria.equipo_id, cambio.equipo_id),
+                eq(equipoCategoria.categoria_id, encuentro.torneo.categoria_id)
+              )
+            })
+          : null
+        
+        // Obtener numero_jugador desde jugador_equipo_categoria
+        const [relacionSale, relacionEntra] = await Promise.all([
+          jugadorSale && equipoCategoriaId
+            ? db.query.jugadorEquipoCategoria.findFirst({
+                where: and(
+                  eq(jugadorEquipoCategoria.jugador_id, jugadorSale.cedula),
+                  eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId.id)
+                )
+              })
+            : null,
+          jugadorEntra && equipoCategoriaId
+            ? db.query.jugadorEquipoCategoria.findFirst({
+                where: and(
+                  eq(jugadorEquipoCategoria.jugador_id, jugadorEntra.cedula),
+                  eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId.id)
+                )
+              })
+            : null,
+        ])
+        
         return {
           ...cambio,
           equipo_tipo: equipoTipo,
           jugador_sale: jugadorSale ? {
             id: jugadorSale.id,
             apellido_nombre: jugadorSale.apellido_nombre,
-            numero_jugador: jugadorSale.numero_jugador,
+            numero_jugador: relacionSale?.numero_jugador ?? null,
           } : null,
           jugador_entra: jugadorEntra ? {
             id: jugadorEntra.id,
             apellido_nombre: jugadorEntra.apellido_nombre,
-            numero_jugador: jugadorEntra.numero_jugador,
+            numero_jugador: relacionEntra?.numero_jugador ?? null,
           } : null,
         }
       })

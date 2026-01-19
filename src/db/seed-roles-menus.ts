@@ -58,6 +58,7 @@ async function seedRolesYMenus() {
       { key: 'equipos', label: 'Equipos', url: '/equipos', parentId: null, orden: 12 },
       { key: 'categorias', label: 'Categorías', url: '/categorias', parentId: null, orden: 13 },
       { key: 'jugadores', label: 'Jugadores', url: '/jugadores', parentId: null, orden: 14 },
+      { key: 'ingreso-jugadores', label: 'Ingreso de Jugadores', url: '/ingreso-jugadores', parentId: null, orden: 14.5 },
       { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores', parentId: null, orden: 15 },
       { key: 'torneos', label: 'Torneos', url: '/torneos', parentId: null, orden: 16 },
       { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores', parentId: null, orden: 17 },
@@ -89,7 +90,7 @@ async function seedRolesYMenus() {
     console.log('\n📋 3. Configurando jerarquía de menús...');
     const sportsMenu = menusCreados.find(m => m.key === 'sports');
     if (sportsMenu) {
-      const hijosDeportivos = ['equipos', 'categorias', 'jugadores', 'entrenadores', 'torneos', 'gestion-jugadores', 'canchas'];
+      const hijosDeportivos = ['equipos', 'categorias', 'jugadores', 'ingreso-jugadores', 'entrenadores', 'torneos', 'gestion-jugadores', 'canchas'];
       for (const hijoKey of hijosDeportivos) {
         await db.update(menus)
           .set({ parentId: sportsMenu.id })
@@ -131,6 +132,7 @@ async function seedRolesYMenus() {
       { rolId: adminRol.id, menuKey: 'equipos', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },
       { rolId: adminRol.id, menuKey: 'categorias', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },
       { rolId: adminRol.id, menuKey: 'jugadores', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },
+      { rolId: adminRol.id, menuKey: 'ingreso-jugadores', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },
       { rolId: adminRol.id, menuKey: 'entrenadores', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },
       { rolId: adminRol.id, menuKey: 'torneos', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },
       { rolId: adminRol.id, menuKey: 'canchas', puedeVer: true, puedeCrear: true, puedeEditar: true, puedeEliminar: true },

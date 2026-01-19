@@ -27,11 +27,11 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
+import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import Select from 'react-select'
 import { LuSearch, LuTrophy, LuUsers } from 'react-icons/lu'
 import { TbEdit, TbEye, TbPlus, TbTrash } from 'react-icons/tb'
-import { getEquipos, getCategorias, getEntrenadores, createEquipo, updateEquipo, deleteEquipo, deleteMultipleEquipos, getEquipoByIdWithRelations } from './actions'
+import { getEquipos, getCategorias, getEntrenadores, createEquipo, updateEquipo, deleteEquipo, deleteMultipleEquipos, getEquipoByIdWithRelations, getJugadoresAfectadosPorCambioCategoria, migrarJugadoresACategoria } from './actions'
 import type { EquipoWithRelations, Categoria, Entrenador } from '@/db/types'
 
 const columnHelper = createColumnHelper<EquipoWithRelations>()
@@ -64,6 +64,20 @@ const Page = () => {
   const [selectedCategorias, setSelectedCategorias] = useState<{ value: number; label: string }[]>([])
   const [editSelectedCategorias, setEditSelectedCategorias] = useState<{ value: number; label: string }[]>([])
   const toast = useRef<any>(null)
+  
+  // Estados para el modal de migración de jugadores
+  const [showMigracionModal, setShowMigracionModal] = useState(false)
+  const [jugadoresAfectados, setJugadoresAfectados] = useState<Array<{
+    relacionId: number
+    jugadorId: string
+    jugadorCedula: string
+    jugadorNombre: string
+    equipoCategoriaId: number
+    categoriaId: number
+    numeroJugador: number | null
+  }>>([])
+  const [categoriaMigracionGlobal, setCategoriaMigracionGlobal] = useState<number | null>(null) // Categoría para migrar todos
+  const [formDataPendiente, setFormDataPendiente] = useState<FormData | null>(null)
   
   // Opciones para React Select
   const categoriaOptions = categorias.map(categoria => ({
@@ -285,6 +299,9 @@ const Page = () => {
     }
     
     try {
+      // Limpiar categorías existentes del FormData para evitar duplicados
+      formData.delete('categoria_ids')
+      
       // Agregar las categorías seleccionadas al FormData
       editSelectedCategorias.forEach(categoria => {
         formData.append('categoria_ids', categoria.value.toString())
@@ -321,7 +338,37 @@ const Page = () => {
       }
       
     } catch (error) {
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: error instanceof Error ? error.message : 'Error al actualizar equipo', life: 5000 })
+      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar equipo'
+      
+      // Verificar si el error contiene información de jugadores afectados
+      if (errorMessage.startsWith('JUGADORES_AFECTADOS:')) {
+        try {
+          const errorData = JSON.parse(errorMessage.replace('JUGADORES_AFECTADOS:', ''))
+          
+          // El nuevo formato incluye más información, extraer solo el array de jugadores
+          const jugadoresData = errorData.jugadoresAfectados || errorData
+          
+          // Log detallado para debugging
+          console.log('Error detallado de jugadores afectados:', {
+            equipoId: errorData.equipoId,
+            equipoNombre: errorData.equipoNombre,
+            categoriasAEliminar: errorData.categoriasAEliminar,
+            totalJugadoresAfectados: errorData.totalJugadoresAfectados,
+            timestamp: errorData.timestamp,
+            contexto: errorData.contexto
+          })
+          
+          setJugadoresAfectados(jugadoresData)
+          setCategoriaMigracionGlobal(null) // Resetear categoría global
+          setFormDataPendiente(formData)
+          setShowMigracionModal(true)
+        } catch (parseError) {
+          console.error('Error al parsear jugadores afectados:', parseError, errorMessage)
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al procesar jugadores afectados', life: 5000 })
+        }
+      } else {
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
+      }
     }
   }
 
@@ -769,6 +816,212 @@ const Page = () => {
           )}
         </OffcanvasBody>
       </Offcanvas>
+
+      {/* Modal de Migración de Jugadores */}
+      <Modal show={showMigracionModal} onHide={() => setShowMigracionModal(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>Migración de Jugadores</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          <Alert variant="warning" className="mb-3">
+            <strong>Atención:</strong> Al cambiar las categorías del equipo, {jugadoresAfectados.length} jugador(es) se verán afectados. 
+            Por favor, selecciona a qué categoría deseas migrar todos los jugadores.
+          </Alert>
+          
+          <Row className="mb-3">
+            <Col>
+              <FloatingLabel label="Migrar todos los jugadores a la categoría">
+                <FormSelect
+                  value={categoriaMigracionGlobal || ''}
+                  onChange={(e) => {
+                    const categoriaId = e.target.value ? parseInt(e.target.value) : null
+                    setCategoriaMigracionGlobal(categoriaId)
+                  }}
+                  required
+                >
+                  <option value="">Seleccionar categoría...</option>
+                  {categoriaOptions.filter(cat => {
+                    // Mostrar solo categorías activas
+                    const categoria = categorias.find(c => c.id === cat.value)
+                    return categoria && categoria.estado === true
+                  }).map(cat => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FloatingLabel>
+            </Col>
+          </Row>
+          
+          <div className="table-responsive" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <table className="table table-hover">
+              <thead className="table-light sticky-top">
+                <tr>
+                  <th>Jugador</th>
+                  <th>Cédula</th>
+                  <th>Número</th>
+                  <th>Categoría Actual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jugadoresAfectados.map((jugador) => {
+                  const categoriaActual = categorias.find(c => c.id === jugador.categoriaId)
+                  return (
+                    <tr key={jugador.relacionId}>
+                      <td>{jugador.jugadorNombre}</td>
+                      <td>{jugador.jugadorCedula}</td>
+                      <td>{jugador.numeroJugador || 'N/A'}</td>
+                      <td>{categoriaActual?.nombre || 'N/A'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => {
+            setShowMigracionModal(false)
+            setJugadoresAfectados([])
+            setCategoriaMigracionGlobal(null)
+            setFormDataPendiente(null)
+          }}>
+            Cancelar
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={async () => {
+              // Verificar que se haya seleccionado una categoría
+              if (!categoriaMigracionGlobal) {
+                toast.current?.show({ 
+                  severity: 'warn', 
+                  summary: 'Advertencia', 
+                  detail: 'Debes seleccionar una categoría para migrar los jugadores', 
+                  life: 5000 
+                })
+                return
+              }
+              
+              try {
+                setLoading(true)
+                
+                // Crear migraciones para todos los jugadores con la misma categoría
+                const migraciones = jugadoresAfectados.map(jugador => ({
+                  relacionId: jugador.relacionId,
+                  nuevaCategoriaId: categoriaMigracionGlobal
+                }))
+                
+                // Migrar jugadores
+                if (editingEquipo) {
+                  await migrarJugadoresACategoria(editingEquipo.id, migraciones)
+                  
+                  // Actualizar editSelectedCategorias para incluir la nueva categoría
+                  if (categoriaMigracionGlobal) {
+                    const nuevaCategoria = categorias.find(c => c.id === categoriaMigracionGlobal);
+                    if (nuevaCategoria) {
+                      const categoriasActualizadas = [...editSelectedCategorias];
+                      // Verificar si la categoría ya está en la lista
+                      const categoriaExiste = categoriasActualizadas.some(c => c.value === categoriaMigracionGlobal);
+                      if (!categoriaExiste) {
+                        categoriasActualizadas.push({
+                          value: nuevaCategoria.id,
+                          label: nuevaCategoria.nombre
+                        });
+                        setEditSelectedCategorias(categoriasActualizadas);
+                      }
+                    }
+                  }
+                  
+                  // Ahora actualizar el equipo
+                  if (formDataPendiente) {
+                    // Limpiar categorías duplicadas del FormData pendiente
+                    formDataPendiente.delete('categoria_ids');
+                    
+                    // Agregar la nueva categoría a la que se migraron los jugadores
+                    // y mantener las otras categorías que el usuario seleccionó
+                    const categoriasFinales = [...new Set([
+                      categoriaMigracionGlobal!,
+                      ...editSelectedCategorias.map(c => c.value)
+                    ])];
+                    
+                    categoriasFinales.forEach(catId => {
+                      formDataPendiente.append('categoria_ids', catId.toString());
+                    });
+                    
+                    await updateEquipo(editingEquipo.id, formDataPendiente)
+                  }
+                  
+                  toast.current?.show({ 
+                    severity: 'success', 
+                    summary: 'Éxito', 
+                    detail: `${jugadoresAfectados.length} jugador(es) migrado(s) y equipo actualizado exitosamente`, 
+                    life: 5000 
+                  })
+                  
+                  // Cerrar modales y limpiar estados
+                  setShowMigracionModal(false)
+                  setJugadoresAfectados([])
+                  setCategoriaMigracionGlobal(null)
+                  setFormDataPendiente(null)
+                  setEditSelectedCategorias([])
+                  toggleEditOffcanvas()
+                  setEditingEquipo(null)
+                  
+                  // Recargar datos
+                  await loadData()
+                }
+              } catch (error) {
+                console.error('Error completo al migrar jugadores:', error)
+                const errorMessage = error instanceof Error ? error.message : 'Error al migrar jugadores'
+                
+                // Si el error es de jugadores afectados, no debería ocurrir aquí
+                // pero lo manejamos por si acaso
+                if (errorMessage.startsWith('JUGADORES_AFECTADOS:')) {
+                  try {
+                    const errorData = JSON.parse(errorMessage.replace('JUGADORES_AFECTADOS:', ''))
+                    console.error('Error detallado:', {
+                      equipoId: errorData.equipoId,
+                      equipoNombre: errorData.equipoNombre,
+                      categoriasAEliminar: errorData.categoriasAEliminar,
+                      totalJugadoresAfectados: errorData.totalJugadoresAfectados,
+                      timestamp: errorData.timestamp,
+                      contexto: errorData.contexto
+                    })
+                    
+                    toast.current?.show({ 
+                      severity: 'error', 
+                      summary: 'Error', 
+                      detail: `Error inesperado: Se detectaron ${errorData.totalJugadoresAfectados} jugador(es) afectado(s) después de la migración. Por favor, intenta nuevamente.`, 
+                      life: 8000 
+                    })
+                  } catch (parseError) {
+                    console.error('Error al parsear error de jugadores afectados:', parseError)
+                    toast.current?.show({ 
+                      severity: 'error', 
+                      summary: 'Error', 
+                      detail: errorMessage.substring(0, 200) + (errorMessage.length > 200 ? '...' : ''), 
+                      life: 8000 
+                    })
+                  }
+                } else {
+                  toast.current?.show({ 
+                    severity: 'error', 
+                    summary: 'Error', 
+                    detail: errorMessage.substring(0, 200) + (errorMessage.length > 200 ? '...' : ''), 
+                    life: 8000 
+                  })
+                }
+              } finally {
+                setLoading(false)
+              }
+            }}
+            disabled={loading || !categoriaMigracionGlobal}
+          >
+            {loading ? 'Migrando...' : `Migrar ${jugadoresAfectados.length} jugador(es)`}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <Toast ref={toast} position="top-right" />
     </Container>

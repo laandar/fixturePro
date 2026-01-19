@@ -55,6 +55,7 @@ const CameraCapture = ({ show, onHide, onCapture, title = "Tomar Foto" }: Camera
     
     if (!videoRef.current || !canvasRef.current) {
       console.error('Video o canvas no están disponibles')
+      setError('Video o canvas no están disponibles')
       return
     }
 
@@ -64,6 +65,21 @@ const CameraCapture = ({ show, onHide, onCapture, title = "Tomar Foto" }: Camera
 
     if (!context) {
       console.error('No se pudo obtener el contexto del canvas')
+      setError('No se pudo obtener el contexto del canvas')
+      return
+    }
+
+    // Validar que el video tenga dimensiones válidas
+    if (!videoReady || video.videoWidth === 0 || video.videoHeight === 0) {
+      console.warn('El video no está listo para capturar. Dimensiones:', video.videoWidth, 'x', video.videoHeight)
+      setError('El video no está completamente cargado. Por favor espera un momento e intenta de nuevo.')
+      return
+    }
+
+    // Validar que el video esté reproduciéndose
+    if (video.readyState < video.HAVE_CURRENT_DATA) {
+      console.warn('El video no tiene datos suficientes. ReadyState:', video.readyState)
+      setError('El video no está listo. Por favor espera un momento e intenta de nuevo.')
       return
     }
 
@@ -74,7 +90,13 @@ const CameraCapture = ({ show, onHide, onCapture, title = "Tomar Foto" }: Camera
     canvas.height = video.videoHeight
 
     // Dibujar el frame actual del video en el canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    try {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    } catch (err) {
+      console.error('Error al dibujar imagen en canvas:', err)
+      setError('Error al procesar la imagen. Por favor intenta de nuevo.')
+      return
+    }
 
     console.log('Imagen dibujada en canvas, convirtiendo a blob...')
 
@@ -85,20 +107,40 @@ const CameraCapture = ({ show, onHide, onCapture, title = "Tomar Foto" }: Camera
         // Crear URL para previsualización
         const imageUrl = URL.createObjectURL(blob)
         setCapturedImage(imageUrl)
+        setError(null) // Limpiar errores previos
         
         // Llamar al callback con el blob
         onCapture(blob)
         console.log('Foto capturada exitosamente')
       } else {
         console.error('No se pudo crear el blob')
+        setError('No se pudo crear la imagen. Por favor intenta de nuevo.')
       }
     }, 'image/jpeg', 0.8)
   }
 
   const retakePhoto = () => {
-    setCapturedImage(null)
     if (capturedImage) {
       URL.revokeObjectURL(capturedImage)
+    }
+    setCapturedImage(null)
+    setError(null) // Limpiar errores al volver a tomar foto
+    
+    // Asegurar que el video se muestre y esté reproduciéndose
+    if (videoRef.current && stream) {
+      // Verificar que el video tenga dimensiones válidas
+      if (videoRef.current.videoWidth > 0 && videoRef.current.videoHeight > 0) {
+        setVideoReady(true)
+      }
+      // Asegurar que el video se esté reproduciendo
+      // Verificar si el video está pausado antes de intentar reproducir
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(console.error)
+      } else if (videoRef.current.ended) {
+        // Si el video terminó, reiniciar desde el principio
+        videoRef.current.currentTime = 0
+        videoRef.current.play().catch(console.error)
+      }
     }
   }
 
@@ -120,6 +162,10 @@ const CameraCapture = ({ show, onHide, onCapture, title = "Tomar Foto" }: Camera
 
   useEffect(() => {
     if (show) {
+      // Limpiar estado previo al abrir el modal
+      setCapturedImage(null)
+      setError(null)
+      setVideoReady(false)
       startCamera()
     } else {
       stopCamera()
@@ -179,14 +225,22 @@ const CameraCapture = ({ show, onHide, onCapture, title = "Tomar Foto" }: Camera
                className={`img-fluid rounded border ${!videoReady ? 'd-none' : ''}`}
                style={{ maxHeight: '400px', width: '100%' }}
                onLoadedMetadata={() => {
-                 setVideoReady(true)
                  // Asegurar que el video se reproduzca cuando esté listo
                  if (videoRef.current) {
                    videoRef.current.play().catch(console.error)
                  }
                }}
                onCanPlay={() => {
-                 setVideoReady(true)
+                 // Solo establecer videoReady cuando el video tenga dimensiones válidas
+                 if (videoRef.current && videoRef.current.videoWidth > 0 && videoRef.current.videoHeight > 0) {
+                   setVideoReady(true)
+                 }
+               }}
+               onLoadedData={() => {
+                 // Asegurar que videoReady se establezca cuando hay datos cargados
+                 if (videoRef.current && videoRef.current.videoWidth > 0 && videoRef.current.videoHeight > 0) {
+                   setVideoReady(true)
+                 }
                }}
              />
              {videoReady && (

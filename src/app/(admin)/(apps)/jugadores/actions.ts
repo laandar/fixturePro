@@ -9,8 +9,8 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { db } from '@/db'
 import { verificarRangoEdad, obtenerMensajeErrorEdad } from '@/lib/age-helpers'
-import { historialJugadores } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { historialJugadores, jugadorEquipoCategoria, jugadores, equipoCategoria, categorias, equipos } from '@/db/schema'
+import { eq, and, or, inArray } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { uploadFileToCloudinary, isCloudinaryUrl, extractPublicIdFromUrl, deleteImageFromCloudinary } from '@/lib/cloudinary'
 
@@ -200,6 +200,7 @@ export async function createJugador(formData: FormData) {
     const estado = formData.get('estado') === 'true'
     const fecha_nacimiento = formData.get('fecha_nacimiento') as string
     const foto = formData.get('foto') as File | null
+    const jugador_existente_id = formData.get('jugador_existente_id') as string | null
     
     // Nuevos campos
     const sexo = formData.get('sexo') as string
@@ -214,10 +215,84 @@ export async function createJugador(formData: FormData) {
       throw new Error('Todos los campos obligatorios deben estar completos')
     }
 
+    // Si se proporciona un ID de jugador existente, solo crear la relación
+    if (jugador_existente_id) {
+      const jugadorExistente = await jugadorQueries.getById(jugador_existente_id)
+      if (!jugadorExistente) {
+        throw new Error('El jugador existente no se encontró')
+      }
+      
+      // Verificar que la cédula coincida
+      if (jugadorExistente.cedula !== cedula) {
+        throw new Error('La cédula no coincide con el jugador existente')
+      }
+      
+      // Solo crear la nueva relación jugador-equipo-categoría
+      const cedulaJugador = jugadorExistente.cedula
+      const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : null
+      
+      // Verificar si ya existe la relación con este equipo-categoría específico
+      const relacionExistente = await db
+        .select({
+          id: jugadorEquipoCategoria.id,
+          equipo_categoria_id: jugadorEquipoCategoria.equipo_categoria_id,
+        })
+        .from(jugadorEquipoCategoria)
+        .where(
+          and(
+            or(
+              eq(jugadorEquipoCategoria.jugador_id, jugador_existente_id),
+              eq(jugadorEquipoCategoria.jugador_id, cedulaJugador)
+            ),
+            eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id)
+          )
+        )
+        .limit(1)
+      
+      if (relacionExistente.length > 0) {
+        // Obtener información del equipo-categoría para el mensaje de error
+        const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+          where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+          with: {
+            equipo: true,
+            categoria: true
+          }
+        })
+        
+        const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'equipo'
+        const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'categoría'
+        
+        throw new Error(`El jugador ya tiene una relación con ${equipoNombre} - ${categoriaNombre}. Si desea crear una relación con otra categoría, seleccione un equipo-categoría diferente.`)
+      }
+      
+      // Crear nueva relación
+      await db.insert(jugadorEquipoCategoria).values({
+        jugador_id: cedulaJugador,
+        equipo_categoria_id: equipo_categoria_id,
+        numero_jugador: numeroJugadorValue
+      })
+      
+      // Si hay una foto nueva, actualizarla
+      if (foto && foto.size > 0) {
+        try {
+          const jugadorIdNum = typeof jugador_existente_id === 'string' ? parseInt(jugador_existente_id) : jugador_existente_id
+          const fotoPath = await saveImage(foto, jugadorIdNum)
+          await jugadorQueries.update(jugadorIdNum, { foto: fotoPath })
+        } catch (error) {
+          console.error('Error al guardar la foto:', error)
+          // No lanzar error aquí para no impedir la creación de la relación
+        }
+      }
+      
+      revalidatePath('/jugadores')
+      return
+    }
+
+    // Si no hay jugador existente, crear uno nuevo (código original)
     // Verificar si la cédula ya existe
     const jugadorExistente = await jugadorQueries.getByCedula(cedula)
     if (jugadorExistente) {
-      throw new Error('Ya existe un jugador con esta cédula')
+      throw new Error('Ya existe un jugador con esta cédula. Si desea crear una nueva relación, busque el jugador por cédula primero.')
     }
 
     // Validar rango de edad si se proporciona fecha de nacimiento y la categoría tiene rango definido
@@ -283,7 +358,7 @@ export async function createJugador(formData: FormData) {
       estado,
       fecha_nacimiento: formatFechaNacimiento(fecha_nacimiento),
       sexo: cleanString(sexo) as 'masculino' | 'femenino' | 'otro' | null,
-      numero_jugador: numero_jugador ? parseInt(numero_jugador) : null,
+      // NO guardar numero_jugador en jugadores, se guardará en jugador_equipo_categoria
       telefono: cleanString(telefono),
       provincia: cleanString(provincia),
       direccion: cleanString(direccion),
@@ -291,8 +366,12 @@ export async function createJugador(formData: FormData) {
       foraneo: foraneo || false,
     }
 
-    // Crear el jugador con equipos-categorías usando la nueva función
-    const nuevoJugador = await jugadorEquipoCategoriaQueries.crearJugadorConEquiposCategorias(jugadorData as any, [equipo_categoria_id])
+    // Crear el jugador con equipos-categorías pasando el número de jugador en la relación
+    const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : undefined
+    const nuevoJugador = await jugadorEquipoCategoriaQueries.crearJugadorConEquiposCategorias(
+      jugadorData as any, 
+      [{ equipoCategoriaId: equipo_categoria_id, numeroJugador: numeroJugadorValue }]
+    )
     
     // Si hay una foto, guardarla y actualizar el jugador
     if (foto && foto.size > 0) {
@@ -312,7 +391,7 @@ export async function createJugador(formData: FormData) {
   }
 }
 
-export async function updateJugador(id: number | string, formData: FormData) {
+export async function updateJugador(id: number | string, formData: FormData, relacionId?: number) {
   await requirePermiso('jugadores', 'editar')
   try {
     const cedula = formData.get('cedula') as string
@@ -337,10 +416,28 @@ export async function updateJugador(id: number | string, formData: FormData) {
       throw new Error('Todos los campos obligatorios deben estar completos')
     }
 
-    // Verificar si la cédula ya existe en otro jugador
-    const jugadorExistente = await jugadorQueries.getByCedula(cedula)
-    if (jugadorExistente && jugadorExistente.id !== id) {
-      throw new Error('Ya existe otro jugador con esta cédula')
+    // Obtener el jugador actual por ID para obtener su cédula original
+    let jugadorActual
+    try {
+      jugadorActual = await jugadorQueries.getById(id)
+    } catch (error) {
+      console.error('Error al obtener jugador por ID:', id, error)
+      throw new Error('Error al obtener información del jugador')
+    }
+    
+    if (!jugadorActual) {
+      console.error('Jugador no encontrado con ID:', id, typeof id)
+      throw new Error(`Jugador no encontrado con ID: ${id}`)
+    }
+    
+    const cedulaOriginal = jugadorActual.cedula
+    
+    // Verificar si la cédula nueva ya existe en otro jugador (solo si cambió)
+    if (cedula !== cedulaOriginal) {
+      const jugadorExistente = await jugadorQueries.getByCedula(cedula)
+      if (jugadorExistente && jugadorExistente.id.toString() !== id.toString()) {
+        throw new Error('Ya existe otro jugador con esta cédula')
+      }
     }
 
     // Validar rango de edad si se proporciona fecha de nacimiento y la categoría tiene rango definido
@@ -390,11 +487,10 @@ export async function updateJugador(id: number | string, formData: FormData) {
       }
     };
 
-    // Obtener el jugador actual para eliminar su foto anterior si existe
-    const jugadorActual = await jugadorQueries.getById(typeof id === 'string' ? parseInt(id) : id)
-    const fotoAnterior = jugadorActual?.foto
+    // Ya tenemos jugadorActual desde arriba, solo obtener foto anterior
+    const fotoAnterior = jugadorActual.foto
 
-    const jugadorData = {
+    const jugadorData: any = {
       cedula,
       apellido_nombre,
       nacionalidad,
@@ -402,13 +498,14 @@ export async function updateJugador(id: number | string, formData: FormData) {
       estado,
       fecha_nacimiento: formatFechaNacimiento(fecha_nacimiento),
       sexo: cleanString(sexo) as 'masculino' | 'femenino' | 'otro' | null,
-      numero_jugador: numero_jugador ? parseInt(numero_jugador) : null,
+      // NO actualizar numero_jugador en jugadores, se actualizará en jugador_equipo_categoria
       telefono: cleanString(telefono),
       provincia: cleanString(provincia),
       direccion: cleanString(direccion),
       observacion: cleanString(observacion),
       foraneo: foraneo || false,
-      foto: null as any, // Se actualizará después si hay una nueva foto
+      // Preservar la foto anterior si no se sube una nueva
+      foto: fotoAnterior || null,
     }
 
     // Si hay una nueva foto, guardarla y eliminar la anterior
@@ -416,7 +513,7 @@ export async function updateJugador(id: number | string, formData: FormData) {
       try {
         const jugadorIdNum = typeof id === 'string' ? parseInt(id) : id
         const fotoPath = await saveImage(foto, jugadorIdNum)
-        jugadorData.foto = fotoPath as any
+        jugadorData.foto = fotoPath
         
         // Eliminar la foto anterior solo si es diferente
         // IMPORTANTE: Si ambas son de Cloudinary con el mismo public_id, NO eliminar
@@ -445,10 +542,112 @@ export async function updateJugador(id: number | string, formData: FormData) {
       } catch (error) {
         console.error('Error al guardar la foto:', error)
         // No lanzar error aquí para no impedir la actualización del jugador
+        // Mantener la foto anterior si falla la subida de la nueva
+        jugadorData.foto = fotoAnterior || null
       }
     }
 
-    await jugadorQueries.updateWithEquiposCategorias(typeof id === 'string' ? parseInt(id) : id, jugadorData as any, [equipo_categoria_id])
+    // Actualizar los datos del jugador por cédula original (más confiable)
+    await db
+      .update(jugadores)
+      .set({ ...jugadorData, updatedAt: new Date() })
+      .where(eq(jugadores.cedula, cedulaOriginal))
+      .returning()
+    
+    // Si se proporciona un ID de relación, solo actualizar esa relación específica
+    // NO crear nuevas relaciones al modificar
+    const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : null
+    
+    // El ID puede ser UUID o número, convertir a string para búsquedas
+    const jugadorIdStr = typeof id === 'string' ? id : id.toString()
+    
+    // Obtener la relación anterior ANTES de actualizar para comparar si cambió el equipo
+    let relacionAnterior: any = null
+    let idRelacionAActualizar: number | null = null
+    
+    if (relacionId) {
+      // Si se proporciona relacionId, obtener esa relación específica
+      const relacion = await db
+        .select()
+        .from(jugadorEquipoCategoria)
+        .where(eq(jugadorEquipoCategoria.id, relacionId))
+        .limit(1)
+      relacionAnterior = relacion[0] || null
+      idRelacionAActualizar = relacionId
+    } else {
+      // Si no se proporciona relacionId, buscar la primera relación del jugador
+      const relacion = await db
+        .select()
+        .from(jugadorEquipoCategoria)
+        .where(
+          or(
+            eq(jugadorEquipoCategoria.jugador_id, jugadorIdStr),
+            eq(jugadorEquipoCategoria.jugador_id, cedulaOriginal)
+          )
+        )
+        .limit(1)
+      
+      if (relacion.length > 0) {
+        relacionAnterior = relacion[0]
+        idRelacionAActualizar = relacion[0].id
+      }
+    }
+    
+    // Comparar si cambió el equipo_categoria_id (convertir a número para comparar correctamente)
+    const equipoCategoriaIdAnterior = relacionAnterior?.equipo_categoria_id
+    const equipoCategoriaIdAnteriorNum = typeof equipoCategoriaIdAnterior === 'number' 
+      ? equipoCategoriaIdAnterior 
+      : (equipoCategoriaIdAnterior ? parseInt(equipoCategoriaIdAnterior.toString()) : null)
+    const equipoCategoriaIdNuevoNum = equipo_categoria_id
+    
+    const equipoCambio = relacionAnterior && 
+      equipoCategoriaIdAnteriorNum !== null && 
+      equipoCategoriaIdAnteriorNum !== equipoCategoriaIdNuevoNum
+    
+    // Actualizar la relación
+    if (idRelacionAActualizar) {
+      await db
+        .update(jugadorEquipoCategoria)
+        .set({
+          equipo_categoria_id: equipo_categoria_id,
+          numero_jugador: numeroJugadorValue,
+          jugador_id: cedula // Usar la cédula actualizada
+        })
+        .where(eq(jugadorEquipoCategoria.id, idRelacionAActualizar))
+    }
+    
+    // Si cambió el equipo, registrar en historial_jugadores DESPUÉS de actualizar
+    if (equipoCambio) {
+      try {
+        // Obtener información del nuevo equipo-categoría
+        const nuevoEquipoCategoria = await db.query.equipoCategoria.findFirst({
+          where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+          with: {
+            equipo: true,
+            categoria: true
+          }
+        })
+        
+        if (nuevoEquipoCategoria && nuevoEquipoCategoria.equipo) {
+          // Registrar en historial_jugadores
+          const historialData: NewHistorialJugador = {
+            jugador_id: jugadorIdStr,
+            liga: liga,
+            equipo: nuevoEquipoCategoria.equipo.nombre,
+            numero: numeroJugadorValue || null,
+            nombre_calificacion: null,
+            disciplina: null,
+            fecha_calificacion: new Date().toISOString().split('T')[0] // Fecha actual como fecha de calificación
+          }
+          
+          await createHistorialJugador(historialData)
+        }
+      } catch (error) {
+        console.error('Error al registrar cambio de equipo en historial:', error)
+        // No lanzar error aquí para no impedir la actualización del jugador
+      }
+    }
+    
     revalidatePath('/jugadores')
   } catch (error) {
     console.error('Error al actualizar jugador:', error)
@@ -456,7 +655,8 @@ export async function updateJugador(id: number | string, formData: FormData) {
   }
 }
 
-export async function deleteJugador(id: number | string) {
+// Eliminar relación jugador-equipo-categoría (NO modifica la tabla jugadores)
+export async function deleteJugador(id: number | string, relacionId?: number) {
   await requirePermiso('jugadores', 'eliminar')
   try {
     // Convertir a string si es number para mantener consistencia
@@ -467,22 +667,40 @@ export async function deleteJugador(id: number | string) {
       throw new Error('ID de jugador inválido')
     }
     
-    // Verificar si el jugador existe antes de eliminarlo
+    // Verificar si el jugador existe
     const jugador = await jugadorQueries.getById(jugadorId)
     if (!jugador) {
       throw new Error('El jugador no existe')
     }
     
-    // Eliminar la foto del jugador si existe
-    if (jugador.foto) {
-      await deleteImage(jugador.foto)
+    // Obtener la cédula del jugador para buscar relaciones
+    const cedulaJugador = jugador.cedula
+    
+    if (relacionId) {
+      // Si se proporciona un ID de relación específico, eliminar solo esa relación
+      await db
+        .delete(jugadorEquipoCategoria)
+        .where(eq(jugadorEquipoCategoria.id, relacionId))
+    } else {
+      // Si no se proporciona ID de relación, eliminar todas las relaciones del jugador
+      // Buscar relaciones por ID del jugador o por cédula (por si están guardadas con cédula)
+      await db
+        .delete(jugadorEquipoCategoria)
+        .where(
+          or(
+            eq(jugadorEquipoCategoria.jugador_id, jugadorId),
+            eq(jugadorEquipoCategoria.jugador_id, cedulaJugador)
+          )
+        )
     }
     
-    await jugadorQueries.delete(parseInt(jugadorId))
+    // NOTA: NO se elimina el jugador de la tabla jugadores, solo se elimina la relación
+    // NOTA: NO se elimina la foto del jugador ya que el jugador sigue existiendo
+    
     revalidatePath('/jugadores')
   } catch (error) {
-    console.error('Error al eliminar jugador:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al eliminar jugador')
+    console.error('Error al eliminar relación jugador-equipo-categoría:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al eliminar relación del jugador')
   }
 }
 
@@ -574,6 +792,28 @@ export async function getCategorias() {
   }
 }
 
+// Buscar jugador por cédula
+export async function buscarJugadorPorCedula(cedula: string) {
+  await requirePermiso('jugadores', 'ver')
+  
+  try {
+    if (!cedula || cedula.trim() === '') {
+      return null
+    }
+
+    const jugador = await jugadorQueries.getByCedula(cedula.trim())
+    
+    if (!jugador) {
+      return null
+    }
+
+    return jugador
+  } catch (error) {
+    console.error('Error al buscar jugador por cédula:', error)
+    return null
+  }
+}
+
 // ===== HISTORIAL DE JUGADORES =====
 
 export async function getHistorialJugador(jugadorId: number | string) {
@@ -634,5 +874,125 @@ export async function deleteHistorialJugador(id: number) {
   } catch (error) {
     console.error('Error al eliminar historial:', error)
     throw new Error(error instanceof Error ? error.message : 'Error al eliminar historial')
+  }
+}
+
+// Detectar jugadores en múltiples categorías o equipos
+export async function detectarJugadoresMultiplesCategoriasEquipos(cedulas: string[]) {
+  await requirePermiso('jugadores', 'ver')
+  
+  try {
+    if (cedulas.length === 0) {
+      return {
+        jugadoresMultiplesCategorias: [],
+        jugadoresMultiplesEquipos: []
+      }
+    }
+
+    // Obtener todas las relaciones de los jugadores
+    const relaciones = await db
+      .select({
+        jugador_id: jugadorEquipoCategoria.jugador_id,
+        equipo_id: equipoCategoria.equipo_id,
+        categoria_id: equipoCategoria.categoria_id,
+      })
+      .from(jugadorEquipoCategoria)
+      .innerJoin(equipoCategoria, eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id))
+      .where(inArray(jugadorEquipoCategoria.jugador_id, cedulas))
+
+    // Obtener nombres de equipos y categorías
+    const equiposMap = new Map<number, string>()
+    const categoriasMap = new Map<number, string>()
+    
+    const equiposIds = [...new Set(relaciones.map(r => r.equipo_id))]
+    const categoriasIds = [...new Set(relaciones.map(r => r.categoria_id))]
+
+    if (equiposIds.length > 0) {
+      const equiposData = await db.query.equipos.findMany({
+        where: (equipos, { inArray }) => inArray(equipos.id, equiposIds)
+      })
+      equiposData.forEach(e => equiposMap.set(e.id, e.nombre))
+    }
+
+    if (categoriasIds.length > 0) {
+      const categoriasData = await db.query.categorias.findMany({
+        where: (categorias, { inArray }) => inArray(categorias.id, categoriasIds)
+      })
+      categoriasData.forEach(c => categoriasMap.set(c.id, c.nombre))
+    }
+
+    // Agrupar por jugador (cédula)
+    const jugadoresMap = new Map<string, {
+      equipos: Set<number>
+      categorias: Set<number>
+    }>()
+
+    relaciones.forEach(rel => {
+      if (!jugadoresMap.has(rel.jugador_id)) {
+        jugadoresMap.set(rel.jugador_id, {
+          equipos: new Set(),
+          categorias: new Set(),
+        })
+      }
+      const jugador = jugadoresMap.get(rel.jugador_id)!
+      jugador.equipos.add(rel.equipo_id)
+      jugador.categorias.add(rel.categoria_id)
+    })
+
+    // Obtener información completa de los jugadores
+    const jugadoresInfo = await db
+      .select({
+        cedula: jugadores.cedula,
+        apellido_nombre: jugadores.apellido_nombre,
+      })
+      .from(jugadores)
+      .where(inArray(jugadores.cedula, cedulas))
+
+    const jugadoresInfoMap = new Map(jugadoresInfo.map(j => [j.cedula, j.apellido_nombre]))
+
+    // Identificar jugadores con múltiples categorías
+    const jugadoresMultiplesCategorias: Array<{
+      cedula: string
+      nombre: string
+      categorias: string[]
+    }> = []
+
+    // Identificar jugadores con múltiples equipos
+    const jugadoresMultiplesEquipos: Array<{
+      cedula: string
+      nombre: string
+      equipos: string[]
+    }> = []
+
+    jugadoresMap.forEach((data, cedula) => {
+      const nombre = jugadoresInfoMap.get(cedula) || cedula
+      
+      const equiposNombres = Array.from(data.equipos).map(eqId => equiposMap.get(eqId) || `Equipo ${eqId}`)
+      const categoriasNombres = Array.from(data.categorias).map(catId => categoriasMap.get(catId) || `Categoría ${catId}`)
+
+      if (data.categorias.size > 1) {
+        jugadoresMultiplesCategorias.push({
+          cedula,
+          nombre,
+          categorias: categoriasNombres
+        })
+      }
+
+      if (data.equipos.size > 1) {
+        jugadoresMultiplesEquipos.push({
+          cedula,
+          nombre,
+          equipos: equiposNombres
+        })
+      }
+    })
+
+    return {
+      jugadoresMultiplesCategorias,
+      jugadoresMultiplesEquipos
+    }
+  } catch (error) {
+    console.error('Error al detectar jugadores con múltiples categorías/equipos:', error)
+    throw new Error('Error al detectar jugadores con múltiples categorías/equipos')
   }
 }

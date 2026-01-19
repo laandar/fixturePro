@@ -93,43 +93,70 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
   const handleCambiarEstado = async (nuevoEstado: string) => {
     if (!encuentro) return
 
+    // Prevenir múltiples clics mientras se procesa
+    if (updating) return
+
     try {
       setUpdating(true)
       setError(null)
       
-      // Si se está finalizando el encuentro o poniendo en pendiente, guardar los goles y tarjetas primero
-      if (nuevoEstado === 'finalizado' || nuevoEstado === 'pendiente') {
-        console.log(`${nuevoEstado === 'finalizado' ? 'Finalizando' : 'Poniendo en pendiente'} encuentro, guardando goles y tarjetas...`)
-        
-        // Guardar goles si hay alguno
-        if (goles.length > 0) {
-          console.log('Guardando goles:', goles)
+      // Timeout de seguridad: 30 segundos máximo
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('La operación está tomando demasiado tiempo. Por favor, recarga la página.')), 30000)
+      })
+
+      const operationPromise = (async () => {
+        // Si se está finalizando el encuentro o poniendo en pendiente, guardar los goles y tarjetas primero
+        if (nuevoEstado === 'finalizado' || nuevoEstado === 'pendiente') {
+          console.log(`${nuevoEstado === 'finalizado' ? 'Finalizando' : 'Poniendo en pendiente'} encuentro, guardando goles y tarjetas...`)
           
-          // Convertir goles del contexto a formato de BD
-          const golesParaGuardar: NewGol[] = goles.map(gol => ({
+          // Preparar datos de goles y tarjetas en paralelo
+          const golesParaGuardar: NewGol[] = goles.length > 0 ? goles.map(gol => ({
             encuentro_id: encuentro.id,
-            jugador_id: gol.jugador, // Ya es string
+            jugador_id: gol.jugador,
             equipo_id: gol.equipo === nombreEquipoA ? equipoLocalId : equipoVisitanteId,
             minuto: gol.minuto || 0,
             tiempo: gol.tiempo || 'primer',
             tipo: gol.tipo || 'gol'
-          }))
+          })) : []
+
+          const tarjetasParaGuardar: NewTarjeta[] = tarjetas.length > 0 ? tarjetas.map(tarjeta => ({
+            encuentro_id: encuentro.id,
+            jugador_id: tarjeta.jugador,
+            equipo_id: tarjeta.equipo === nombreEquipoA ? equipoLocalId : equipoVisitanteId,
+            minuto: tarjeta.minuto || 0,
+            tiempo: tarjeta.tiempo || 'primer',
+            tipo: tarjeta.tipo || 'amarilla',
+            motivo: tarjeta.motivo || null
+          })) : []
+
+          // Ejecutar guardado de goles y tarjetas en paralelo para optimizar
+          const savePromises: Promise<any>[] = []
           
-          // Guardar goles en la BD
-          await saveGolesEncuentro(encuentro.id, golesParaGuardar)
-          console.log('Goles guardados exitosamente')
+          if (golesParaGuardar.length > 0) {
+            savePromises.push(saveGolesEncuentro(encuentro.id, golesParaGuardar))
+          }
           
-          // Solo actualizar estadísticas del encuentro si se está finalizando
-          if (nuevoEstado === 'finalizado') {
-            // Calcular totales de goles por equipo
+          if (tarjetasParaGuardar.length > 0) {
+            savePromises.push(saveTarjetasEncuentro(encuentro.id, tarjetasParaGuardar))
+          }
+
+          // Esperar a que se guarden goles y tarjetas
+          if (savePromises.length > 0) {
+            await Promise.all(savePromises)
+            console.log('Goles y tarjetas guardados exitosamente')
+          }
+          
+          // Si se está finalizando, actualizar el encuentro con los goles y el estado en una sola operación
+          if (nuevoEstado === 'finalizado' && golesParaGuardar.length > 0) {
             const golesLocal = golesParaGuardar.filter(gol => gol.equipo_id === equipoLocalId).length
             const golesVisitante = golesParaGuardar.filter(gol => gol.equipo_id === equipoVisitanteId).length
             
-            // Actualizar goles del encuentro
             const formData = new FormData()
             formData.append('goles_local', golesLocal.toString())
             formData.append('goles_visitante', golesVisitante.toString())
             formData.append('estado', 'finalizado')
+            
             // Preservar la cancha y otros campos importantes
             if (encuentro.cancha) {
               formData.append('cancha', encuentro.cancha)
@@ -141,60 +168,38 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
               formData.append('horario_id', encuentro.horario_id.toString())
             }
             
-            // Usar la función existente para actualizar el encuentro
+            // Actualizar encuentro con goles y estado en una sola operación
             const { updateEncuentro } = await import('../../torneos/actions')
             await updateEncuentro(encuentro.id, formData)
             console.log(`Goles del encuentro actualizados: ${golesLocal} - ${golesVisitante}`)
+            
+            // No llamar updateEstadoEncuentro después, ya se actualizó el estado arriba
           } else {
-            console.log('Estado pendiente: goles guardados pero no aplicados a estadísticas')
+            // Para 'pendiente' u otros casos, solo actualizar el estado
+            await updateEstadoEncuentro(encuentro.id, nuevoEstado)
           }
         } else {
-          // Si no hay goles, solo actualizar el estado
-          const formData = new FormData()
-          formData.append('estado', nuevoEstado)
-          // Preservar la cancha y otros campos importantes
-          if (encuentro.cancha) {
-            formData.append('cancha', encuentro.cancha)
-          }
-          if (encuentro.arbitro) {
-            formData.append('arbitro', encuentro.arbitro)
-          }
-          if (encuentro.horario_id) {
-            formData.append('horario_id', encuentro.horario_id.toString())
-          }
-          
-          const { updateEncuentro } = await import('../../torneos/actions')
-          await updateEncuentro(encuentro.id, formData)
+          // Para otros estados (en_curso, cancelado, aplazado), solo actualizar el estado
+          await updateEstadoEncuentro(encuentro.id, nuevoEstado)
         }
+        
+        // Recargar el encuentro de forma optimista (solo si es necesario)
+        // Usar setTimeout para no bloquear el UI
+        setTimeout(() => {
+          loadEncuentro().catch(err => {
+            console.error('Error al recargar encuentro (no crítico):', err)
+          })
+        }, 100)
+      })()
 
-        // Guardar tarjetas si hay alguna
-        if (tarjetas.length > 0) {
-          console.log('Guardando tarjetas:', tarjetas)
-          
-          // Convertir tarjetas del contexto a formato de BD
-          const tarjetasParaGuardar: NewTarjeta[] = tarjetas.map(tarjeta => ({
-            encuentro_id: encuentro.id,
-            jugador_id: tarjeta.jugador, // Ya es string
-            equipo_id: tarjeta.equipo === nombreEquipoA ? equipoLocalId : equipoVisitanteId,
-            minuto: tarjeta.minuto || 0,
-            tiempo: tarjeta.tiempo || 'primer',
-            tipo: tarjeta.tipo || 'amarilla',
-            motivo: tarjeta.motivo || null
-          }))
-          
-          // Guardar tarjetas en la BD
-          await saveTarjetasEncuentro(encuentro.id, tarjetasParaGuardar)
-          console.log('Tarjetas guardadas exitosamente')
-        }
-      }
+      // Ejecutar con timeout
+      await Promise.race([operationPromise, timeoutPromise])
       
-      // Actualizar estado del encuentro
-      await updateEstadoEncuentro(encuentro.id, nuevoEstado)
-      
-      // Recargar el encuentro para obtener el estado actualizado
-      await loadEncuentro()
     } catch (err) {
       console.error('Error al actualizar estado:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar el estado del encuentro'
+      setError(errorMessage)
+      // No resetear el estado si hay error, para que el usuario pueda intentar nuevamente
     } finally {
       setUpdating(false)
     }

@@ -12,6 +12,9 @@ export const categorias = pgTable('categorias', {
   edad_minima_meses: integer('edad_minima_meses').default(0), // Meses adicionales para edad mínima
   edad_maxima_anos: integer('edad_maxima_anos'), // Edad máxima en años
   edad_maxima_meses: integer('edad_maxima_meses').default(0), // Meses adicionales para edad máxima
+  // Imágenes del carnet por categoría
+  imagen_carnet_frontal: text('imagen_carnet_frontal'), // Ruta de la imagen frontal del carnet
+  imagen_carnet_trasera: text('imagen_carnet_trasera'), // Ruta de la imagen trasera del carnet
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -45,7 +48,6 @@ export const jugadores = pgTable('jugadores', {
   fecha_nacimiento: date('fecha_nacimiento'), // Fecha de nacimiento del jugador
   foto: text('foto'), // Campo para almacenar la URL o ruta de la foto
   sexo: text('sexo', { enum: ['masculino', 'femenino', 'otro'] }), // Sexo del jugador
-  numero_jugador: integer('numero_jugador'), // Número de camiseta del jugador
   telefono: text('telefono'), // Teléfono de contacto
   provincia: text('provincia'), // Provincia de residencia
   direccion: text('direccion'), // Dirección de residencia
@@ -68,10 +70,12 @@ export const equipoCategoria = pgTable('equipo_categoria', {
 }));
 
 // Tabla intermedia para relación muchos a muchos entre jugadores y equipo-categoría
+// Nota: jugador_id almacena la cédula del jugador, no el ID, por lo que no tiene foreign key
 export const jugadorEquipoCategoria = pgTable('jugador_equipo_categoria', {
   id: serial('id').primaryKey(),
-  jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
+  jugador_id: varchar('jugador_id', { length: 255 }).notNull(), // Almacena la cédula del jugador
   equipo_categoria_id: integer('equipo_categoria_id').references(() => equipoCategoria.id).notNull(),
+  numero_jugador: integer('numero_jugador'), // Número de camiseta del jugador en este equipo-categoría
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({

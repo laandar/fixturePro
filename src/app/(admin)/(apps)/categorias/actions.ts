@@ -6,6 +6,9 @@ import { categoriaQueries } from '@/db/queries'
 import type { NewCategoria } from '@/db/types'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { validarRangoEdad, crearRangoCategoriaComun } from '@/lib/age-helpers'
+import { writeFile, mkdir, unlink } from 'fs/promises'
+import { join } from 'path'
+import { existsSync } from 'fs'
 
 // ===== CATEGORÍAS =====
 
@@ -194,5 +197,132 @@ export async function searchCategorias(query: string) {
   } catch (error) {
     console.error('Error al buscar categorías:', error)
     throw new Error('Error al buscar categorías')
+  }
+}
+
+/**
+ * Guarda una imagen del carnet en public/carnets
+ * @param file Archivo de imagen
+ * @param categoriaId ID de la categoría
+ * @param tipo Tipo de imagen: 'frontal' o 'trasera'
+ * @returns Ruta de la imagen guardada
+ */
+async function saveCarnetImage(file: File, categoriaId: number, tipo: 'frontal' | 'trasera'): Promise<string> {
+  try {
+    // Crear directorio si no existe
+    const uploadDir = join(process.cwd(), 'public', 'carnets')
+    if (!existsSync(uploadDir)) {
+      await mkdir(uploadDir, { recursive: true })
+    }
+
+    // Obtener extensión del archivo original
+    const originalName = file.name
+    const extension = originalName.split('.').pop()?.toLowerCase() || 'png'
+    
+    // Generar nombre único: categoria_{id}_{tipo}.{extension}
+    const fileName = `categoria_${categoriaId}_${tipo}.${extension}`
+    const filePath = join(uploadDir, fileName)
+    
+    // Convertir File a Buffer y guardar
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+    await writeFile(filePath, buffer)
+    
+    // Retornar ruta pública
+    return `/carnets/${fileName}`
+  } catch (error) {
+    console.error('Error al guardar imagen del carnet:', error)
+    throw new Error('Error al guardar la imagen del carnet')
+  }
+}
+
+/**
+ * Elimina una imagen del carnet
+ * @param imagePath Ruta de la imagen a eliminar
+ */
+async function deleteCarnetImage(imagePath: string | null): Promise<void> {
+  if (!imagePath) return
+  
+  try {
+    if (imagePath.startsWith('/carnets/')) {
+      const filePath = join(process.cwd(), 'public', imagePath)
+      if (existsSync(filePath)) {
+        await unlink(filePath)
+        console.log(`✅ Imagen del carnet eliminada: ${imagePath}`)
+      }
+    }
+  } catch (error) {
+    console.error('Error al eliminar imagen del carnet:', error)
+    // No lanzar error para no interrumpir el flujo principal
+  }
+}
+
+/**
+ * Actualiza las imágenes del carnet de una categoría
+ */
+export async function updateCarnetImages(categoriaId: number, formData: FormData) {
+  await requirePermiso('categorias', 'editar')
+  
+  try {
+    // Obtener la categoría actual para verificar si tiene imágenes previas
+    const categoriaActual = await categoriaQueries.getById(categoriaId)
+    if (!categoriaActual) {
+      throw new Error('La categoría no existe')
+    }
+
+    const imagenFrontalFile = formData.get('imagen_carnet_frontal') as File | null
+    const imagenTraseraFile = formData.get('imagen_carnet_trasera') as File | null
+
+    // Validar que al menos se haya subido una imagen
+    if (!imagenFrontalFile && !imagenTraseraFile) {
+      throw new Error('Debe subir al menos una imagen del carnet')
+    }
+
+    // Validar tipos de archivo
+    const tiposPermitidos = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    
+    if (imagenFrontalFile && imagenFrontalFile.size > 0) {
+      if (!tiposPermitidos.includes(imagenFrontalFile.type)) {
+        throw new Error('La imagen frontal debe ser PNG, JPEG o WEBP')
+      }
+    }
+    
+    if (imagenTraseraFile && imagenTraseraFile.size > 0) {
+      if (!tiposPermitidos.includes(imagenTraseraFile.type)) {
+        throw new Error('La imagen trasera debe ser PNG, JPEG o WEBP')
+      }
+    }
+
+    let imagenFrontalPath = categoriaActual.imagen_carnet_frontal
+    let imagenTraseraPath = categoriaActual.imagen_carnet_trasera
+
+    // Guardar imagen frontal si se proporcionó
+    if (imagenFrontalFile && imagenFrontalFile.size > 0) {
+      // Eliminar imagen anterior si existe
+      if (imagenFrontalPath) {
+        await deleteCarnetImage(imagenFrontalPath)
+      }
+      imagenFrontalPath = await saveCarnetImage(imagenFrontalFile, categoriaId, 'frontal')
+    }
+
+    // Guardar imagen trasera si se proporcionó
+    if (imagenTraseraFile && imagenTraseraFile.size > 0) {
+      // Eliminar imagen anterior si existe
+      if (imagenTraseraPath) {
+        await deleteCarnetImage(imagenTraseraPath)
+      }
+      imagenTraseraPath = await saveCarnetImage(imagenTraseraFile, categoriaId, 'trasera')
+    }
+
+    // Actualizar categoría con las rutas de las imágenes
+    await categoriaQueries.update(categoriaId, {
+      imagen_carnet_frontal: imagenFrontalPath,
+      imagen_carnet_trasera: imagenTraseraPath,
+    })
+
+    revalidatePath('/categorias')
+  } catch (error) {
+    console.error('Error al actualizar imágenes del carnet:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al actualizar imágenes del carnet')
   }
 }

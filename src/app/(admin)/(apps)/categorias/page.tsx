@@ -21,10 +21,10 @@ import {
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert } from 'react-bootstrap'
+import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import { LuSearch, LuTrophy } from 'react-icons/lu'
-import { TbEdit, TbPlus, TbTrash } from 'react-icons/tb'
-import { getCategorias, createCategoria, updateCategoria, deleteCategoria, deleteMultipleCategorias } from './actions'
+import { TbEdit, TbPlus, TbTrash, TbPhoto } from 'react-icons/tb'
+import { getCategorias, createCategoria, updateCategoria, deleteCategoria, deleteMultipleCategorias, updateCarnetImages } from './actions'
 import type { Categoria } from '@/db/types'
 import { formatearRangoEdad } from '@/lib/age-helpers'
 
@@ -33,6 +33,7 @@ const columnHelper = createColumnHelper<Categoria>()
 const Page = () => {
   const { isTrue: showOffcanvas, toggle: toggleOffcanvas } = useToggle()
   const { isTrue: showEditOffcanvas, toggle: toggleEditOffcanvas } = useToggle()
+  const { isTrue: showCarnetModal, toggle: toggleCarnetModal } = useToggle()
   
   const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('categorias')
   
@@ -45,6 +46,14 @@ const Page = () => {
   const [editingCategoria, setEditingCategoria] = useState<Categoria | null>(null)
   const [editFormError, setEditFormError] = useState<string | null>(null)
   const [editFormSuccess, setEditFormSuccess] = useState<string | null>(null)
+  const [carnetCategoria, setCarnetCategoria] = useState<Categoria | null>(null)
+  const [carnetFormError, setCarnetFormError] = useState<string | null>(null)
+  const [carnetFormSuccess, setCarnetFormSuccess] = useState<string | null>(null)
+  const [uploadingCarnet, setUploadingCarnet] = useState(false)
+  const [previewFrontal, setPreviewFrontal] = useState<string | null>(null)
+  const [previewTrasera, setPreviewTrasera] = useState<string | null>(null)
+  const [frontalInputKey, setFrontalInputKey] = useState(0)
+  const [traseraInputKey, setTraseraInputKey] = useState(0)
   
   const columns = [
     columnHelper.accessor('nombre', {
@@ -106,14 +115,24 @@ const Page = () => {
       cell: ({ row }: { row: TableRow<Categoria> }) => (
         <div className="d-flex gap-1">
           {puedeEditar && (
-            <Button 
-              variant="light" 
-              size="sm" 
-              className="btn-icon rounded-circle"
-              onClick={() => handleEditClick(row.original)}
-              title="Editar categoría">
-              <TbEdit className="fs-lg" />
-            </Button>
+            <>
+              <Button 
+                variant="light" 
+                size="sm" 
+                className="btn-icon rounded-circle"
+                onClick={() => handleEditClick(row.original)}
+                title="Editar categoría">
+                <TbEdit className="fs-lg" />
+              </Button>
+              <Button 
+                variant="light" 
+                size="sm" 
+                className="btn-icon rounded-circle"
+                onClick={() => handleCarnetClick(row.original)}
+                title="Configurar carnet">
+                <TbPhoto className="fs-lg" />
+              </Button>
+            </>
           )}
           {puedeEliminar && (
             <Button
@@ -246,6 +265,114 @@ const Page = () => {
       setEditFormError(error instanceof Error ? error.message : 'Error al actualizar categoría')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCarnetClick = (categoria: Categoria) => {
+    if (!puedeEditar) {
+      setError('No tienes permiso para editar categorías')
+      return
+    }
+    
+    // Limpiar todo el estado antes de abrir el modal con una nueva categoría
+    setPreviewFrontal(null)
+    setPreviewTrasera(null)
+    setCarnetFormError(null)
+    setCarnetFormSuccess(null)
+    
+    // Actualizar la categoría y resetear los inputs de archivo
+    setCarnetCategoria(categoria)
+    setFrontalInputKey(prev => prev + 1)
+    setTraseraInputKey(prev => prev + 1)
+    
+    toggleCarnetModal()
+  }
+
+  // Efecto para limpiar previews cuando cambia la categoría en el modal
+  useEffect(() => {
+    if (showCarnetModal && carnetCategoria) {
+      // Si el modal se cierra y se vuelve a abrir, los previews ya están limpios
+      // Pero asegurémonos de que cuando cambia la categoría, se limpien
+      setPreviewFrontal(null)
+      setPreviewTrasera(null)
+    }
+  }, [carnetCategoria?.id, showCarnetModal])
+
+  const handleFrontalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewFrontal(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setPreviewFrontal(null)
+    }
+  }
+
+  const handleTraseraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewTrasera(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setPreviewTrasera(null)
+    }
+  }
+
+  const handleCloseCarnetModal = () => {
+    setPreviewFrontal(null)
+    setPreviewTrasera(null)
+    setCarnetFormError(null)
+    setCarnetFormSuccess(null)
+    setCarnetCategoria(null)
+    // Resetear los inputs de archivo
+    setFrontalInputKey(prev => prev + 1)
+    setTraseraInputKey(prev => prev + 1)
+    toggleCarnetModal()
+  }
+
+  const handleUpdateCarnetImages = async (formData: FormData) => {
+    if (!carnetCategoria) return
+    
+    if (!puedeEditar) {
+      setCarnetFormError('No tienes permiso para editar categorías')
+      return
+    }
+    
+    try {
+      setUploadingCarnet(true)
+      setCarnetFormError(null)
+      setCarnetFormSuccess(null)
+      
+      await updateCarnetImages(carnetCategoria.id, formData)
+      setCarnetFormSuccess('Imágenes del carnet actualizadas exitosamente')
+      
+      // Recargar datos después de un breve delay y cerrar el modal
+      setTimeout(async () => {
+        await loadData()
+        // Actualizar la categoría en el estado del modal con los nuevos datos
+        const categoriaActualizada = await getCategorias()
+        const categoriaEncontrada = categoriaActualizada.find(c => c.id === carnetCategoria.id)
+        if (categoriaEncontrada) {
+          setCarnetCategoria(categoriaEncontrada)
+        }
+        // Limpiar previews y resetear inputs de archivo
+        setPreviewFrontal(null)
+        setPreviewTrasera(null)
+        setFrontalInputKey(prev => prev + 1)
+        setTraseraInputKey(prev => prev + 1)
+        // Cerrar el modal después de actualizar todo
+        handleCloseCarnetModal()
+      }, 1000)
+    } catch (error) {
+      setCarnetFormError(error instanceof Error ? error.message : 'Error al actualizar imágenes del carnet')
+    } finally {
+      setUploadingCarnet(false)
     }
   }
 
@@ -641,6 +768,132 @@ const Page = () => {
           )}
         </OffcanvasBody>
       </Offcanvas>
+
+      {/* Modal para configurar imágenes del carnet */}
+      <Modal show={showCarnetModal} onHide={handleCloseCarnetModal} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle as="h5" className="mt-0">
+            <TbPhoto className="me-2" />
+            Configurar Carnet - {carnetCategoria?.nombre}
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          {carnetFormError && (
+            <Alert variant="danger" dismissible onClose={() => setCarnetFormError(null)}>
+              {carnetFormError}
+            </Alert>
+          )}
+          {carnetFormSuccess && (
+            <Alert variant="success" dismissible onClose={() => setCarnetFormSuccess(null)}>
+              {carnetFormSuccess}
+            </Alert>
+          )}
+          
+          {carnetCategoria && (
+            <Form action={handleUpdateCarnetImages} id="carnet-form">
+              <Row className="g-3">
+                <Col lg={12}>
+                  <label className="form-label fw-semibold">Imagen Frontal del Carnet</label>
+                  <FormControl 
+                    type="file" 
+                    name="imagen_carnet_frontal" 
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    className="mb-2"
+                    onChange={handleFrontalChange}
+                    key={`frontal-${carnetCategoria.id}-${frontalInputKey}`}
+                  />
+                  
+                  {/* Mostrar preview de nueva imagen si existe, si no mostrar imagen actual */}
+                  {previewFrontal ? (
+                    <div className="mt-2">
+                      <p className="text-muted small mb-1">Nueva imagen (preview):</p>
+                      <Image
+                        src={previewFrontal}
+                        alt="Preview imagen frontal"
+                        width={200}
+                        height={150}
+                        className="img-thumbnail"
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  ) : carnetCategoria.imagen_carnet_frontal ? (
+                    <div className="mt-2">
+                      <p className="text-muted small mb-1">Imagen actual:</p>
+                      <Image
+                        src={carnetCategoria.imagen_carnet_frontal}
+                        alt="Carnet frontal actual"
+                        width={200}
+                        height={150}
+                        className="img-thumbnail"
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  ) : null}
+                  <small className="text-muted">Formatos permitidos: PNG, JPEG, WEBP</small>
+                </Col>
+
+                <Col lg={12}>
+                  <label className="form-label fw-semibold">Imagen Trasera del Carnet</label>
+                  <FormControl 
+                    type="file" 
+                    name="imagen_carnet_trasera" 
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    className="mb-2"
+                    onChange={handleTraseraChange}
+                    key={`trasera-${carnetCategoria.id}-${traseraInputKey}`}
+                  />
+                  
+                  {/* Mostrar preview de nueva imagen si existe, si no mostrar imagen actual */}
+                  {previewTrasera ? (
+                    <div className="mt-2">
+                      <p className="text-muted small mb-1">Nueva imagen (preview):</p>
+                      <Image
+                        src={previewTrasera}
+                        alt="Preview imagen trasera"
+                        width={200}
+                        height={150}
+                        className="img-thumbnail"
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  ) : carnetCategoria.imagen_carnet_trasera ? (
+                    <div className="mt-2">
+                      <p className="text-muted small mb-1">Imagen actual:</p>
+                      <Image
+                        src={carnetCategoria.imagen_carnet_trasera}
+                        alt="Carnet trasero actual"
+                        width={200}
+                        height={150}
+                        className="img-thumbnail"
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  ) : null}
+                  <small className="text-muted">Formatos permitidos: PNG, JPEG, WEBP</small>
+                </Col>
+
+                <Col lg={12}>
+                  <div className="d-flex gap-2 justify-content-end">
+                    <Button variant="light" onClick={handleCloseCarnetModal} disabled={uploadingCarnet}>
+                      Cancelar
+                    </Button>
+                    <Button variant="primary" type="submit" disabled={uploadingCarnet}>
+                      {uploadingCarnet ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                          Guardando...
+                        </>
+                      ) : (
+                        'Guardar Imágenes'
+                      )}
+                    </Button>
+                  </div>
+                </Col>
+              </Row>
+            </Form>
+          )}
+        </ModalBody>
+      </Modal>
     </Container>
   )
 }

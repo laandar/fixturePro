@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import AppWrapper from '@/components/AppWrapper'
 import { SessionProvider } from '@/components/SessionProvider'
+import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
 import { appDescription, appTitle } from '@/helpers'
 import { ChildrenType } from '@/types'
@@ -39,14 +40,32 @@ export const metadata: Metadata = {
     shortcut: '/uploads/campeonato-de-futbol.png',
     apple: '/uploads/campeonato-de-futbol.png',
   },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: appTitle,
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: 'cover',
+  },
+  themeColor: '#0d6efd',
 }
 
 const RootLayout = ({ children }: ChildrenType) => {
   return (
-    <html lang="en" className={`${roboto.variable} ${openSans.variable}`}>
+    <html lang="es" className={`${roboto.variable} ${openSans.variable}`}>
       <body>
         <SessionProvider>
           <AppWrapper>{children}</AppWrapper>
+          <PWAInstallPrompt />
         </SessionProvider>
       </body>
     </html>

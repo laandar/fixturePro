@@ -188,6 +188,52 @@ export async function createEquipo(formData: FormData) {
   }
 }
 
+export async function getJugadoresAfectadosPorCambioCategoria(equipoId: number, categoriaIdsNuevas: number[]) {
+  await requirePermiso('equipos', 'editar')
+  
+  try {
+    // Obtener categorías actuales del equipo
+    const categoriasActuales = await equipoCategoriaQueries.getCategoriasDeEquipo(equipoId)
+    const categoriaIdsActuales = categoriasActuales.map(c => c.categoria_id)
+    
+    // Identificar categorías que se van a eliminar
+    const categoriaIdsAEliminar = categoriaIdsActuales.filter(
+      id => !categoriaIdsNuevas.includes(id)
+    )
+    
+    if (categoriaIdsAEliminar.length === 0) {
+      return []
+    }
+    
+    // Obtener jugadores afectados
+    const jugadoresAfectados = await equipoCategoriaQueries.getJugadoresAfectadosPorEliminacionCategoria(
+      equipoId,
+      categoriaIdsAEliminar
+    )
+    
+    return jugadoresAfectados
+  } catch (error) {
+    console.error('Error al obtener jugadores afectados:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al obtener jugadores afectados')
+  }
+}
+
+export async function migrarJugadoresACategoria(
+  equipoId: number,
+  migraciones: Array<{ relacionId: number; nuevaCategoriaId: number }>
+) {
+  await requirePermiso('equipos', 'editar')
+  
+  try {
+    await equipoCategoriaQueries.migrarJugadoresACategoria(equipoId, migraciones)
+    revalidatePath('/equipos')
+    revalidatePath('/jugadores')
+  } catch (error) {
+    console.error('Error al migrar jugadores:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al migrar jugadores')
+  }
+}
+
 export async function updateEquipo(id: number, formData: FormData) {
   // 🔐 Verificar permiso de editar
   await requirePermiso('equipos', 'editar')
@@ -203,6 +249,7 @@ export async function updateEquipo(id: number, formData: FormData) {
       id,
       nombre,
       categoria_ids,
+      categoria_ids_sin_duplicados: [...new Set(categoria_ids)],
       entrenador_id,
       imagen_equipo,
       estado
@@ -228,13 +275,23 @@ export async function updateEquipo(id: number, formData: FormData) {
 
     // Convertir string IDs a números y eliminar duplicados
     const categoriaIds = [...new Set(categoria_ids.map(id => parseInt(id)))]
+    
+    console.log('Categorías procesadas (sin duplicados):', categoriaIds)
 
     // Actualizar equipo con múltiples categorías
+    // Esta función ahora lanzará un error especial si hay jugadores afectados
     await equipoQueries.updateWithCategorias(id, equipoData, categoriaIds)
     revalidatePath('/equipos')
   } catch (error) {
     console.error('Error al actualizar equipo:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al actualizar equipo')
+    const errorMessage = error instanceof Error ? error.message : 'Error al actualizar equipo'
+    
+    // Si el error contiene información de jugadores afectados, propagarlo tal cual
+    if (errorMessage.startsWith('JUGADORES_AFECTADOS:')) {
+      throw error
+    }
+    
+    throw new Error(errorMessage)
   }
 }
 

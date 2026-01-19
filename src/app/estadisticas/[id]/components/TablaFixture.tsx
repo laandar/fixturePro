@@ -242,24 +242,52 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 	return (
 		<div className="p-3">
 			<Row className="g-4">
-				{encuentrosPorJornada.map(([jornada, lista]) => (
+				{encuentrosPorJornada.map(([jornada, lista]) => {
+					const esJornadaPar = jornada % 2 === 0
+					// Estilos diferentes para jornadas pares e impares
+					const cardStyle = esJornadaPar ? {
+						background: 'rgba(30, 35, 40, 0.95)',
+						color: '#ffffff',
+						boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+						border: '1px solid rgba(100, 149, 237, 0.3)' // Azul para pares
+					} : {
+						background: 'rgba(26, 26, 26, 0.95)',
+						color: '#ffffff',
+						boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+						border: '1px solid rgba(255, 215, 0, 0.1)' // Dorado para impares
+					}
+					
+					const headerStyle = esJornadaPar ? {
+						background: 'linear-gradient(135deg, #1e2328 0%, #0f1419 100%)',
+						color: '#ffffff',
+						borderBottom: '1px solid rgba(100, 149, 237, 0.2)'
+					} : {
+						background: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)',
+						color: '#ffffff',
+						borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+					}
+					
+					const theadStyle = esJornadaPar ? {
+						background: 'linear-gradient(135deg, #1e2328 0%, #0f1419 100%)',
+						color: '#ffffff',
+						borderBottom: 'none',
+						fontWeight: 'bold'
+					} : {
+						background: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)',
+						color: '#ffffff',
+						borderBottom: 'none',
+						fontWeight: 'bold'
+					}
+					
+					return (
 					<Col key={jornada} md={12}>
 						<Card 
 							className="border-0 overflow-hidden"
-							style={{
-								background: 'rgba(26, 26, 26, 0.95)',
-								color: '#ffffff',
-								boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-								border: '1px solid rgba(255, 215, 0, 0.1)'
-							}}
+							style={cardStyle}
 						>
 							<CardHeader 
 								className="d-flex justify-content-between align-items-center border-0"
-								style={{
-									background: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)',
-									color: '#ffffff',
-									borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-								}}
+								style={headerStyle}
 							>
 								<div className="d-flex flex-column gap-1">
 									<h5 className="mb-0 fw-bold">Jornada {jornada}</h5>
@@ -269,7 +297,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 											return (
 												<div className="d-flex align-items-center gap-2" style={{ marginTop: '4px' }}>
 													<span style={{ 
-														color: '#ffc107',
+														color: esJornadaPar ? '#6495ed' : '#ffc107',
 														fontSize: '0.85rem',
 														fontWeight: '500',
 														opacity: 0.9,
@@ -286,7 +314,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 															Descansa:
 														</span>
 														<span style={{ 
-															color: '#ffc107',
+															color: esJornadaPar ? '#6495ed' : '#ffc107',
 															fontWeight: '600',
 															fontSize: '0.9rem'
 														}}>
@@ -302,13 +330,21 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 								<div className="d-flex align-items-center gap-2">
 									<Badge 
 										className="px-3 py-2 fw-semibold"
-										style={{ background: '#4a4a4a', color: '#ffffff', border: 'none' }}
+										style={{ 
+											background: esJornadaPar ? '#3d5a80' : '#4a4a4a', 
+											color: '#ffffff', 
+											border: 'none' 
+										}}
 									>
 										{lista.length} partidos
 									</Badge>
 									<Badge 
 										className="px-3 py-2 fw-semibold"
-										style={{ background: '#666666', color: '#ffffff', border: 'none' }}
+										style={{ 
+											background: esJornadaPar ? '#5a7ba8' : '#666666', 
+											color: '#ffffff', 
+											border: 'none' 
+										}}
 									>
 										{lista.filter(e => e.estado === 'finalizado').length} finalizados
 									</Badge>
@@ -319,12 +355,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 								<div className="table-responsive d-none d-md-block">
 									<Table className="table-fifa mb-0">
 										<thead>
-											<tr style={{
-												background: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)',
-												color: '#ffffff',
-												borderBottom: 'none',
-												fontWeight: 'bold'
-											}}>
+											<tr style={theadStyle}>
 												<th className="fw-bold py-2" style={{ width: '220px', fontSize: '1rem', color: '#ffffff' }}>Fecha</th>
 												<th className="fw-bold py-2 text-end" style={{ width: '280px', fontSize: '1rem', color: '#ffffff' }}>Local</th>
 												<th className="text-center fw-bold py-2" style={{ width: '80px', fontSize: '1rem', color: '#ffffff' }}>vs</th>
@@ -541,7 +572,8 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 							</CardBody>
 						</Card>
 					</Col>
-				))}
+					)
+				})}
 			</Row>
 		</div>
 	)

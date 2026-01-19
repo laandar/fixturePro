@@ -119,6 +119,8 @@ const Page = () => {
     {
       id: 'estado',
       header: 'Estado',
+      accessorFn: (row: TorneoWithRelations) => row.estado,
+      enableColumnFilter: true,
       cell: ({ row }: { row: TableRow<TorneoWithRelations> }) => {
         const estado = row.original.estado
         const estadoConfig: Record<string, { bg: string; text: string; label: string; icon: string }> = {
@@ -607,7 +609,7 @@ const Page = () => {
                 <FloatingLabel controlId="categoria_id" label="Categoría" className="mb-3">
                   <FormSelect name="categoria_id" required>
                     <option value="">Seleccionar categoría</option>
-                    {categorias.map((categoria) => (
+                    {categorias.filter(categoria => categoria.estado === true).map((categoria) => (
                       <option key={categoria.id} value={categoria.id}>
                         {categoria.nombre}
                       </option>
@@ -739,7 +741,7 @@ const Page = () => {
                   <FloatingLabel controlId="edit_categoria_id" label="Categoría" className="mb-3">
                     <FormSelect name="categoria_id" defaultValue={editingTorneo.categoria_id?.toString() || ''} required>
                       <option value="">Seleccionar categoría</option>
-                      {categorias.map((categoria) => (
+                      {categorias.filter(categoria => categoria.estado === true).map((categoria) => (
                         <option 
                           key={categoria.id} 
                           value={categoria.id}

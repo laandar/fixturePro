@@ -118,6 +118,38 @@ export async function generarPDFHojaVocalia(
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 10
   
+  // Cargar imagen de marca de agua
+  let watermarkImg: HTMLImageElement | null = null
+  try {
+    const watermarkUrl = '/uploads/campeonato-de-futbol.png'
+    watermarkImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = watermarkUrl
+    })
+  } catch (error) {
+    console.warn('No se pudo cargar la imagen de marca de agua:', error)
+  }
+  
+  // Función para dibujar marca de agua
+  const dibujarMarcaDeAgua = () => {
+    if (watermarkImg) {
+      // Calcular tamaño de la marca de agua (aproximadamente 50% del ancho de la página)
+      const watermarkWidth = pageWidth * 0.5
+      const watermarkHeight = (watermarkImg.height / watermarkImg.width) * watermarkWidth
+      
+      // Centrar la marca de agua en la página
+      const watermarkX = (pageWidth - watermarkWidth) / 2
+      const watermarkY = (pageHeight - watermarkHeight) / 2
+      
+      // Agregar la imagen de marca de agua
+      // Nota: jsPDF no soporta opacidad directamente, pero la imagen se verá sutilmente detrás del contenido
+      doc.addImage(watermarkImg, 'PNG', watermarkX, watermarkY, watermarkWidth, watermarkHeight, undefined, 'FAST')
+    }
+  }
+  
   // Configurar bordes redondeados para las tablas (más pronunciado)
   doc.setLineJoin('round')
   doc.setLineCap('round')
@@ -128,6 +160,9 @@ export async function generarPDFHojaVocalia(
   const escuelaDireccion = configuracion?.direccion || 'VALLE DE LOS CHILLOS - CHAUPITENA'
   const escuelaTelefono = configuracion?.telefono || 'TELF. 000000'
   const escuelaEmail = configuracion?.email || 'darwin.sinche@gmail.com'
+
+  // Dibujar marca de agua en la primera página (antes del contenido)
+  dibujarMarcaDeAgua()
 
   let yPos = margin
 
@@ -1057,6 +1092,7 @@ export async function generarPDFHojaVocalia(
   const espacioNecesario = 8 + 5 + 3.5 // Alto del título + espacio + una línea
   if (yPosArbitro + espacioNecesario > pageHeight - 40) {
     doc.addPage()
+    dibujarMarcaDeAgua()
     yPosArbitro = margin + 10
   }
   
@@ -1094,6 +1130,7 @@ export async function generarPDFHojaVocalia(
       // Si nos acercamos al final de la página, agregar nueva página
       if (yPosicion > pageHeight - 40) {
         doc.addPage()
+        dibujarMarcaDeAgua()
         yPosArbitro = margin + 10
         yPosicion = yPosArbitro + 5
         // Re-imprimir el título en la nueva página
@@ -1222,6 +1259,7 @@ export async function generarPDFHojaVocalia(
       // Si nos acercamos al final de la página, agregar nueva página
       if (yPosicion > pageHeight - 40) {
         doc.addPage()
+        dibujarMarcaDeAgua()
         yPosVocal = margin + 10
         yPosicion = yPosVocal + 5
           // Re-imprimir el título en la nueva página
@@ -1319,6 +1357,7 @@ export async function generarPDFHojaVocalia(
   let yPosTribunal = firmaVocalY + 25
   if (yPosTribunal + 60 > pageHeight - 40) {
     doc.addPage()
+    dibujarMarcaDeAgua()
     yPosTribunal = margin + 10
   }
 
@@ -1356,6 +1395,7 @@ export async function generarPDFHojaVocalia(
     informeLineas.forEach((linea: string) => {
       if (yPosInforme > pageHeight - 80) {
         doc.addPage()
+        dibujarMarcaDeAgua()
         yPosInforme = margin + 10
       }
       doc.text(linea, margin, yPosInforme)
@@ -1370,6 +1410,7 @@ export async function generarPDFHojaVocalia(
       const yLinea = inicioLineas + (i * 3.5)
       if (yLinea > pageHeight - 80) {
         doc.addPage()
+        dibujarMarcaDeAgua()
         yPosTribunal = margin + 10
         break
       }
@@ -1384,6 +1425,7 @@ export async function generarPDFHojaVocalia(
   let yPosFirmasTribunal = yPosTribunal + 10 // Aumentar espacio adicional
   if (yPosFirmasTribunal + 20 > pageHeight - 40) {
     doc.addPage()
+    dibujarMarcaDeAgua()
     yPosFirmasTribunal = margin + 10
   }
   

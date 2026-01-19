@@ -19,14 +19,15 @@ import {
   Row as TableRow,
   Table as TableType,
   useReactTable,
+  RowSelectionState,
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
-import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock, LuDownload } from 'react-icons/lu'
-import { TbEdit, TbPlus, TbTrash, TbCamera } from 'react-icons/tb'
+import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle, Spinner } from 'react-bootstrap'
+import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock, LuDownload, LuRefreshCw } from 'react-icons/lu'
+import { TbEdit, TbPlus, TbTrash, TbCamera, TbPrinter, TbX, TbHelp } from 'react-icons/tb'
 import ExcelJS from 'exceljs'
-import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias } from './actions'
+import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, buscarJugadorPorCedula, detectarJugadoresMultiplesCategoriasEquipos } from './actions'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
@@ -34,6 +35,7 @@ import { getTempPlayerImage } from '@/components/TempPlayerImages'
 import HistorialJugadorModal from '@/components/HistorialJugadorModal'
 import { Swiper, SwiperSlide } from 'swiper/react'
 import { Navigation, Pagination as SwiperPagination, Autoplay } from 'swiper/modules'
+import { generarCarnetJugador, generarCarnetsMultiples } from '@/lib/carnet-generator'
 import 'swiper/css'
 import 'swiper/css/navigation'
 import 'swiper/css/pagination'
@@ -101,6 +103,7 @@ const Page = () => {
   const [allData, setAllData] = useState<JugadorWithEquipo[]>([]) // Almacena todos los jugadores
   const [equiposCategorias, setEquiposCategorias] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
@@ -112,6 +115,15 @@ const Page = () => {
   // Estados para el modal de historial
   const [showHistorialModal, setShowHistorialModal] = useState(false)
   const [selectedJugadorForHistorial, setSelectedJugadorForHistorial] = useState<JugadorWithEquipo | null>(null)
+  
+  // Estados para el modal de confirmación de impresión
+  const [showConfirmacionImprimir, setShowConfirmacionImprimir] = useState(false)
+  const [jugadoresMultiplesCategorias, setJugadoresMultiplesCategorias] = useState<Array<{cedula: string, nombre: string, categorias: string[]}>>([])
+  const [jugadoresMultiplesEquipos, setJugadoresMultiplesEquipos] = useState<Array<{cedula: string, nombre: string, equipos: string[]}>>([])
+  const [jugadoresParaImprimir, setJugadoresParaImprimir] = useState<JugadorWithEquipo[]>([])
+  
+  // Estado para el modal del manual de usuario
+  const [showManualUsuario, setShowManualUsuario] = useState(false)
   
   // Estados para la vista (cards o tabla)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -154,10 +166,47 @@ const Page = () => {
   const [editCapturedPhoto, setEditCapturedPhoto] = useState<Blob | null>(null)
   const [editCapturedPhotoUrl, setEditCapturedPhotoUrl] = useState<string | null>(null)
   
+  // Estados para el formulario de crear jugador
+  const [createFormData, setCreateFormData] = useState({
+    cedula: '',
+    apellido_nombre: '',
+    nacionalidad: '',
+    liga: '',
+    fecha_nacimiento: '',
+    sexo: '',
+    telefono: '',
+    provincia: '',
+    direccion: '',
+    observacion: '',
+    estado: 'true',
+    foraneo: false,
+  })
+  const [buscandoCedula, setBuscandoCedula] = useState(false)
+  const [jugadorExistente, setJugadorExistente] = useState<any>(null)
+  
   // Referencia para el canvas oculto
   const canvasRef = useRef<HTMLCanvasElement>(null)
   
   const columns = [
+    {
+      id: 'select',
+      header: ({ table }: { table: TableType<JugadorWithEquipo> }) => (
+        <FormCheck
+          checked={table.getIsAllPageRowsSelected()}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+          title="Seleccionar todos"
+        />
+      ),
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
+        <FormCheck
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          title="Seleccionar jugador"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     columnHelper.accessor('apellido_nombre', {
       header: 'Jugador',
       cell: ({ row }) => (
@@ -210,14 +259,20 @@ const Page = () => {
         </span>
       ),
     }),
-    columnHelper.accessor('numero_jugador', {
+    {
+      id: 'numero_jugador',
       header: 'Número',
-      cell: ({ row }) => (
-        <span className="badge bg-primary-subtle text-primary badge-label">
-          {row.original.numero_jugador || 'Sin número'}
-        </span>
-      ),
-    }),
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        // Obtener el número de jugador de la relación jugador_equipo_categoria
+        const relacionJugador = row.original.jugadoresEquipoCategoria?.[0] as any
+        const numeroJugador = relacionJugador?.numero_jugador
+        return (
+          <span className="badge bg-primary-subtle text-primary badge-label">
+            {numeroJugador || 'Sin número'}
+          </span>
+        )
+      },
+    },
     columnHelper.accessor('telefono', {
       header: 'Teléfono',
       cell: ({ row }) => row.original.telefono || 'Sin teléfono',
@@ -279,33 +334,48 @@ const Page = () => {
     }),
     {
       header: 'Acciones',
-      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
-        <div className="d-flex gap-1">
-          {puedeEditar && (
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        const jugador = row.original
+        const tieneRelacion = jugador.jugadoresEquipoCategoria && jugador.jugadoresEquipoCategoria.length > 0
+        
+        return (
+          <div className="d-flex gap-1">
             <Button 
               variant="light" 
               size="sm" 
               className="btn-icon rounded-circle"
-              onClick={() => handleEditClick(row.original)}
-              title="Editar jugador">
-              <TbEdit className="fs-lg" />
+              onClick={() => generarCarnetJugador(row.original)}
+              title="Imprimir carnet de juego">
+              <TbPrinter className="fs-lg" />
             </Button>
-          )}
-          {puedeEliminar && (
-            <Button
-              variant="light"
-              size="sm"
-              className="btn-icon rounded-circle"
-              onClick={() => handleDeleteSingle(row.original)}
-              title="Eliminar jugador">
-              <TbTrash className="fs-lg" />
-            </Button>
-          )}
-          {!puedeEditar && !puedeEliminar && (
-            <small className="text-muted">Sin acciones</small>
-          )}
-        </div>
-      ),
+            {puedeEditar && (
+              <Button 
+                variant="light" 
+                size="sm" 
+                className="btn-icon rounded-circle"
+                onClick={() => handleEditClick(row.original)}
+                disabled={!tieneRelacion}
+                title={tieneRelacion ? "Editar jugador" : "El jugador no tiene categoría ni equipo asignado"}>
+                <TbEdit className="fs-lg" />
+              </Button>
+            )}
+            {puedeEliminar && (
+              <Button
+                variant="light"
+                size="sm"
+                className="btn-icon rounded-circle"
+                onClick={() => handleDeleteSingle(row.original)}
+                disabled={!tieneRelacion}
+                title={tieneRelacion ? "Eliminar jugador" : "El jugador no tiene categoría ni equipo asignado"}>
+                <TbTrash className="fs-lg" />
+              </Button>
+            )}
+            {!puedeEditar && !puedeEliminar && (
+              <small className="text-muted">Sin acciones</small>
+            )}
+          </div>
+        )
+      },
     },
   ]
 
@@ -323,24 +393,33 @@ const Page = () => {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [jugadorToDelete, setJugadorToDelete] = useState<JugadorWithEquipo | null>(null)
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter, columnFilters, pagination },
+    state: { sorting, globalFilter, columnFilters, pagination, rowSelection },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     globalFilterFn: globalFilterFn,
     enableColumnFilters: true,
-    enableRowSelection: false,
+    enableRowSelection: true,
+    // Generar una clave única combinando el ID del jugador y el ID de la relación
+    getRowId: (row) => {
+      const jugador = row as JugadorWithEquipo
+      const relacionJugador = jugador.jugadoresEquipoCategoria?.[0] as any
+      const relacionId = relacionJugador?.id
+      return relacionId ? `${jugador.id}-${relacionId}` : jugador.id
+    },
   })
 
   const pageIndex = table.getState().pagination.pageIndex
@@ -380,14 +459,17 @@ const Page = () => {
       
       if (jugadorToDelete) {
         const jugadorNombre = jugadorToDelete.apellido_nombre
-        await deleteJugador(jugadorToDelete.id)
+        // Obtener el ID de la relación jugador_equipo_categoria
+        const relacionJugador = jugadorToDelete.jugadoresEquipoCategoria?.[0] as any
+        const relacionId = relacionJugador?.id
+        await deleteJugador(jugadorToDelete.id, relacionId)
         setJugadorToDelete(null)
-        setDeleteSuccess(`El jugador "${jugadorNombre}" ha sido eliminado exitosamente`)
+        setDeleteSuccess(`La relación del jugador "${jugadorNombre}" ha sido eliminada exitosamente`)
       }
       
       await loadData()
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al eliminar jugador')
+      setError(error instanceof Error ? error.message : 'Error al eliminar relación del jugador')
     } finally {
       setLoading(false)
       setShowDeleteModal(false)
@@ -476,7 +558,11 @@ const Page = () => {
         formData.append('foto', editCapturedPhoto, 'jugador-foto.jpg')
       }
       
-      await updateJugador(editingJugador.id, formData)
+      // Obtener el ID de la relación que se está editando
+      const relacionJugador = editingJugador.jugadoresEquipoCategoria?.[0] as any
+      const relacionId = relacionJugador?.id
+      
+      await updateJugador(editingJugador.id, formData, relacionId)
       setEditFormSuccess('Jugador actualizado exitosamente')
       
       // Limpiar foto capturada
@@ -514,6 +600,32 @@ const Page = () => {
       setError(error instanceof Error ? error.message : 'Error al cargar jugadores')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true)
+      setError(null)
+      const [jugadoresData, equiposCategoriasData] = await Promise.all([
+        getJugadores(),
+        getEquiposCategorias()
+      ])
+      // Guardar todos los jugadores
+      setAllData(jugadoresData)
+      // Actualizar datos mostrados según filtros activos
+      if (hasActiveFilters) {
+        setData(jugadoresData)
+      } else {
+        setData(jugadoresData.slice(0, 5))
+      }
+      setEquiposCategorias(equiposCategoriasData)
+      setFormSuccess('Tabla actualizada exitosamente')
+      setTimeout(() => setFormSuccess(null), 3000)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al actualizar jugadores')
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -601,7 +713,7 @@ const Page = () => {
           jugador.nacionalidad || '',
           jugador.liga || '',
           jugador.sexo || 'No especificado',
-          jugador.numero_jugador || 'Sin número',
+          ((jugador.jugadoresEquipoCategoria?.[0] as any)?.numero_jugador) || 'Sin número',
           jugador.telefono || 'Sin teléfono',
           jugador.provincia || 'Sin provincia',
           jugador.direccion || '',
@@ -704,6 +816,138 @@ const Page = () => {
     }
   }
 
+  // Función para verificar jugadores antes de imprimir
+  const handleVerificarYImprimir = async (jugadoresSeleccionados: JugadorWithEquipo[]) => {
+    try {
+      if (jugadoresSeleccionados.length === 0) {
+        setError('No hay jugadores seleccionados para imprimir')
+        setTimeout(() => setError(null), 5000)
+        return
+      }
+
+      // Obtener las cédulas de los jugadores
+      const cedulas = jugadoresSeleccionados.map(j => j.cedula).filter(Boolean) as string[]
+      
+      // Detectar jugadores con múltiples categorías o equipos
+      const { jugadoresMultiplesCategorias: multiCategorias, jugadoresMultiplesEquipos: multiEquipos } = 
+        await detectarJugadoresMultiplesCategoriasEquipos(cedulas)
+
+      // Si hay jugadores con múltiples categorías o equipos, mostrar alerta
+      if (multiCategorias.length > 0 || multiEquipos.length > 0) {
+        setJugadoresMultiplesCategorias(multiCategorias)
+        setJugadoresMultiplesEquipos(multiEquipos)
+        setJugadoresParaImprimir(jugadoresSeleccionados)
+        setShowConfirmacionImprimir(true)
+        return
+      }
+
+      // Si no hay problemas, imprimir directamente
+      await handleImprimir(jugadoresSeleccionados)
+    } catch (error) {
+      console.error('Error al verificar jugadores:', error)
+      setError('Error al verificar jugadores: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+      setTimeout(() => setError(null), 5000)
+    }
+  }
+
+  // Función para imprimir carnets (ahora recibe los jugadores como parámetro)
+  const handleImprimir = async (jugadoresParaImprimir?: JugadorWithEquipo[]) => {
+    try {
+      const jugadores = jugadoresParaImprimir || []
+      
+      if (jugadores.length === 0) {
+        setError('No hay jugadores para imprimir')
+        setTimeout(() => setError(null), 5000)
+        return
+      }
+
+      // Generar carnets múltiples
+      await generarCarnetsMultiples(jugadores)
+      
+      // Cerrar modal de confirmación si estaba abierto
+      setShowConfirmacionImprimir(false)
+      setJugadoresMultiplesCategorias([])
+      setJugadoresMultiplesEquipos([])
+      setJugadoresParaImprimir([])
+      
+      setFormSuccess(`Carnets generados exitosamente. Total: ${jugadores.length} jugadores`)
+      setTimeout(() => setFormSuccess(null), 3000)
+    } catch (error) {
+      console.error('Error al imprimir carnets:', error)
+      setError('Error al imprimir carnets: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+      setTimeout(() => setError(null), 5000)
+    }
+  }
+
+  // Buscar jugador por cédula al escribir
+  const handleCedulaChange = (cedula: string) => {
+    setCreateFormData({ ...createFormData, cedula })
+  }
+
+  // Buscar jugador por cédula (se ejecuta al salir del campo o presionar Enter)
+  const handleCedulaBlur = async () => {
+    const cedula = createFormData.cedula.trim()
+    
+    // Solo buscar si la cédula tiene al menos 3 caracteres
+    if (cedula.length >= 3) {
+      setBuscandoCedula(true)
+      try {
+        const jugador = await buscarJugadorPorCedula(cedula)
+        if (jugador) {
+          // Jugador existe - cargar datos
+          setJugadorExistente(jugador)
+          setCreateFormData({
+            cedula: jugador.cedula,
+            apellido_nombre: jugador.apellido_nombre || '',
+            nacionalidad: jugador.nacionalidad || '',
+            liga: jugador.liga || '',
+            fecha_nacimiento: jugador.fecha_nacimiento ? new Date(jugador.fecha_nacimiento).toISOString().split('T')[0] : '',
+            sexo: jugador.sexo || '',
+            telefono: jugador.telefono || '',
+            provincia: jugador.provincia || '',
+            direccion: jugador.direccion || '',
+            observacion: jugador.observacion || '',
+            estado: jugador.estado ? 'true' : 'false',
+            foraneo: jugador.foraneo || false,
+          })
+          // Cargar la foto del jugador si existe
+          if (jugador.foto) {
+            setCapturedPhotoUrl(jugador.foto)
+            setCapturedPhoto(null) // No hay una foto nueva capturada, solo la existente
+          } else {
+            // Si no tiene foto, usar la imagen temporal
+            const tempImage = getTempPlayerImage(jugador.id)
+            setCapturedPhotoUrl(tempImage)
+            setCapturedPhoto(null)
+          }
+          setFormSuccess('Jugador encontrado. Puede crear una nueva relación con diferente categoría.')
+          setTimeout(() => setFormSuccess(null), 3000)
+        } else {
+          // Jugador no existe - limpiar datos
+          setJugadorExistente(null)
+          setCapturedPhotoUrl(null)
+          setCapturedPhoto(null)
+          setFormSuccess(null)
+        }
+      } catch (err) {
+        console.error('Error al buscar jugador:', err)
+        setJugadorExistente(null)
+        setCapturedPhotoUrl(null)
+        setCapturedPhoto(null)
+      } finally {
+        setBuscandoCedula(false)
+      }
+    }
+  }
+
+  // Buscar al presionar Enter en el campo de cédula
+  const handleCedulaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleCedulaBlur()
+    }
+  }
+
   const handleCreateJugador = async (formData: FormData) => {
     if (!puedeCrear) {
       setFormError('No tienes permiso para crear jugadores')
@@ -720,12 +964,32 @@ const Page = () => {
         formData.append('foto', capturedPhoto, 'jugador-foto.jpg')
       }
       
+      // Si el jugador existe, pasar su ID para que solo cree la relación
+      if (jugadorExistente) {
+        formData.append('jugador_existente_id', jugadorExistente.id)
+      }
+      
       await createJugador(formData)
       setFormSuccess('Jugador creado exitosamente')
       
-      // Limpiar foto capturada
+      // Limpiar foto capturada y datos del formulario
       setCapturedPhoto(null)
       setCapturedPhotoUrl(null)
+      setJugadorExistente(null)
+      setCreateFormData({
+        cedula: '',
+        apellido_nombre: '',
+        nacionalidad: '',
+        liga: '',
+        fecha_nacimiento: '',
+        sexo: '',
+        telefono: '',
+        provincia: '',
+        direccion: '',
+        observacion: '',
+        estado: 'true',
+        foraneo: false,
+      })
       
       // Recargar datos después de un breve delay
       setTimeout(async () => {
@@ -850,6 +1114,21 @@ const Page = () => {
                 >
                   <LuList className="fs-lg" />
                 </Button>
+                {Object.keys(rowSelection).length > 0 && (
+                  <Button 
+                    variant="warning" 
+                    className="ms-1" 
+                    onClick={async () => {
+                      const selectedJugadores = table.getSelectedRowModel().rows.map(row => row.original)
+                      await handleVerificarYImprimir(selectedJugadores)
+                    }}
+                    title="Imprimir carnets de jugadores seleccionados"
+                  >
+                    <TbPrinter className="fs-sm me-2" /> 
+                    <span className="d-none d-sm-inline">Imprimir ({Object.keys(rowSelection).length})</span>
+                    <span className="d-sm-none">Imprimir</span>
+                  </Button>
+                )}
                 <Button 
                   variant="success" 
                   className="ms-1" 
@@ -861,6 +1140,20 @@ const Page = () => {
                   <span className="d-none d-sm-inline">Descargar Excel</span>
                   <span className="d-sm-none">Excel</span>
                 </Button>
+                <Button 
+                  variant="info" 
+                  className="ms-1" 
+                  onClick={handleRefresh}
+                  disabled={refreshing || loading}
+                  title="Actualizar tabla de jugadores"
+                >
+                  <LuRefreshCw 
+                    className="fs-sm me-2" 
+                    style={refreshing ? { animation: 'spin 1s linear infinite' } : {}} 
+                  /> 
+                  <span className="d-none d-sm-inline">Actualizar</span>
+                  <span className="d-sm-none">Refrescar</span>
+                </Button>
                 {puedeCrear ? (
                   <Button variant="danger" className="ms-1" onClick={toggleCreateModal}>
                     <TbPlus className="fs-sm me-2" /> Agregar Jugador
@@ -870,6 +1163,15 @@ const Page = () => {
                     <TbPlus className="fs-sm me-2" /> Agregar Jugador
                   </Button>
                 )}
+                <Button 
+                  variant="outline-info" 
+                  className="ms-1" 
+                  onClick={() => setShowManualUsuario(true)}
+                  title="Manual de Usuario"
+                >
+                  <TbHelp className="fs-sm me-2" />
+                  <span className="d-none d-sm-inline">Ayuda</span>
+                </Button>
               </div>
             </div>
 
@@ -1080,8 +1382,14 @@ const Page = () => {
                   )}
                   {table.getRowModel().rows.map((row) => {
                     const jugador = row.original
+                        // Usar una clave única combinando el ID del jugador y el ID de la relación
+                        const relacionJugador = jugador.jugadoresEquipoCategoria?.[0] as any
+                        const uniqueKey = relacionJugador?.id 
+                          ? `${jugador.id}-${relacionJugador.id}` 
+                          : jugador.id
+                        const tieneRelacion = jugador.jugadoresEquipoCategoria && jugador.jugadoresEquipoCategoria.length > 0
                     return (
-                      <Col className="col mb-4" key={jugador.id} style={{ padding: '0 15px' }}>
+                      <Col className="col mb-4" key={uniqueKey} style={{ padding: '0 15px' }}>
                         <div className="profile-card-container" style={{ height: '400px', width: '100%' }}>
                           <div className="position-relative">
                             <ProfileCard
@@ -1095,8 +1403,8 @@ const Page = () => {
                               enableMobileTilt={false}
                               onContactClick={() => handleVerPerfilClick(jugador)}
                               contactText="Ver Perfil"
-                              onEditClick={() => handleEditClick(jugador)}
-                              onDeleteClick={() => handleDeleteSingle(jugador)}
+                              onEditClick={tieneRelacion ? () => handleEditClick(jugador) : undefined}
+                              onDeleteClick={tieneRelacion ? () => handleDeleteSingle(jugador) : undefined}
                               showActionButtons={true}
                               className="h-100"
                             />
@@ -1137,8 +1445,14 @@ const Page = () => {
                     >
                       {table.getRowModel().rows.map((row) => {
                         const jugador = row.original
+                        // Usar una clave única combinando el ID del jugador y el ID de la relación
+                        const relacionJugador = jugador.jugadoresEquipoCategoria?.[0] as any
+                        const uniqueKey = relacionJugador?.id 
+                          ? `${jugador.id}-${relacionJugador.id}` 
+                          : jugador.id
+                        const tieneRelacion = jugador.jugadoresEquipoCategoria && jugador.jugadoresEquipoCategoria.length > 0
                         return (
-                          <SwiperSlide key={jugador.id}>
+                          <SwiperSlide key={uniqueKey}>
                             <div className="mobile-profile-card-container" style={{ padding: '0 20px' }}>
                               <div className="position-relative">
                                 <ProfileCard
@@ -1152,8 +1466,8 @@ const Page = () => {
                                   enableMobileTilt={false}
                                   onContactClick={() => handleVerPerfilClick(jugador)}
                                   contactText="Ver Perfil"
-                                  onEditClick={() => handleEditClick(jugador)}
-                                  onDeleteClick={() => handleDeleteSingle(jugador)}
+                                  onEditClick={tieneRelacion ? () => handleEditClick(jugador) : undefined}
+                                  onDeleteClick={tieneRelacion ? () => handleDeleteSingle(jugador) : undefined}
                                   showActionButtons={true}
                                   className="h-100"
                                 />
@@ -1250,7 +1564,33 @@ const Page = () => {
       />
 
       {/* Modal para Crear Jugador */}
-      <Modal show={showCreateModal} onHide={toggleCreateModal} size="lg" centered>
+      <Modal 
+        show={showCreateModal} 
+        onHide={() => {
+          toggleCreateModal()
+          // Limpiar formulario al cerrar
+          setCreateFormData({
+            cedula: '',
+            apellido_nombre: '',
+            nacionalidad: '',
+            liga: '',
+            fecha_nacimiento: '',
+            sexo: '',
+            telefono: '',
+            provincia: '',
+            direccion: '',
+            observacion: '',
+            estado: 'true',
+            foraneo: false,
+          })
+          setJugadorExistente(null)
+          setCapturedPhoto(null)
+          setCapturedPhotoUrl(null)
+          setSelectedEquipoCategoria(null)
+        }} 
+        size="lg" 
+        centered
+      >
         <ModalHeader closeButton>
           <ModalTitle>Agregar Nuevo Jugador</ModalTitle>
         </ModalHeader>
@@ -1269,20 +1609,48 @@ const Page = () => {
           <Form action={handleCreateJugador}>
             <Row className="g-3">
               <Col lg={4}>
-                <FloatingLabel label="Cédula">
-                  <FormControl type="text" name="cedula" placeholder="Ingrese la cédula" required />
+                <FloatingLabel label="Cédula" className="position-relative">
+                  <FormControl 
+                    type="text" 
+                    name="cedula" 
+                    placeholder="Ingrese la cédula y presione Tab o Enter" 
+                    value={createFormData.cedula}
+                    onChange={(e) => handleCedulaChange(e.target.value)}
+                    onBlur={handleCedulaBlur}
+                    onKeyDown={handleCedulaKeyDown}
+                    required 
+                    disabled={buscandoCedula}
+                    className={buscandoCedula ? 'pe-5' : ''}
+                  />
+                  {buscandoCedula && (
+                    <div className="position-absolute top-50 end-0 translate-middle-y pe-3" style={{ zIndex: 10, pointerEvents: 'none' }}>
+                      <Spinner animation="border" size="sm" />
+                    </div>
+                  )}
                 </FloatingLabel>
               </Col>
 
               <Col lg={4}>
                 <FloatingLabel label="Apellido y Nombre">
-                  <FormControl type="text" name="apellido_nombre" placeholder="Ingrese apellido y nombre" required />
+                  <FormControl 
+                    type="text" 
+                    name="apellido_nombre" 
+                    placeholder="Ingrese apellido y nombre" 
+                    value={createFormData.apellido_nombre}
+                    onChange={(e) => setCreateFormData({ ...createFormData, apellido_nombre: e.target.value })}
+                    required 
+                  />
                 </FloatingLabel>
               </Col>
 
               <Col lg={4}>
                 <FloatingLabel label="Nacionalidad">
-                  <FormSelect name="nacionalidad" required>
+                  <FormSelect 
+                    name="nacionalidad" 
+                    value={createFormData.nacionalidad}
+                    onChange={(e) => setCreateFormData({ ...createFormData, nacionalidad: e.target.value })}
+                    required
+                  >
                     <option value="">Seleccionar...</option>
                     <option value="Ecuatoriana">Ecuatoriana</option>
                     <option value="Colombiana">Colombiana</option>
@@ -1298,19 +1666,36 @@ const Page = () => {
 
               <Col lg={4}>
                 <FloatingLabel label="Liga">
-                  <FormControl type="text" name="liga" placeholder="Ingrese liga" required />
+                  <FormControl 
+                    type="text" 
+                    name="liga" 
+                    placeholder="Ingrese liga" 
+                    value={createFormData.liga}
+                    onChange={(e) => setCreateFormData({ ...createFormData, liga: e.target.value })}
+                    required 
+                  />
                 </FloatingLabel>
               </Col>
 
               <Col lg={4}>
                 <FloatingLabel label="Fecha de Nacimiento">
-                  <FormControl type="date" name="fecha_nacimiento" placeholder="Seleccione la fecha de nacimiento" />
+                  <FormControl 
+                    type="date" 
+                    name="fecha_nacimiento" 
+                    placeholder="Seleccione la fecha de nacimiento"
+                    value={createFormData.fecha_nacimiento}
+                    onChange={(e) => setCreateFormData({ ...createFormData, fecha_nacimiento: e.target.value })}
+                  />
                 </FloatingLabel>
               </Col>
 
               <Col lg={4}>
                 <FloatingLabel label="Sexo">
-                  <FormSelect name="sexo">
+                  <FormSelect 
+                    name="sexo"
+                    value={createFormData.sexo}
+                    onChange={(e) => setCreateFormData({ ...createFormData, sexo: e.target.value })}
+                  >
                     <option value="">Seleccionar...</option>
                     <option value="masculino">Masculino</option>
                     <option value="femenino">Femenino</option>
@@ -1327,19 +1712,37 @@ const Page = () => {
 
               <Col lg={4}>
                 <FloatingLabel label="Teléfono">
-                  <FormControl type="tel" name="telefono" placeholder="Número de teléfono" />
+                  <FormControl 
+                    type="tel" 
+                    name="telefono" 
+                    placeholder="Número de teléfono"
+                    value={createFormData.telefono}
+                    onChange={(e) => setCreateFormData({ ...createFormData, telefono: e.target.value })}
+                  />
                 </FloatingLabel>
               </Col>
 
               <Col lg={4}>
                 <FloatingLabel label="Provincia">
-                  <FormControl type="text" name="provincia" placeholder="Provincia de residencia" />
+                  <FormControl 
+                    type="text" 
+                    name="provincia" 
+                    placeholder="Provincia de residencia"
+                    value={createFormData.provincia}
+                    onChange={(e) => setCreateFormData({ ...createFormData, provincia: e.target.value })}
+                  />
                 </FloatingLabel>
               </Col>
 
               <Col lg={12}>
                 <FloatingLabel label="Dirección">
-                  <FormControl type="text" name="direccion" placeholder="Dirección de residencia" />
+                  <FormControl 
+                    type="text" 
+                    name="direccion" 
+                    placeholder="Dirección de residencia"
+                    value={createFormData.direccion}
+                    onChange={(e) => setCreateFormData({ ...createFormData, direccion: e.target.value })}
+                  />
                 </FloatingLabel>
               </Col>
 
@@ -1348,7 +1751,9 @@ const Page = () => {
                   <FormControl 
                     as="textarea" 
                     name="observacion" 
-                    placeholder="Observaciones del jugador" 
+                    placeholder="Observaciones del jugador"
+                    value={createFormData.observacion}
+                    onChange={(e) => setCreateFormData({ ...createFormData, observacion: e.target.value })}
                     style={{ height: '100px' }}
                   />
                 </FloatingLabel>
@@ -1376,7 +1781,11 @@ const Page = () => {
 
               <Col lg={3}>
                 <FloatingLabel label="Estado">
-                  <FormSelect name="estado">
+                  <FormSelect 
+                    name="estado"
+                    value={createFormData.estado}
+                    onChange={(e) => setCreateFormData({ ...createFormData, estado: e.target.value })}
+                  >
                     <option value="true">Activo</option>
                     <option value="false">Inactivo</option>
                   </FormSelect>
@@ -1390,6 +1799,8 @@ const Page = () => {
                     name="foraneo"
                     value="true"
                     id="foraneo"
+                    checked={createFormData.foraneo}
+                    onChange={(e) => setCreateFormData({ ...createFormData, foraneo: e.target.checked })}
                     label="Jugador Foráneo"
                   />
                 </div>
@@ -1412,10 +1823,7 @@ const Page = () => {
                           <TbCamera className="me-1" />
                           Cambiar Foto
                         </Button>
-                        <Button variant="outline-danger" size="sm" onClick={removePhoto}>
-                          <TbTrash className="me-1" />
-                          Eliminar
-                        </Button>
+                        
                       </div>
                     </div>
                   ) : (
@@ -1435,7 +1843,31 @@ const Page = () => {
 
               <Col lg={12}>
                 <div className="d-flex gap-2 justify-content-end">
-                  <Button variant="light" onClick={toggleCreateModal}>
+                  <Button 
+                    variant="light" 
+                    onClick={() => {
+                      toggleCreateModal()
+                      // Limpiar formulario al cancelar
+                      setCreateFormData({
+                        cedula: '',
+                        apellido_nombre: '',
+                        nacionalidad: '',
+                        liga: '',
+                        fecha_nacimiento: '',
+                        sexo: '',
+                        telefono: '',
+                        provincia: '',
+                        direccion: '',
+                        observacion: '',
+                        estado: 'true',
+                        foraneo: false,
+                      })
+                      setJugadorExistente(null)
+                      setCapturedPhoto(null)
+                      setCapturedPhotoUrl(null)
+                      setSelectedEquipoCategoria(null)
+                    }}
+                  >
                     Cancelar
                   </Button>
                   <Button variant="success" type="submit">
@@ -1550,7 +1982,7 @@ const Page = () => {
                       placeholder="Número de camiseta" 
                       min="1" 
                       max="99"
-                      defaultValue={editingJugador.numero_jugador || ''}
+                      defaultValue={(editingJugador.jugadoresEquipoCategoria?.[0] as any)?.numero_jugador || ''}
                     />
                   </FloatingLabel>
                 </Col>
@@ -1659,10 +2091,7 @@ const Page = () => {
                              <TbCamera className="me-1" />
                              Cambiar Foto
                            </Button>
-                           <Button variant="outline-danger" size="sm" onClick={removeEditPhoto}>
-                             <TbTrash className="me-1" />
-                             Eliminar
-                           </Button>
+                           
                          </div>
                        </div>
                      ) : editingJugador.foto ? (
@@ -1678,10 +2107,7 @@ const Page = () => {
                              <TbCamera className="me-1" />
                              Cambiar Foto
                            </Button>
-                           <Button variant="outline-danger" size="sm" onClick={removeEditPhoto}>
-                             <TbTrash className="me-1" />
-                             Eliminar
-                           </Button>
+                           
                          </div>
                        </div>
                      ) : (
@@ -1746,6 +2172,452 @@ const Page = () => {
           jugadorNombre={selectedJugadorForHistorial.apellido_nombre}
         />
       )}
+
+      {/* Modal de Confirmación para Imprimir */}
+      <Modal show={showConfirmacionImprimir} onHide={() => setShowConfirmacionImprimir(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>Confirmar Impresión</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          <Alert variant="warning" className="mb-3">
+            <strong>Advertencia:</strong> Se han detectado jugadores que se encuentran en más de una categoría o equipo.
+          </Alert>
+
+          {jugadoresMultiplesCategorias.length > 0 && (
+            <div className="mb-4">
+              <h6 className="text-danger mb-2">
+                <strong>Jugadores en múltiples categorías ({jugadoresMultiplesCategorias.length}):</strong>
+              </h6>
+              <div className="table-responsive" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                <table className="table table-sm table-bordered">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Cédula</th>
+                      <th>Nombre</th>
+                      <th>Categorías</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jugadoresMultiplesCategorias.map((jugador, idx) => (
+                      <tr key={idx}>
+                        <td>{jugador.cedula}</td>
+                        <td>{jugador.nombre}</td>
+                        <td>
+                          <ul className="mb-0">
+                            {jugador.categorias.map((cat, catIdx) => (
+                              <li key={catIdx}>{cat}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {jugadoresMultiplesEquipos.length > 0 && (
+            <div className="mb-3">
+              <h6 className="text-danger mb-2">
+                <strong>Jugadores en múltiples equipos ({jugadoresMultiplesEquipos.length}):</strong>
+              </h6>
+              <div className="table-responsive" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                <table className="table table-sm table-bordered">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Cédula</th>
+                      <th>Nombre</th>
+                      <th>Equipos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jugadoresMultiplesEquipos.map((jugador, idx) => (
+                      <tr key={idx}>
+                        <td>{jugador.cedula}</td>
+                        <td>{jugador.nombre}</td>
+                        <td>
+                          <ul className="mb-0">
+                            {jugador.equipos.map((equipo, eqIdx) => (
+                              <li key={eqIdx}>{equipo}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <Alert variant="info" className="mb-0">
+            <strong>¿Desea continuar con la impresión?</strong> Los carnets de los jugadores listados serán generados.
+          </Alert>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowConfirmacionImprimir(false)
+              setJugadoresMultiplesCategorias([])
+              setJugadoresMultiplesEquipos([])
+              setJugadoresParaImprimir([])
+            }}
+          >
+            <TbX className="me-1" />
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={async () => {
+              if (jugadoresParaImprimir.length > 0) {
+                await handleImprimir(jugadoresParaImprimir)
+              }
+            }}
+          >
+            <TbPrinter className="me-1" />
+            Continuar con la Impresión
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal de Manual de Usuario */}
+      <Modal show={showManualUsuario} onHide={() => setShowManualUsuario(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>
+            <TbHelp className="me-2" />
+            Manual de Usuario - Gestión de Jugadores
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <div className="manual-content">
+            <Alert variant="info" className="mb-4">
+              <strong>Bienvenido al Manual de Usuario</strong>
+              <br />
+              <small>Esta guía te ayudará a utilizar todas las funcionalidades del módulo de Jugadores.</small>
+            </Alert>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuUser className="me-2" />
+                1. Vista General
+              </h5>
+              <p>
+                El módulo de Jugadores te permite gestionar toda la información de los jugadores del sistema.
+                Puedes visualizar los jugadores en dos formatos:
+              </p>
+              <ul>
+                <li><strong>Vista de Tarjetas (Grid):</strong> Visualización en formato de tarjetas con imágenes</li>
+                <li><strong>Vista de Lista (Table):</strong> Visualización en formato de tabla para una vista más compacta</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuSearch className="me-2" />
+                2. Buscar y Filtrar Jugadores
+              </h5>
+              <p><strong>Buscar Jugador:</strong></p>
+              <ul>
+                <li>Utiliza el campo de búsqueda para buscar jugadores por múltiples criterios:
+                  <ul>
+                    <li>Nombre completo</li>
+                    <li>Cédula</li>
+                    <li>Nacionalidad</li>
+                    <li>Liga</li>
+                    <li>Teléfono</li>
+                    <li>Provincia</li>
+                    <li>Nombre del equipo</li>
+                    <li>Nombre de la categoría</li>
+                  </ul>
+                </li>
+                <li>La búsqueda es en tiempo real y filtra los resultados automáticamente</li>
+                <li>No necesitas presionar Enter, los resultados se actualizan mientras escribes</li>
+              </ul>
+              <p className="mt-3"><strong>Filtros por Categoría y Equipo:</strong></p>
+              <ul>
+                <li>Selecciona una categoría para filtrar los jugadores de esa categoría</li>
+                <li>Luego selecciona un equipo para ver solo los jugadores de ese equipo</li>
+                <li>Los filtros son combinables y se aplican en tiempo real</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbPlus className="me-2" />
+                3. Agregar Nuevo Jugador
+              </h5>
+              <p>Para agregar un nuevo jugador:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>"Agregar Jugador"</strong> (botón rojo con ícono +)</li>
+                <li>Completa el formulario con la información del jugador:
+                  <ul>
+                    <li><strong>Cédula:</strong> Ingresa la cédula y presiona Tab o Enter para buscar si el jugador ya existe</li>
+                    <li><strong>Apellido y Nombre:</strong> Nombre completo del jugador</li>
+                    <li><strong>Nacionalidad:</strong> País de origen del jugador</li>
+                    <li><strong>Liga:</strong> Liga a la que pertenece</li>
+                    <li><strong>Fecha de Nacimiento:</strong> Fecha de nacimiento del jugador</li>
+                    <li><strong>Sexo:</strong> Selecciona el sexo del jugador (Masculino, Femenino u Otro)</li>
+                    <li><strong>Teléfono:</strong> Número de contacto (opcional)</li>
+                    <li><strong>Provincia y Dirección:</strong> Datos de ubicación (opcional)</li>
+                    <li><strong>Observaciones:</strong> Notas adicionales sobre el jugador (opcional)</li>
+                    <li><strong>Estado:</strong> Selecciona si el jugador está "Activo" o "Inactivo" (por defecto: Activo)</li>
+                    <li><strong>Jugador Foráneo:</strong> Marca esta casilla si el jugador es foráneo</li>
+                  </ul>
+                </li>
+                <li>Selecciona el <strong>Equipo-Categoría</strong> donde se asignará el jugador (obligatorio)</li>
+                <li>Ingresa el <strong>Número de Jugador</strong> (número de camiseta, entre 1 y 99)</li>
+                <li>Opcionalmente, captura una foto del jugador:
+                  <ul>
+                    <li>Haz clic en <strong>"Capturar Foto"</strong> para usar la cámara del dispositivo</li>
+                  </ul>
+                </li>
+                <li>Haz clic en <strong>"Guardar"</strong> para crear el jugador</li>
+              </ol>
+              <Alert variant="warning" className="mt-2 mb-0">
+                <small><strong>Nota:</strong> Si la cédula ya existe, el sistema cargará los datos existentes y solo creará una nueva relación con el equipo-categoría seleccionado.</small>
+              </Alert>
+              <Alert variant="info" className="mt-2 mb-0">
+                <small><strong>Campos obligatorios:</strong> Cédula, Apellido y Nombre, Nacionalidad, Liga y Equipo-Categoría.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbEdit className="me-2" />
+                4. Editar Jugador
+              </h5>
+              <p>Para editar la información de un jugador:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Editar</strong> (ícono de lápiz) en la tarjeta o fila del jugador</li>
+                <li>Modifica los campos que necesites actualizar</li>
+                <li>Puedes cambiar la foto del jugador usando la cámara (haz clic en "Cambiar Foto")</li>
+                <li>Haz clic en <strong>"Actualizar Jugador"</strong> para aplicar los cambios</li>
+              </ol>
+              <Alert variant="info" className="mt-2 mb-0">
+                <small><strong>Nota:</strong> Solo puedes editar jugadores que tengan un equipo-categoría asignado. Si un jugador no tiene relación con un equipo-categoría, el botón de Editar estará deshabilitado.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbPrinter className="me-2" />
+                5. Imprimir Carnets de Jugadores
+              </h5>
+              <p><strong>Imprimir Carnet Individual:</strong></p>
+              <ul>
+                <li>En cada fila de la tabla, hay un botón de impresora (ícono de impresora)</li>
+                <li>Haz clic en este botón para imprimir el carnet de ese jugador específico</li>
+                <li>El carnet se generará en una nueva ventana lista para imprimir</li>
+              </ul>
+              <p className="mt-3"><strong>Imprimir Múltiples Carnets:</strong></p>
+              <ol>
+                <li>Selecciona uno o más jugadores marcando las casillas de verificación</li>
+                <li>Haz clic en el botón <strong>"Imprimir"</strong> (botón amarillo con ícono de impresora) en la barra superior</li>
+                <li>Si hay jugadores que están en múltiples categorías o equipos, se mostrará una advertencia:
+                  <ul>
+                    <li>Se listarán los jugadores con múltiples categorías</li>
+                    <li>Se listarán los jugadores en múltiples equipos</li>
+                    <li>Puedes elegir continuar con la impresión o cancelar</li>
+                  </ul>
+                </li>
+                <li>Los carnets se generarán en una nueva ventana lista para imprimir</li>
+              </ol>
+              <Alert variant="info" className="mt-2 mb-0">
+                <small><strong>Consejo:</strong> Los carnets se generan con el diseño estándar de identificación de jugadores. Asegúrate de tener una impresora configurada antes de imprimir.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuDownload className="me-2" />
+                6. Exportar a Excel
+              </h5>
+              <p>Para descargar la lista de jugadores en formato Excel:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>"Descargar Excel"</strong> (botón verde con ícono de descarga)</li>
+                <li>El archivo Excel se descargará con todos los jugadores filtrados actualmente</li>
+                <li>El archivo incluye toda la información de los jugadores: cédula, nombre, categoría, equipo, número de jugador, etc.</li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuRefreshCw className="me-2" />
+                7. Actualizar Datos
+              </h5>
+              <p>
+                El botón <strong>"Actualizar"</strong> (botón azul con ícono de actualizar) recarga todos los datos desde el servidor.
+                Úsalo cuando quieras asegurarte de tener la información más reciente.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbTrash className="me-2" />
+                8. Eliminar Relación de Jugador
+              </h5>
+              <p>Para eliminar la relación de un jugador con un equipo-categoría:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Eliminar</strong> (ícono de papelera) en la tarjeta o fila del jugador</li>
+                <li>Confirma la eliminación en el modal de confirmación</li>
+              </ol>
+              <Alert variant="warning" className="mt-2 mb-0">
+                <small><strong>Importante:</strong> Esta acción solo elimina la relación del jugador con el equipo-categoría actual. El jugador y su información permanecen en el sistema.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuClock className="me-2" />
+                9. Ver Historial de Jugador
+              </h5>
+              <p>Para ver el historial completo de un jugador:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Historial</strong> (ícono de reloj) en la tarjeta o fila del jugador</li>
+                <li>Se abrirá un modal mostrando todo el historial de cambios, movimientos entre equipos, categorías, etc.</li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuUser className="me-2" />
+                10. Selección Múltiple
+              </h5>
+              <p>Puedes seleccionar múltiples jugadores para realizar acciones en lote:</p>
+              <ul>
+                <li>Marca las casillas de verificación en los jugadores que deseas seleccionar</li>
+                <li>Usa la casilla en el encabezado para seleccionar todos los jugadores visibles</li>
+                <li>Con jugadores seleccionados, el botón de "Imprimir" estará disponible</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbCamera className="me-2" />
+                11. Funcionalidad de Foto del Jugador
+              </h5>
+              <p>El sistema permite capturar una foto para cada jugador:</p>
+              <ul>
+                <li><strong>Capturar Foto:</strong> Haz clic en "Capturar Foto" para usar la cámara de tu dispositivo</li>
+                <li><strong>Cambiar Foto:</strong> Al editar, puedes cambiar o eliminar la foto existente</li>
+                <li><strong>Foto por Defecto:</strong> Si no hay foto, se mostrará un avatar por defecto</li>
+              </ul>
+              <Alert variant="info" className="mt-2 mb-0">
+                <small><strong>Recomendación:</strong> Usa fotos claras y recientes para una mejor identificación de los jugadores en los carnets.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuChevronLeft className="me-2" />
+                12. Paginación y Navegación
+              </h5>
+              <p>En la vista de lista:</p>
+              <ul>
+                <li>La tabla muestra 8 jugadores por página por defecto</li>
+                <li>Usa los botones de navegación (← →) para cambiar de página</li>
+                <li>El contador muestra cuántos jugadores se están visualizando</li>
+                <li>Puedes hacer clic en el nombre del jugador en la vista de tabla para navegar a su perfil completo (página de detalle del jugador)</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuUser className="me-2" />
+                13. Permisos y Restricciones
+              </h5>
+              <p>El sistema utiliza un sistema de permisos que controla qué acciones puedes realizar:</p>
+              <ul>
+                <li><strong>Ver:</strong> Todos los usuarios con acceso pueden ver la lista de jugadores</li>
+                <li><strong>Crear:</strong> Solo usuarios con permiso de creación pueden agregar nuevos jugadores</li>
+                <li><strong>Editar:</strong> Solo usuarios con permiso de edición pueden modificar información</li>
+                <li><strong>Eliminar:</strong> Solo usuarios con permiso de eliminación pueden eliminar relaciones</li>
+              </ul>
+              <Alert variant="warning" className="mt-2 mb-0">
+                <small><strong>Importante:</strong> Los botones de Editar y Eliminar estarán deshabilitados si no tienes los permisos correspondientes o si el jugador no tiene equipo-categoría asignado.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuUser className="me-2" />
+                14. Información Adicional en la Vista
+              </h5>
+              <p>En la vista de tabla, puedes ver las siguientes columnas:</p>
+              <ul>
+                <li><strong>Jugador:</strong> Foto, nombre completo y cédula (el nombre es un enlace al detalle)</li>
+                <li><strong>Nacionalidad:</strong> País de origen del jugador</li>
+                <li><strong>Liga:</strong> Liga a la que pertenece</li>
+                <li><strong>Sexo:</strong> Sexo del jugador</li>
+                <li><strong>Número:</strong> Número de camiseta en el equipo-categoría actual</li>
+                <li><strong>Teléfono:</strong> Número de contacto</li>
+                <li><strong>Provincia:</strong> Provincia de residencia</li>
+                <li><strong>Foráneo:</strong> Indica si el jugador es foráneo (Sí/No)</li>
+                <li><strong>Categoría:</strong> Categoría del torneo donde está inscrito</li>
+                <li><strong>Equipo:</strong> Equipo al que pertenece</li>
+                <li><strong>Estado:</strong> Estado del jugador (Activo/Inactivo)</li>
+                <li><strong>Fecha Creación:</strong> Fecha en que se registró el jugador en el sistema</li>
+              </ul>
+            </div>
+
+            <div className="mb-3">
+              <h5 className="text-primary mb-3">
+                <LuTrophy className="me-2" />
+                15. Consejos Adicionales
+              </h5>
+              <ul>
+                <li>Usa los filtros para encontrar rápidamente grupos específicos de jugadores</li>
+                <li>La búsqueda funciona en tiempo real, no necesitas presionar Enter</li>
+                <li>Puedes cambiar entre vista de tarjetas y vista de lista según tu preferencia</li>
+                <li>Si un jugador está en múltiples equipos o categorías, el sistema te lo advertirá al imprimir</li>
+                <li>El sistema valida automáticamente los datos antes de guardar</li>
+                <li>Un jugador puede estar en múltiples equipos o categorías - esto es normal y el sistema lo maneja correctamente</li>
+                <li>Haz clic en el nombre del jugador en la tabla para ver su perfil completo</li>
+                <li>Los jugadores sin foto mostrarán un avatar por defecto</li>
+                <li>El campo de "Observaciones" es útil para notas importantes sobre el jugador</li>
+                <li>Al imprimir múltiples carnets, se generan en una sola ventana lista para imprimir</li>
+              </ul>
+            </div>
+
+            <div className="mb-3">
+              <h5 className="text-primary mb-3">
+                <LuUser className="me-2" />
+                16. Solución de Problemas Comunes
+              </h5>
+              <p><strong>No puedo editar o eliminar un jugador:</strong></p>
+              <ul>
+                <li>Verifica que tengas los permisos necesarios</li>
+                <li>Verifica que el jugador tenga una relación con un equipo-categoría (los botones estarán deshabilitados si no)</li>
+              </ul>
+              <p className="mt-3"><strong>No puedo agregar un jugador:</strong></p>
+              <ul>
+                <li>Verifica que tengas permisos de creación</li>
+                <li>Asegúrate de completar todos los campos obligatorios</li>
+                <li>Verifica que hayas seleccionado un Equipo-Categoría</li>
+              </ul>
+              <p className="mt-3"><strong>La cámara no funciona:</strong></p>
+              <ul>
+                <li>Verifica que hayas dado permisos de cámara al navegador</li>
+                <li>Asegúrate de que tu dispositivo tenga una cámara disponible</li>
+                <li>Verifica que el navegador tenga acceso a la cámara en la configuración de permisos</li>
+              </ul>
+            </div>
+
+            <Alert variant="success" className="mb-0">
+              <strong>¿Necesitas más ayuda?</strong>
+              <br />
+              <small>Si tienes preguntas adicionales o encuentras algún problema, contacta al administrador del sistema.</small>
+            </Alert>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowManualUsuario(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
     </Container>
   )
 }

@@ -1,9 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { Modal, ModalBody, ModalFooter, ModalHeader, ModalTitle, Button, Alert } from 'react-bootstrap'
 import { GestionJugadoresContext, type GestionJugadoresState } from './GestionJugadoresContext'
 import { getJugadoresActivosByEquipos } from '../../jugadores/actions'
-import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction, designarCapitan, saveGol, deleteGol, saveTarjeta, deleteTarjeta, getSaldosEquiposHastaJornada, registrarPagoMulta, getCargosManualesPorJornada, getDetalleValoresEquiposHastaJornada, getEncuentroById } from '../actions'
+import { getJugadoresParticipantes, saveJugadoresParticipantes as saveJugadoresParticipantesAction, getGolesEncuentro, getTarjetasEncuentro, saveCambiosEncuentro, saveCambioJugador as saveCambioJugadorAction, getCambiosEncuentro, realizarCambioJugadorCompleto as realizarCambioJugadorCompletoAction, deshacerCambioJugador as deshacerCambioJugadorAction, designarCapitan, saveGol, deleteGol, saveTarjeta, deleteTarjeta, getSaldosEquiposHastaJornada, registrarPagoMulta, getCargosManualesPorJornada, getDetalleValoresEquiposHastaJornada, getEncuentroById, enriquecerJugadoresConNumero } from '../actions'
+import { updateEstadoEncuentro } from '../../torneos/actions'
 import type { JugadorWithEquipo, CardType, Goal, Signature, JugadorParticipante, NewJugadorParticipante, NewCambioJugador } from '@/db/types'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -194,8 +196,26 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     const [estadoEncuentro, setEstadoEncuentro] = useState<string | null>(null)
     const [torneoCategoriaId, setTorneoCategoriaId] = useState<number | null>(null)
     
+    // Estados para el modal de confirmación de cambio de estado
+    const [showEstadoFinalizadoModal, setShowEstadoFinalizadoModal] = useState(false)
+    const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null)
+    const [showFinalizarRecordatorio, setShowFinalizarRecordatorio] = useState(false)
+    
     // Usar el hook useAuth para obtener información del usuario actual
     const { isAdmin } = useAuth()
+
+    // Función helper para verificar si el estado es finalizado y mostrar confirmación
+    const checkEstadoFinalizado = useCallback(async (action: () => Promise<void> | void): Promise<void> => {
+        if (estadoEncuentro === 'finalizado') {
+            // Si está finalizado, mostrar modal de confirmación
+            setPendingAction(action as () => Promise<void>)
+            setShowEstadoFinalizadoModal(true)
+            return
+        }
+        
+        // Si no está finalizado, ejecutar la acción directamente
+        await action()
+    }, [estadoEncuentro])
 
     const loadData = useCallback(async () => {
         try {
@@ -215,6 +235,21 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
                     [equipoLocalIdNum, equipoVisitanteIdNum],
                     torneoCategoriaIdValue || undefined
                 )
+                
+                // Enriquecer jugadores con numero_jugador desde jugador_equipo_categoria
+                if (torneoCategoriaIdValue && jugadoresData.length > 0) {
+                    try {
+                        jugadoresData = await enriquecerJugadoresConNumero(
+                            jugadoresData,
+                            equipoLocalIdNum,
+                            equipoVisitanteIdNum,
+                            torneoCategoriaIdValue
+                        )
+                    } catch (enrichError) {
+                        // Si hay error al enriquecer, continuar sin el numero_jugador
+                        console.error('❌ Error al enriquecer jugadores con numero_jugador:', enrichError)
+                    }
+                }
             }
             // Si no hay equipos, jugadoresData queda vacío (sin fallback)
             
@@ -223,7 +258,8 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             
             setJugadores(jugadoresFiltrados)
         } catch (err) {
-            setError('Failed to load data')
+            console.error('Error en loadData:', err)
+            setError(err instanceof Error ? err.message : 'Failed to load data')
         } finally {
             setLoading(false)
         }
@@ -564,20 +600,53 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
                     participantesVisitante: participantesVisitante.length
                 })
 
-                const jugadoresLocal = jugadores.filter(j => 
+                // Enriquecer jugadores con numero_jugador (optimizado con consulta única)
+                const jugadoresLocalFiltrados = jugadores.filter(j => 
                     participantesLocal.some(p => p.jugador_id === j.id)
                 )
-                const jugadoresVisitante = jugadores.filter(j => 
+                const jugadoresVisitanteFiltrados = jugadores.filter(j => 
                     participantesVisitante.some(p => p.jugador_id === j.id)
                 )
 
-                console.log('Jugadores encontrados:', {
-                    jugadoresLocal: jugadoresLocal.length,
-                    jugadoresVisitante: jugadoresVisitante.length
-                })
+                // Intentar enriquecer con numero_jugador si es posible
+                try {
+                    // Obtener categoria_id del torneo
+                    const categoriaId = encuentro.torneo?.categoria_id
+                    
+                    if (categoriaId) {
+                        // Enriquecer jugadores con numero_jugador usando server action
+                        const jugadoresLocalEnriquecidos = await enriquecerJugadoresConNumero(
+                            jugadoresLocalFiltrados,
+                            equipoLocalIdNum,
+                            equipoVisitanteIdNum,
+                            categoriaId
+                        )
 
-                setJugadoresParticipantesA(jugadoresLocal)
-                setJugadoresParticipantesB(jugadoresVisitante)
+                        const jugadoresVisitanteEnriquecidos = await enriquecerJugadoresConNumero(
+                            jugadoresVisitanteFiltrados,
+                            equipoLocalIdNum,
+                            equipoVisitanteIdNum,
+                            categoriaId
+                        )
+
+                        console.log('Jugadores encontrados:', {
+                            jugadoresLocal: jugadoresLocalEnriquecidos.length,
+                            jugadoresVisitante: jugadoresVisitanteEnriquecidos.length
+                        })
+
+                        setJugadoresParticipantesA(jugadoresLocalEnriquecidos)
+                        setJugadoresParticipantesB(jugadoresVisitanteEnriquecidos)
+                    } else {
+                        // Si no hay categoriaId, usar jugadores sin enriquecer
+                        setJugadoresParticipantesA(jugadoresLocalFiltrados)
+                        setJugadoresParticipantesB(jugadoresVisitanteFiltrados)
+                    }
+                } catch (enrichError) {
+                    // Si hay error al enriquecer, usar jugadores sin numero_jugador
+                    console.warn('Error al enriquecer jugadores participantes con numero_jugador:', enrichError)
+                    setJugadoresParticipantesA(jugadoresLocalFiltrados)
+                    setJugadoresParticipantesB(jugadoresVisitanteFiltrados)
+                }
                 
                 // Marcar que la carga inicial está completa
                 isInitialLoad.current = false
@@ -585,7 +654,7 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         } catch (err) {
             console.error('Error al cargar jugadores participantes:', err)
         }
-    }, [getEncuentroActual, jugadores])
+    }, [getEncuentroActual, jugadores, equipoLocalIdNum, equipoVisitanteIdNum])
 
     const saveJugadoresParticipantes = useCallback(async () => {
         
@@ -597,40 +666,39 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             return
         }
 
-        try {
-            setIsSaving(true)
-            
-            // Obtener el encuentro actual usando el helper con caché
-            const encuentro = await getEncuentroActual()
+        // Verificar si el estado es finalizado antes de permitir el cambio
+        await checkEstadoFinalizado(async () => {
+            try {
+                setIsSaving(true)
+                
+                // Obtener el encuentro actual usando el helper con caché
+                const encuentro = await getEncuentroActual()
 
-            if (!encuentro) {
-                return
+                if (!encuentro) {
+                    return
+                }
+
+                const jugadoresData: NewJugadorParticipante[] = [
+                    ...jugadoresParticipantesA.map(j => ({
+                        encuentro_id: encuentro.id,
+                        jugador_id: j.id,
+                        equipo_tipo: 'local' as const
+                    })),
+                    ...jugadoresParticipantesB.map(j => ({
+                        encuentro_id: encuentro.id,
+                        jugador_id: j.id,
+                        equipo_tipo: 'visitante' as const
+                    }))
+                ]
+
+                const result = await saveJugadoresParticipantesAction(encuentro.id, jugadoresData)
+            } catch (err) {
+                console.error('❌ Error al guardar jugadores participantes:', err)
+            } finally {
+                setIsSaving(false)
             }
-
-            
-
-            const jugadoresData: NewJugadorParticipante[] = [
-                ...jugadoresParticipantesA.map(j => ({
-                    encuentro_id: encuentro.id,
-                    jugador_id: j.id,
-                    equipo_tipo: 'local' as const
-                })),
-                ...jugadoresParticipantesB.map(j => ({
-                    encuentro_id: encuentro.id,
-                    jugador_id: j.id,
-                    equipo_tipo: 'visitante' as const
-                }))
-            ]
-
-           
-
-            const result = await saveJugadoresParticipantesAction(encuentro.id, jugadoresData)
-        } catch (err) {
-            console.error('❌ Error al guardar jugadores participantes:', err)
-        } finally {
-            setIsSaving(false)
-        }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadoresParticipantesA, jugadoresParticipantesB, isSaving])
+        })
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, jugadoresParticipantesA, jugadoresParticipantesB, isSaving, checkEstadoFinalizado])
 
     // Cargar datos iniciales solo cuando cambien los parámetros esenciales
     useEffect(() => {
@@ -790,6 +858,55 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         }
     }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, loadGolesExistentes, loadTarjetasExistentes, loadCambiosJugadores, loadFirmasExistentes])
 
+    // Función para confirmar el cambio de estado y ejecutar la acción pendiente
+    const handleConfirmarCambioEstado = useCallback(async () => {
+        if (!encuentroIdNum) {
+            setShowEstadoFinalizadoModal(false)
+            setPendingAction(null)
+            return
+        }
+
+        try {
+            // Cambiar estado a "en_curso"
+            await updateEstadoEncuentro(encuentroIdNum, 'en_curso')
+            
+            // Actualizar el estado local
+            setEstadoEncuentro('en_curso')
+            
+            // Cerrar el modal
+            setShowEstadoFinalizadoModal(false)
+            
+            // Ejecutar la acción pendiente
+            if (pendingAction) {
+                await pendingAction()
+                
+                // Mostrar recordatorio para finalizar el encuentro después de los cambios
+                setShowFinalizarRecordatorio(true)
+                
+                // Ocultar el recordatorio después de 8 segundos
+                setTimeout(() => {
+                    setShowFinalizarRecordatorio(false)
+                }, 8000)
+            }
+            
+            // Limpiar la acción pendiente
+            setPendingAction(null)
+            
+            // Recargar el estado del encuentro
+            await loadEstadoEncuentro()
+        } catch (error) {
+            console.error('Error al cambiar estado del encuentro:', error)
+            setShowEstadoFinalizadoModal(false)
+            setPendingAction(null)
+        }
+    }, [encuentroIdNum, pendingAction, loadEstadoEncuentro])
+
+    // Función para cancelar el cambio de estado
+    const handleCancelarCambioEstado = useCallback(() => {
+        setShowEstadoFinalizadoModal(false)
+        setPendingAction(null)
+    }, [])
+
     // Función para forzar la actualización del estado del encuentro
     const refreshEstadoEncuentro = useCallback(async () => {
         console.log('🔄 Forzando actualización del estado del encuentro...')
@@ -909,62 +1026,65 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     const handleQuickSanction = useCallback(async (jugador: JugadorWithEquipo, tipo: 'amarilla' | 'roja') => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) return
         
-        try {
-            // Obtener el encuentro actual usando el helper con caché
-            const encuentro = await getEncuentroActual()
-            if (!encuentro) return
+        // Verificar si el estado es finalizado antes de permitir el cambio
+        await checkEstadoFinalizado(async () => {
+            try {
+                // Obtener el encuentro actual usando el helper con caché
+                const encuentro = await getEncuentroActual()
+                if (!encuentro) return
 
-            const equipoId = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id || (equipoLocalIdNum!)
-            const equipoNombre = equipoId === equipoLocalIdNum ? (nombreEquipoLocal || 'Equipo A') : (nombreEquipoVisitante || 'Equipo B')
+                const equipoId = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id || (equipoLocalIdNum!)
+                const equipoNombre = equipoId === equipoLocalIdNum ? (nombreEquipoLocal || 'Equipo A') : (nombreEquipoVisitante || 'Equipo B')
 
-            const primary = await saveTarjeta({
-                encuentro_id: encuentro.id,
-                jugador_id: jugador.id,
-                equipo_id: equipoId,
-                tipo
-            })
+                const primary = await saveTarjeta({
+                    encuentro_id: encuentro.id,
+                    jugador_id: jugador.id,
+                    equipo_id: equipoId,
+                    tipo
+                })
 
-            setTarjetas(prev => {
-                const jugadorIdStr = jugador.id.toString()
-                const tarjetasJugador = prev.filter(t => t.jugador === jugadorIdStr)
-                const amarillas = tarjetasJugador.filter(t => t.tipo === 'amarilla').length
-                
-                let nuevasTarjetas: CardType[] = [...prev, {
-                    id: primary.tarjeta.id.toString(),
-                    jugador: jugadorIdStr,
-                    equipo: equipoNombre,
-                    tipo,
-                    minuto: 0,
-                    tiempo: 'primer',
-                    motivo: 'Sanción rápida'
-                }]
+                setTarjetas(prev => {
+                    const jugadorIdStr = jugador.id.toString()
+                    const tarjetasJugador = prev.filter(t => t.jugador === jugadorIdStr)
+                    const amarillas = tarjetasJugador.filter(t => t.tipo === 'amarilla').length
+                    
+                    let nuevasTarjetas: CardType[] = [...prev, {
+                        id: primary.tarjeta.id.toString(),
+                        jugador: jugadorIdStr,
+                        equipo: equipoNombre,
+                        tipo,
+                        minuto: 0,
+                        tiempo: 'primer',
+                        motivo: 'Sanción rápida'
+                    }]
 
-                if (tipo === 'amarilla' && amarillas === 1) {
-                    // Guardar tarjeta roja adicional por doble amarilla
-                    saveTarjeta({
-                        encuentro_id: encuentro.id,
-                        jugador_id: jugador.id,
-                        equipo_id: equipoId,
-                        tipo: 'roja'
-                    }).then(secundaria => {
-                        setTarjetas(prevTarjetas => [...prevTarjetas, {
-                            id: secundaria.tarjeta.id.toString(),
-                            jugador: jugadorIdStr,
-                            equipo: equipoNombre,
-                            tipo: 'roja',
-                            minuto: 0,
-                            tiempo: 'primer',
-                            motivo: 'Doble amarilla (expulsión automática)'
-                        }])
-                    }).catch(() => {})
-                }
+                    if (tipo === 'amarilla' && amarillas === 1) {
+                        // Guardar tarjeta roja adicional por doble amarilla
+                        saveTarjeta({
+                            encuentro_id: encuentro.id,
+                            jugador_id: jugador.id,
+                            equipo_id: equipoId,
+                            tipo: 'roja'
+                        }).then(secundaria => {
+                            setTarjetas(prevTarjetas => [...prevTarjetas, {
+                                id: secundaria.tarjeta.id.toString(),
+                                jugador: jugadorIdStr,
+                                equipo: equipoNombre,
+                                tipo: 'roja',
+                                minuto: 0,
+                                tiempo: 'primer',
+                                motivo: 'Doble amarilla (expulsión automática)'
+                            }])
+                        }).catch(() => {})
+                    }
 
-                return nuevasTarjetas
-            })
-        } catch (e) {
-            // Silencioso
-        }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, nombreEquipoLocal, nombreEquipoVisitante, getEncuentroActual])
+                    return nuevasTarjetas
+                })
+            } catch (e) {
+                // Silencioso
+            }
+        })
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, nombreEquipoLocal, nombreEquipoVisitante, getEncuentroActual, checkEstadoFinalizado])
 
     const handleAddGol = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) return
@@ -1008,34 +1128,38 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
 
     const handleQuickGoal = useCallback(async (jugador: JugadorWithEquipo, tipo: 'gol' | 'penal') => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) return
-        try {
-            // Obtener el encuentro actual usando el helper con caché
-            const encuentro = await getEncuentroActual()
-            if (!encuentro) return
+        
+        // Verificar si el estado es finalizado antes de permitir el cambio
+        await checkEstadoFinalizado(async () => {
+            try {
+                // Obtener el encuentro actual usando el helper con caché
+                const encuentro = await getEncuentroActual()
+                if (!encuentro) return
 
-            const equipoId = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id || (equipoLocalIdNum!)
-            const result = await saveGol({
-                encuentro_id: encuentro.id,
-                jugador_id: jugador.id,
-                equipo_id: equipoId,
-                minuto: 0,
-                tiempo: 'primer',
-                tipo
-            })
-            const equipoNombre = equipoId === equipoLocalIdNum ? (nombreEquipoLocal || 'Equipo A') : (nombreEquipoVisitante || 'Equipo B')
-            const newGoal: Goal = {
-                id: result.gol.id.toString(),
-                jugador: jugador.id.toString(),
-                equipo: equipoNombre,
-                minuto: 0,
-                tiempo: 'primer',
-                tipo,
+                const equipoId = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.id || (equipoLocalIdNum!)
+                const result = await saveGol({
+                    encuentro_id: encuentro.id,
+                    jugador_id: jugador.id,
+                    equipo_id: equipoId,
+                    minuto: 0,
+                    tiempo: 'primer',
+                    tipo
+                })
+                const equipoNombre = equipoId === equipoLocalIdNum ? (nombreEquipoLocal || 'Equipo A') : (nombreEquipoVisitante || 'Equipo B')
+                const newGoal: Goal = {
+                    id: result.gol.id.toString(),
+                    jugador: jugador.id.toString(),
+                    equipo: equipoNombre,
+                    minuto: 0,
+                    tiempo: 'primer',
+                    tipo,
+                }
+                setGoles(prev => [...prev, newGoal])
+            } catch (e) {
+                // Silencioso
             }
-            setGoles(prev => [...prev, newGoal])
-        } catch (e) {
-            // Silencioso
-        }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, nombreEquipoLocal, nombreEquipoVisitante, getEncuentroActual])
+        })
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, nombreEquipoLocal, nombreEquipoVisitante, getEncuentroActual, checkEstadoFinalizado])
 
     const saveCambiosJugadores = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -1116,43 +1240,50 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             })
             return
         }
-        try {
-            // Obtener el encuentro actual usando el helper
-            const encuentro = await getEncuentroActual()
-            if (!encuentro) {
-                console.error('No se encontró el encuentro para realizar cambio completo!')
-                return
-            }
-            console.log('Realizando cambio completo de jugador:', {
-                encuentroId: encuentro.id,
-                jugadorSale: cambio.sale.apellido_nombre,
-                jugadorEntra: cambio.entra.apellido_nombre,
-                equipo: cambio.equipo
+        
+        // Verificar si el estado es finalizado antes de permitir el cambio
+        return new Promise<any>((resolve, reject) => {
+            checkEstadoFinalizado(async () => {
+                try {
+                    // Obtener el encuentro actual usando el helper
+                    const encuentro = await getEncuentroActual()
+                    if (!encuentro) {
+                        console.error('No se encontró el encuentro para realizar cambio completo!')
+                        resolve(undefined)
+                        return
+                    }
+                    console.log('Realizando cambio completo de jugador:', {
+                        encuentroId: encuentro.id,
+                        jugadorSale: cambio.sale.apellido_nombre,
+                        jugadorEntra: cambio.entra.apellido_nombre,
+                        equipo: cambio.equipo
+                    })
+                    
+                    const cambioData: NewCambioJugador = {
+                        encuentro_id: encuentro.id,
+                        jugador_sale_id: cambio.sale.id,
+                        jugador_entra_id: cambio.entra.id,
+                        equipo_id: cambio.equipo === 'A' ? equipoLocalIdNum! : equipoVisitanteIdNum!,
+                        minuto: 0,
+                        tiempo: 'primer' as const
+                    }
+                    
+                    const jugadorEntraData: NewJugadorParticipante = {
+                        encuentro_id: encuentro.id,
+                        jugador_id: cambio.entra.id,
+                        equipo_tipo: cambio.equipo === 'A' ? 'local' : 'visitante'
+                    }
+                    
+                    const result = await realizarCambioJugadorCompletoAction(cambioData, jugadorEntraData)
+                    console.log('✅ Cambio completo de jugador realizado exitosamente:', result)
+                    resolve(result); // Return the result to get the ID
+                } catch (err) {
+                    console.error('❌ Error al realizar cambio completo de jugador:', err)
+                    reject(err); // Re-throw to handle in the calling function
+                }
             })
-            
-            const cambioData: NewCambioJugador = {
-                encuentro_id: encuentro.id,
-                jugador_sale_id: cambio.sale.id,
-                jugador_entra_id: cambio.entra.id,
-                equipo_id: cambio.equipo === 'A' ? equipoLocalIdNum! : equipoVisitanteIdNum!,
-                minuto: 0,
-                tiempo: 'primer' as const
-            }
-            
-            const jugadorEntraData: NewJugadorParticipante = {
-                encuentro_id: encuentro.id,
-                jugador_id: cambio.entra.id,
-                equipo_tipo: cambio.equipo === 'A' ? 'local' : 'visitante'
-            }
-            
-            const result = await realizarCambioJugadorCompletoAction(cambioData, jugadorEntraData)
-            console.log('✅ Cambio completo de jugador realizado exitosamente:', result)
-            return result; // Return the result to get the ID
-        } catch (err) {
-            console.error('❌ Error al realizar cambio completo de jugador:', err)
-            throw err; // Re-throw to handle in the calling function
-        }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum])
+        })
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, checkEstadoFinalizado])
 
     const deshacerCambioJugador = useCallback(async (cambioId: number, jugadorEntraId: number, encuentroId: number) => {
         try {
@@ -1233,30 +1364,36 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
             return { success: false, error: 'Faltan parámetros del encuentro' }
         }
 
-        try {
-            // Obtener el encuentro actual usando el helper
-            const encuentro = await getEncuentroActual()
+        // Verificar si el estado es finalizado antes de permitir el cambio
+        return new Promise<{ success: boolean; error?: string }>((resolve) => {
+            checkEstadoFinalizado(async () => {
+                try {
+                    // Obtener el encuentro actual usando el helper
+                    const encuentro = await getEncuentroActual()
 
-            if (!encuentro) {
-                return { success: false, error: 'No se encontró el encuentro' }
-            }
+                    if (!encuentro) {
+                        resolve({ success: false, error: 'No se encontró el encuentro' })
+                        return
+                    }
 
-            // Determinar el tipo de equipo
-            const equipoTipo: 'local' | 'visitante' = equipo === 'A' ? 'local' : 'visitante'
+                    // Determinar el tipo de equipo
+                    const equipoTipo: 'local' | 'visitante' = equipo === 'A' ? 'local' : 'visitante'
 
-            const result = await designarCapitan(encuentro.id, parseInt(jugador.id), equipoTipo)
-            
-            if (result.success) {
-                // Recargar los jugadores participantes para actualizar la UI
-                await loadJugadoresParticipantes()
-                return { success: true }
-            } else {
-                return { success: false, error: result.error || 'Error al designar capitán' }
-            }
-        } catch (err) {
-            return { success: false, error: 'Error al designar capitán' }
-        }
-    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, loadJugadoresParticipantes])
+                    const result = await designarCapitan(encuentro.id, parseInt(jugador.id), equipoTipo)
+                    
+                    if (result.success) {
+                        // Recargar los jugadores participantes para actualizar la UI
+                        await loadJugadoresParticipantes()
+                        resolve({ success: true })
+                    } else {
+                        resolve({ success: false, error: result.error || 'Error al designar capitán' })
+                    }
+                } catch (err) {
+                    resolve({ success: false, error: 'Error al designar capitán' })
+                }
+            })
+        })
+    }, [torneoId, equipoLocalIdNum, equipoVisitanteIdNum, jornadaNum, loadJugadoresParticipantes, checkEstadoFinalizado])
 
     const saveCambioJugador = useCallback(async (cambio: {sale: JugadorWithEquipo, entra: JugadorWithEquipo, equipo: 'A' | 'B'}) => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) {
@@ -1380,6 +1517,46 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     return (
         <GestionJugadoresContext.Provider value={value}>
             {children}
+            {/* Alert de recordatorio para finalizar el encuentro */}
+            {showFinalizarRecordatorio && (
+                <Alert 
+                    variant="warning" 
+                    className="position-fixed top-0 start-50 translate-middle-x mt-3"
+                    style={{ zIndex: 9999, minWidth: '400px', maxWidth: '90%' }}
+                    dismissible
+                    onClose={() => setShowFinalizarRecordatorio(false)}
+                >
+                    <Alert.Heading className="d-flex align-items-center gap-2">
+                        <strong>⚠️ Recordatorio</strong>
+                    </Alert.Heading>
+                    <p className="mb-0">
+                        Recuerda <strong>finalizar</strong> el encuentro al terminar de realizar los cambios.
+                    </p>
+                </Alert>
+            )}
+            {/* Modal de confirmación para cambiar estado de finalizado a en_curso */}
+            <Modal 
+                show={showEstadoFinalizadoModal} 
+                onHide={handleCancelarCambioEstado}
+                centered
+                backdrop="static"
+            >
+                <ModalHeader closeButton>
+                    <ModalTitle>Confirmar Cambio de Estado</ModalTitle>
+                </ModalHeader>
+                <ModalBody>
+                    <p>El encuentro está actualmente <strong>finalizado</strong>. Para realizar cambios, necesitas cambiar el estado a <strong>en curso</strong>.</p>
+                    <p className="mb-0">¿Deseas cambiar el estado a "en curso" y continuar con la modificación?</p>
+                </ModalBody>
+                <ModalFooter>
+                    <Button variant="secondary" onClick={handleCancelarCambioEstado}>
+                        Cancelar
+                    </Button>
+                    <Button variant="primary" onClick={handleConfirmarCambioEstado}>
+                        Sí, cambiar estado y continuar
+                    </Button>
+                </ModalFooter>
+            </Modal>
         </GestionJugadoresContext.Provider>
     )
 }

@@ -240,19 +240,185 @@ export const equipoCategoriaQueries = {
     return nuevoEquipo[0];
   },
 
+  // Obtener jugadores afectados por eliminación de categorías
+  getJugadoresAfectadosPorEliminacionCategoria: async (equipoId: number, categoriaIdsAEliminar: number[]) => {
+    if (categoriaIdsAEliminar.length === 0) {
+      return [];
+    }
+
+    // Obtener los equipo_categoria_id que se van a eliminar
+    const equipoCategoriasAEliminar = await db
+      .select({ 
+        id: equipoCategoria.id,
+        categoria_id: equipoCategoria.categoria_id 
+      })
+      .from(equipoCategoria)
+      .where(
+        and(
+          eq(equipoCategoria.equipo_id, equipoId),
+          inArray(equipoCategoria.categoria_id, categoriaIdsAEliminar)
+        )
+      );
+
+    if (equipoCategoriasAEliminar.length === 0) {
+      return [];
+    }
+
+    const equipoCategoriaIds = equipoCategoriasAEliminar.map(ec => ec.id);
+
+    // Obtener todas las relaciones de jugador_equipo_categoria que se verán afectadas
+    const relacionesAfectadas = await db
+      .select({
+        id: jugadorEquipoCategoria.id,
+        jugador_id: jugadorEquipoCategoria.jugador_id,
+        equipo_categoria_id: jugadorEquipoCategoria.equipo_categoria_id,
+        numero_jugador: jugadorEquipoCategoria.numero_jugador,
+        categoria_id: equipoCategoria.categoria_id,
+      })
+      .from(jugadorEquipoCategoria)
+      .innerJoin(
+        equipoCategoria,
+        eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id)
+      )
+      .where(inArray(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaIds));
+
+    // Obtener información de los jugadores
+    const jugadoresInfo = [];
+    for (const relacion of relacionesAfectadas) {
+      // Buscar jugador por ID o cédula (puede estar guardado de ambas formas)
+      const jugadorPorId = await db
+        .select()
+        .from(jugadores)
+        .where(eq(jugadores.id, relacion.jugador_id))
+        .limit(1);
+
+      let jugador = jugadorPorId[0];
+      
+      // Si no se encuentra por ID, buscar por cédula
+      if (!jugador) {
+        const jugadorPorCedula = await db
+          .select()
+          .from(jugadores)
+          .where(eq(jugadores.cedula, relacion.jugador_id))
+          .limit(1);
+        jugador = jugadorPorCedula[0];
+      }
+
+      if (jugador) {
+        jugadoresInfo.push({
+          relacionId: relacion.id,
+          jugadorId: jugador.id,
+          jugadorCedula: jugador.cedula,
+          jugadorNombre: jugador.apellido_nombre,
+          equipoCategoriaId: relacion.equipo_categoria_id,
+          categoriaId: relacion.categoria_id,
+          numeroJugador: relacion.numero_jugador,
+        });
+      }
+    }
+
+    return jugadoresInfo;
+  },
+
+  // Migrar jugadores manualmente a nuevas categorías
+  migrarJugadoresACategoria: async (
+    equipoId: number,
+    migraciones: Array<{ relacionId: number; nuevaCategoriaId: number }>
+  ) => {
+    for (const migracion of migraciones) {
+      // Obtener la relación actual
+      const relacionActual = await db
+        .select()
+        .from(jugadorEquipoCategoria)
+        .where(eq(jugadorEquipoCategoria.id, migracion.relacionId))
+        .limit(1);
+
+      if (relacionActual.length === 0) {
+        continue; // La relación ya no existe, saltar
+      }
+
+      const relacion = relacionActual[0];
+
+      // Buscar o crear el nuevo equipo_categoria
+      let nuevoEquipoCategoriaId: number;
+      const equipoCategoriaExistente = await db
+        .select({ id: equipoCategoria.id })
+        .from(equipoCategoria)
+        .where(
+          and(
+            eq(equipoCategoria.equipo_id, equipoId),
+            eq(equipoCategoria.categoria_id, migracion.nuevaCategoriaId)
+          )
+        )
+        .limit(1);
+
+      if (equipoCategoriaExistente.length > 0) {
+        nuevoEquipoCategoriaId = equipoCategoriaExistente[0].id;
+      } else {
+        // Crear el nuevo equipo_categoria
+        const [nuevoEquipoCategoria] = await db
+          .insert(equipoCategoria)
+          .values({
+            equipo_id: equipoId,
+            categoria_id: migracion.nuevaCategoriaId
+          })
+          .returning();
+        nuevoEquipoCategoriaId = nuevoEquipoCategoria.id;
+      }
+
+      // Verificar si ya existe una relación con el mismo jugador_id y nuevo equipo_categoria_id
+      const relacionExistente = await db
+        .select()
+        .from(jugadorEquipoCategoria)
+        .where(
+          and(
+            eq(jugadorEquipoCategoria.jugador_id, relacion.jugador_id),
+            eq(jugadorEquipoCategoria.equipo_categoria_id, nuevoEquipoCategoriaId)
+          )
+        )
+        .limit(1);
+
+      if (relacionExistente.length === 0) {
+        // No existe, crear nueva relación
+        await db.insert(jugadorEquipoCategoria).values({
+          jugador_id: relacion.jugador_id,
+          equipo_categoria_id: nuevoEquipoCategoriaId,
+          numero_jugador: relacion.numero_jugador
+        });
+      } else {
+        // Ya existe, actualizar el numero_jugador
+        await db
+          .update(jugadorEquipoCategoria)
+          .set({ numero_jugador: relacion.numero_jugador })
+          .where(
+            and(
+              eq(jugadorEquipoCategoria.jugador_id, relacion.jugador_id),
+              eq(jugadorEquipoCategoria.equipo_categoria_id, nuevoEquipoCategoriaId)
+            )
+          );
+      }
+
+      // Eliminar la relación antigua
+      await db
+        .delete(jugadorEquipoCategoria)
+        .where(eq(jugadorEquipoCategoria.id, migracion.relacionId));
+    }
+  },
+
   // Actualizar categorías de un equipo
   actualizarCategoriasDeEquipo: async (equipoId: number, categoriaIds: number[]) => {
-    // Eliminar todas las categorías actuales
-    
-
+    // 1️⃣ Obtener las categorías actuales con sus IDs de equipo_categoria
     const categoriasActuales = await db
-    .select({ categoria_id: equipoCategoria.categoria_id })
-    .from(equipoCategoria)
-    .where(eq(equipoCategoria.equipo_id, equipoId));
+      .select({ 
+        id: equipoCategoria.id,
+        categoria_id: equipoCategoria.categoria_id 
+      })
+      .from(equipoCategoria)
+      .where(eq(equipoCategoria.equipo_id, equipoId));
 
     const actualesIds = categoriasActuales.map(c => c.categoria_id);
 
-     // 2️⃣ Calcular diferencias
+    // 2️⃣ Calcular diferencias
     const categoriasAInsertar = categoriaIds.filter(
       id => !actualesIds.includes(id)
     );
@@ -261,29 +427,113 @@ export const equipoCategoriaQueries = {
       id => !categoriaIds.includes(id)
     );
 
+    // 3️⃣ Verificar si hay jugadores afectados antes de eliminar categorías
+    if (categoriasAEliminar.length > 0) {
+      // Primero obtener los equipo_categoria_id que se van a eliminar
+      const equipoCategoriasAEliminar = await db
+        .select({ id: equipoCategoria.id })
+        .from(equipoCategoria)
+        .where(
+          and(
+            eq(equipoCategoria.equipo_id, equipoId),
+            inArray(equipoCategoria.categoria_id, categoriasAEliminar)
+          )
+        );
 
-    // 3️⃣ Eliminar solo las que ya no existen
-      if (categoriasAEliminar.length > 0) {
-        await db
-          .delete(equipoCategoria)
-          .where(
-            and(
-              eq(equipoCategoria.equipo_id, equipoId),
-              inArray(equipoCategoria.categoria_id, categoriasAEliminar)
-            )
-          );
+      const equipoCategoriaIdsAEliminar = equipoCategoriasAEliminar.map(ec => ec.id);
+
+      // Verificar directamente si hay relaciones de jugador_equipo_categoria para estos equipo_categoria_id
+      // Esta es la verificación más importante: si no hay relaciones, no hay jugadores afectados
+      const relacionesExistentes = equipoCategoriaIdsAEliminar.length > 0
+        ? await db
+            .select({ id: jugadorEquipoCategoria.id })
+            .from(jugadorEquipoCategoria)
+            .where(inArray(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaIdsAEliminar))
+        : [];
+
+      // Si no hay relaciones existentes, significa que ya fueron migradas o nunca existieron
+      if (relacionesExistentes.length === 0) {
+        // Los jugadores ya fueron migrados o no hay jugadores afectados, continuar sin error
+      } else {
+        // Hay relaciones existentes, obtener información detallada de los jugadores afectados
+        const jugadoresAfectados = await equipoCategoriaQueries.getJugadoresAfectadosPorEliminacionCategoria(
+          equipoId,
+          categoriasAEliminar
+        );
+
+        // Obtener información del equipo
+        const equipo = await db
+          .select()
+          .from(equipos)
+          .where(eq(equipos.id, equipoId))
+          .limit(1);
+
+        // Obtener información de las categorías que se están eliminando
+        const categoriasInfo = await db
+          .select({
+            id: categorias.id,
+            nombre: categorias.nombre
+          })
+          .from(categorias)
+          .where(inArray(categorias.id, categoriasAEliminar));
+
+        // Solo lanzar error si realmente hay jugadores afectados
+        if (jugadoresAfectados.length > 0) {
+          // Crear objeto de error con información detallada
+          const errorData = {
+            equipoId,
+            equipoNombre: equipo[0]?.nombre || 'Equipo desconocido',
+            categoriasAEliminar: categoriasInfo.map(c => ({
+              id: c.id,
+              nombre: c.nombre
+            })),
+            totalJugadoresAfectados: jugadoresAfectados.length,
+            relacionesExistentes: relacionesExistentes.length,
+            jugadoresAfectados,
+            timestamp: new Date().toISOString(),
+            contexto: 'actualizarCategoriasDeEquipo'
+          };
+
+          // Lanzar error especial que el frontend puede capturar
+          throw new Error(`JUGADORES_AFECTADOS:${JSON.stringify(errorData)}`);
+        }
       }
+    }
 
-          // 4️⃣ Insertar solo las nuevas
-      if (categoriasAInsertar.length > 0) {
-        const data = categoriasAInsertar.map(categoriaId => ({
+    // 4️⃣ Eliminar los equipo_categoria que ya no existen (solo si no hay jugadores afectados)
+    if (categoriasAEliminar.length > 0) {
+      await db
+        .delete(equipoCategoria)
+        .where(
+          and(
+            eq(equipoCategoria.equipo_id, equipoId),
+            inArray(equipoCategoria.categoria_id, categoriasAEliminar)
+          )
+        );
+    }
+
+    // 5️⃣ Insertar solo las nuevas categorías
+    if (categoriasAInsertar.length > 0) {
+      // Verificar cuáles no existen ya (por si se crearon durante la migración)
+      const equipoCategoriasExistentes = await db
+        .select({ categoria_id: equipoCategoria.categoria_id })
+        .from(equipoCategoria)
+        .where(eq(equipoCategoria.equipo_id, equipoId));
+
+      const categoriasExistentesIds = equipoCategoriasExistentes.map(ec => ec.categoria_id);
+      const categoriasAInsertarFinales = categoriasAInsertar.filter(
+        id => !categoriasExistentesIds.includes(id)
+      );
+
+      if (categoriasAInsertarFinales.length > 0) {
+        const data = categoriasAInsertarFinales.map(categoriaId => ({
           equipo_id: equipoId,
           categoria_id: categoriaId
         }));
 
         await db.insert(equipoCategoria).values(data);
       }
-
+    }
   }
 };
 
@@ -365,22 +615,85 @@ export const jugadorQueries = {
   },
 
   // Obtener jugadores con relaciones
+  // Retorna un registro por cada relación en jugador_equipo_categoria
+  // Si un jugador tiene 2 relaciones, aparecerá 2 veces en la lista
+  // Si un jugador no tiene relaciones, aparecerá una vez con jugadoresEquipoCategoria vacío
   getAllWithRelations: async () => {
-    return await db.query.jugadores.findMany({
-      with: {
-        jugadoresEquipoCategoria: {
-          with: {
-            equipoCategoria: {
-              with: {
-                equipo: true,
-                categoria: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: [asc(jugadores.apellido_nombre)],
-    });
+    // Obtener todos los jugadores
+    const todosLosJugadores = await db.select().from(jugadores).orderBy(asc(jugadores.apellido_nombre));
+    
+    // Obtener todas las relaciones jugador_equipo_categoria con sus relaciones anidadas
+    const todasLasRelaciones = await db
+      .select({
+        jugadorEquipoCategoria: jugadorEquipoCategoria,
+        equipoCategoria: equipoCategoria,
+        equipo: equipos,
+        categoria: categorias,
+      })
+      .from(jugadorEquipoCategoria)
+      .leftJoin(
+        equipoCategoria,
+        eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id)
+      )
+      .leftJoin(
+        equipos,
+        eq(equipoCategoria.equipo_id, equipos.id)
+      )
+      .leftJoin(
+        categorias,
+        eq(equipoCategoria.categoria_id, categorias.id)
+      );
+
+    // Crear un mapa de cédulas a relaciones para acceso rápido
+    const relacionesPorCedula = new Map<string, any[]>();
+    for (const rel of todasLasRelaciones) {
+      const cedula = rel.jugadorEquipoCategoria.jugador_id;
+      if (!relacionesPorCedula.has(cedula)) {
+        relacionesPorCedula.set(cedula, []);
+      }
+      relacionesPorCedula.get(cedula)!.push({
+        id: rel.jugadorEquipoCategoria.id,
+        jugador_id: rel.jugadorEquipoCategoria.jugador_id,
+        equipo_categoria_id: rel.jugadorEquipoCategoria.equipo_categoria_id,
+        numero_jugador: rel.jugadorEquipoCategoria.numero_jugador,
+        createdAt: rel.jugadorEquipoCategoria.createdAt,
+        updatedAt: rel.jugadorEquipoCategoria.updatedAt,
+        equipoCategoria: rel.equipoCategoria ? {
+          id: rel.equipoCategoria.id,
+          equipo_id: rel.equipoCategoria.equipo_id,
+          categoria_id: rel.equipoCategoria.categoria_id,
+          createdAt: rel.equipoCategoria.createdAt,
+          updatedAt: rel.equipoCategoria.updatedAt,
+          equipo: rel.equipo,
+          categoria: rel.categoria,
+        } : null,
+      });
+    }
+
+    // Construir el resultado: un registro por cada relación, o uno con array vacío si no tiene relaciones
+    const resultados: any[] = [];
+    
+    for (const jugador of todosLosJugadores) {
+      const relacionesDelJugador = relacionesPorCedula.get(jugador.cedula) || [];
+      
+      if (relacionesDelJugador.length > 0) {
+        // Si tiene relaciones, crear un registro por cada relación
+        for (const relacion of relacionesDelJugador) {
+          resultados.push({
+            ...jugador,
+            jugadoresEquipoCategoria: [relacion],
+          });
+        }
+      } else {
+        // Si no tiene relaciones, crear un registro con array vacío
+        resultados.push({
+          ...jugador,
+          jugadoresEquipoCategoria: [],
+        });
+      }
+    }
+
+    return resultados;
   },
 
   // Obtener solo jugadores activos con relaciones (para gestión de encuentros)
@@ -644,10 +957,21 @@ export const jugadorQueries = {
 // ===== JUGADOR_EQUIPO_CATEGORIA =====
 export const jugadorEquipoCategoriaQueries = {
   // Asignar jugador a equipo-categoría
-  asignarJugadorAEquipoCategoria: async (jugadorId: number, equipoCategoriaId: number) => {
+  asignarJugadorAEquipoCategoria: async (jugadorId: number, equipoCategoriaId: number, numeroJugador?: number) => {
+    // Obtener el jugador para obtener su cédula
+    const jugador = await db.select({ cedula: jugadores.cedula })
+      .from(jugadores)
+      .where(eq(jugadores.id, jugadorId.toString()))
+      .limit(1);
+    
+    if (!jugador || jugador.length === 0) {
+      throw new Error('Jugador no encontrado');
+    }
+    
     return await db.insert(jugadorEquipoCategoria).values({
-      jugador_id: jugadorId.toString(),
-      equipo_categoria_id: equipoCategoriaId
+      jugador_id: jugador[0].cedula, // Guardar la cédula, no el ID
+      equipo_categoria_id: equipoCategoriaId,
+      numero_jugador: numeroJugador
     }).returning();
   },
 
@@ -686,16 +1010,21 @@ export const jugadorEquipoCategoriaQueries = {
   },
 
   // Crear jugador con equipos-categorías
-  crearJugadorConEquiposCategorias: async (jugadorData: NewJugador, equipoCategoriaIds: number[]) => {
+  crearJugadorConEquiposCategorias: async (jugadorData: NewJugador, equipoCategoriaIds: number[] | Array<{ equipoCategoriaId: number; numeroJugador?: number }>) => {
     // Crear el jugador
     const nuevoJugador = await db.insert(jugadores).values(jugadorData).returning();
     
     // Asignar equipos-categorías si se proporcionan
     if (equipoCategoriaIds.length > 0) {
-      const relacionesData = equipoCategoriaIds.map(equipoCategoriaId => ({
-        jugador_id: nuevoJugador[0].id,
-        equipo_categoria_id: equipoCategoriaId
-      }));
+      const relacionesData = equipoCategoriaIds.map(item => {
+        const equipoCategoriaId = typeof item === 'number' ? item : item.equipoCategoriaId;
+        const numeroJugador = typeof item === 'number' ? undefined : item.numeroJugador;
+        return {
+          jugador_id: nuevoJugador[0].cedula, // Guardar la cédula, no el ID
+          equipo_categoria_id: equipoCategoriaId,
+          numero_jugador: numeroJugador
+        };
+      });
       
       await db.insert(jugadorEquipoCategoria).values(relacionesData);
     }
@@ -704,41 +1033,95 @@ export const jugadorEquipoCategoriaQueries = {
   },
 
   // Actualizar equipos-categorías de un jugador
-  actualizarEquiposCategoriasDeJugador: async (jugadorId: number, equipoCategoriaIds: number[]) => {
-    // 1️⃣ Obtener las relaciones actuales de la BD (ANTES)
+  actualizarEquiposCategoriasDeJugador: async (jugadorId: number, equipoCategoriaIds: number[] | Array<{ equipoCategoriaId: number; numeroJugador?: number }>) => {
+    // Obtener el jugador para obtener su cédula
+    const jugador = await db.select({ cedula: jugadores.cedula })
+      .from(jugadores)
+      .where(eq(jugadores.id, jugadorId.toString()))
+      .limit(1);
+    
+    if (!jugador || jugador.length === 0) {
+      throw new Error('Jugador no encontrado');
+    }
+    
+    const cedulaJugador = jugador[0].cedula;
+    
+    // Normalizar el array a formato de objetos
+    const relacionesNormalizadas = equipoCategoriaIds.map(item => {
+      if (typeof item === 'number') {
+        return { equipoCategoriaId: item, numeroJugador: undefined };
+      }
+      return item;
+    });
+
+    // 1️⃣ Obtener las relaciones actuales de la BD (ANTES) - buscar por cédula o por ID
     const relacionesActuales = await db
-      .select({ equipo_categoria_id: jugadorEquipoCategoria.equipo_categoria_id })
+      .select({ 
+        equipo_categoria_id: jugadorEquipoCategoria.equipo_categoria_id,
+        numero_jugador: jugadorEquipoCategoria.numero_jugador
+      })
       .from(jugadorEquipoCategoria)
-      .where(eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()));
+      .where(
+        or(
+          eq(jugadorEquipoCategoria.jugador_id, cedulaJugador),
+          eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString())
+        )
+      );
 
     const actualesIds = relacionesActuales.map(r => r.equipo_categoria_id);
+    const nuevosIds = relacionesNormalizadas.map(r => r.equipoCategoriaId);
 
     // 2️⃣ Calcular diferencias
-    const relacionesAInsertar = equipoCategoriaIds.filter(
-      id => !actualesIds.includes(id)
+    const relacionesAInsertar = relacionesNormalizadas.filter(
+      r => !actualesIds.includes(r.equipoCategoriaId)
     );
 
     const relacionesAEliminar = actualesIds.filter(
-      id => !equipoCategoriaIds.includes(id)
+      id => !nuevosIds.includes(id)
     );
 
-    // 3️⃣ Eliminar solo las que ya no existen
+    // 3️⃣ Actualizar relaciones existentes con nuevo numero_jugador si cambió
+    const relacionesAActualizar = relacionesNormalizadas.filter(r => {
+      const relacionActual = relacionesActuales.find(ra => ra.equipo_categoria_id === r.equipoCategoriaId);
+      return relacionActual && relacionActual.numero_jugador !== r.numeroJugador;
+    });
+
+    for (const relacion of relacionesAActualizar) {
+      await db
+        .update(jugadorEquipoCategoria)
+        .set({ numero_jugador: relacion.numeroJugador })
+        .where(
+          and(
+            or(
+              eq(jugadorEquipoCategoria.jugador_id, cedulaJugador),
+              eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString())
+            ),
+            eq(jugadorEquipoCategoria.equipo_categoria_id, relacion.equipoCategoriaId)
+          )
+        );
+    }
+
+    // 4️⃣ Eliminar solo las que ya no existen
     if (relacionesAEliminar.length > 0) {
       await db
         .delete(jugadorEquipoCategoria)
         .where(
           and(
-            eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString()),
+            or(
+              eq(jugadorEquipoCategoria.jugador_id, cedulaJugador),
+              eq(jugadorEquipoCategoria.jugador_id, jugadorId.toString())
+            ),
             inArray(jugadorEquipoCategoria.equipo_categoria_id, relacionesAEliminar)
           )
         );
     }
 
-    // 4️⃣ Insertar solo las nuevas
+    // 5️⃣ Insertar solo las nuevas
     if (relacionesAInsertar.length > 0) {
-      const data = relacionesAInsertar.map(equipoCategoriaId => ({
-        jugador_id: jugadorId.toString(),
-        equipo_categoria_id: equipoCategoriaId
+      const data = relacionesAInsertar.map(r => ({
+        jugador_id: cedulaJugador, // Guardar la cédula, no el ID
+        equipo_categoria_id: r.equipoCategoriaId,
+        numero_jugador: r.numeroJugador
       }));
 
       await db.insert(jugadorEquipoCategoria).values(data);

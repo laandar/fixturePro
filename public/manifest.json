@@ -1,0 +1,28 @@
+{
+  "name": "FixturePro - Sistema de Gestión de Torneos",
+  "short_name": "FixturePro",
+  "description": "Sistema de gestión de torneos de fútbol",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d6efd",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/uploads/campeonato-de-futbol.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/uploads/campeonato-de-futbol.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["sports", "productivity"],
+  "screenshots": [],
+  "prefer_related_applications": false
+}
+

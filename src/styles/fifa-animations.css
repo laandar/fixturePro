@@ -79,6 +79,15 @@
   }
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Clases de animación */
 .animate-float {
   animation: float 6s ease-in-out infinite;
