@@ -118,35 +118,58 @@ export async function generarPDFHojaVocalia(
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 10
   
-  // Cargar imagen de marca de agua
-  let watermarkImg: HTMLImageElement | null = null
+  // Cargar imagen de marca de agua y procesarla con opacidad
+  let watermarkDataUrl: string | null = null
+  let watermarkAspectRatio: number = 1 // Relación de aspecto de la imagen
   try {
-    const watermarkUrl = '/uploads/campeonato-de-futbol.png'
-    watermarkImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => resolve(img)
-      img.onerror = reject
-      img.src = watermarkUrl
-    })
+    // Verificar que estamos en el navegador (document está disponible)
+    if (typeof document !== 'undefined') {
+      const watermarkUrl = '/uploads/campeonato-de-futbol.png'
+      const watermarkImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => resolve(img)
+        img.onerror = reject
+        img.src = watermarkUrl
+      })
+
+      // Guardar relación de aspecto
+      watermarkAspectRatio = watermarkImg.height / watermarkImg.width
+
+      // Crear canvas para aplicar opacidad a la marca de agua
+      const canvas = document.createElement('canvas')
+      canvas.width = watermarkImg.width
+      canvas.height = watermarkImg.height
+      const ctx = canvas.getContext('2d')
+      
+      if (ctx) {
+        // Aplicar opacidad (0.30 = 30% de opacidad para que sea más visible a través del contenido blanco)
+        // La marca de agua se dibuja ANTES del contenido, pero necesita suficiente opacidad para verse
+        ctx.globalAlpha = 0.04
+        ctx.drawImage(watermarkImg, 0, 0, canvas.width, canvas.height)
+        // Convertir canvas a data URL
+        watermarkDataUrl = canvas.toDataURL('image/png')
+      }
+    }
   } catch (error) {
     console.warn('No se pudo cargar la imagen de marca de agua:', error)
   }
   
   // Función para dibujar marca de agua
   const dibujarMarcaDeAgua = () => {
-    if (watermarkImg) {
-      // Calcular tamaño de la marca de agua (aproximadamente 50% del ancho de la página)
-      const watermarkWidth = pageWidth * 0.5
-      const watermarkHeight = (watermarkImg.height / watermarkImg.width) * watermarkWidth
+    if (watermarkDataUrl) {
+      // Calcular tamaño de la marca de agua (aproximadamente 60% del ancho de la página para mejor visibilidad)
+      const watermarkWidth = pageWidth * 0.6
+      // Calcular altura basándose en la relación de aspecto real de la imagen
+      const watermarkHeight = watermarkWidth * watermarkAspectRatio
       
       // Centrar la marca de agua en la página
       const watermarkX = (pageWidth - watermarkWidth) / 2
       const watermarkY = (pageHeight - watermarkHeight) / 2
       
-      // Agregar la imagen de marca de agua
-      // Nota: jsPDF no soporta opacidad directamente, pero la imagen se verá sutilmente detrás del contenido
-      doc.addImage(watermarkImg, 'PNG', watermarkX, watermarkY, watermarkWidth, watermarkHeight, undefined, 'FAST')
+      // Agregar la imagen de marca de agua con opacidad ya aplicada
+      // Usar 'SLOW' para mejor calidad de renderizado
+      doc.addImage(watermarkDataUrl, 'PNG', watermarkX, watermarkY, watermarkWidth, watermarkHeight, undefined, 'SLOW')
     }
   }
   
@@ -159,10 +182,7 @@ export async function generarPDFHojaVocalia(
   const escuelaNombre = configuracion?.nombre || '"LIGA DEPORTIVA BARRIAL ATAHUALPA"'
   const escuelaDireccion = configuracion?.direccion || 'VALLE DE LOS CHILLOS - CHAUPITENA'
   const escuelaTelefono = configuracion?.telefono || 'TELF. 000000'
-  const escuelaEmail = configuracion?.email || 'darwin.sinche@gmail.com'
-
-  // Dibujar marca de agua en la primera página (antes del contenido)
-  dibujarMarcaDeAgua()
+  const escuelaEmail = configuracion?.email || 'ligaatahualpaoficial.com'
 
   let yPos = margin
 
@@ -445,7 +465,7 @@ export async function generarPDFHojaVocalia(
   autoTable(doc, {
     startY: yPos,
     head: [
-      [{ content: equipoLocalNombre, colSpan: 3, styles: { fillColor: colorGrisAzulado, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9, halign: 'center', cellPadding: { top: 3, bottom: 2, left: 2, right: 2 }, lineWidth: 0.1, lineColor: [0, 0, 0] } }, { content: equipoVisitanteNombre, colSpan: 3, styles: { fillColor: colorGrisAzulado, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9, halign: 'center', cellPadding: { top: 3, bottom: 2, left: 2, right: 2 }, lineWidth: 0.1, lineColor: [0, 0, 0] } }],
+      [{ content: `${equipoLocalNombre} vs ${equipoVisitanteNombre}`, colSpan: 6, styles: { fillColor: colorGrisAzulado, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, halign: 'center', cellPadding: { top: 3, bottom: 2, left: 2, right: 2 }, lineWidth: 0.1, lineColor: [0, 0, 0] } }],
       ['#', 'JUGADOR', 'GOL', '#', 'JUGADOR', 'GOL']
     ],
     headStyles: {
@@ -455,10 +475,12 @@ export async function generarPDFHojaVocalia(
       fontSize: 8,
       minCellHeight: 8, // Aumentar altura de la cabecera
       cellPadding: { top: 3, bottom: 3, left: 2, right: 2 },
+      lineWidth: 0, // Sin líneas en la cabecera (igual que cambios)
+      lineColor: [0, 0, 0],
     },
     body: jugadoresDataCombinada,
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 1, lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0], halign: 'left' },
+    styles: { fontSize: 8, cellPadding: 1, lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0], halign: 'left', fillColor: false },
     columnStyles: {
       0: { cellWidth: 10 },
       1: { cellWidth: 70 },
@@ -475,31 +497,28 @@ export async function generarPDFHojaVocalia(
         data.cell.styles.fillColor = false // Desactivar fillColor automático para dibujarlo manualmente
         data.cell.styles.textColor = [255, 255, 255] // Texto blanco
         data.cell.styles.lineWidth = 0 // Sin bordes en los títulos, se dibujan manualmente
+      } else if (data.section === 'head' && data.row.index === 1) {
+        // Quitar todas las líneas de la segunda fila de la cabecera (encabezados de columnas)
+        // Igual que en la tabla de cambios
+        data.cell.styles.lineWidth = { top: 0, bottom: 0, left: 0, right: 0 }
+        data.cell.styles.lineColor = [0, 0, 0]
       } else {
         // Asegurar bordes en todas las demás celdas (excepto bordes exteriores)
-        const isFirstRow = data.section === 'head' && data.row.index === 1
         const isLastRow = data.section === 'body' && data.row.index === jugadoresDataCombinada.length - 1
         const isFirstCol = data.column.index === 0
         const isLastCol = data.column.index === 5
         
-        // Configurar bordes: quitar bordes exteriores, mantener internos
+        // Configurar bordes: quitar bordes exteriores y la línea de separación en el medio
         const lineWidth: any = { top: 0.1, bottom: 0.1, left: 0.1, right: 0.1 }
-        if (isFirstRow) lineWidth.top = 0
         if (isLastRow) lineWidth.bottom = 0 // Quitar borde inferior de la última fila
         if (isFirstCol) lineWidth.left = 0
         if (isLastCol) lineWidth.right = 0
+        // Quitar línea vertical en la separación entre equipos (columna 2 derecha y columna 3 izquierda)
+        if (data.column.index === 2) lineWidth.right = 0 // Sin borde derecho en la última columna del equipo local
+        if (data.column.index === 3) lineWidth.left = 0 // Sin borde izquierdo en la primera columna del equipo visitante
         
         data.cell.styles.lineWidth = lineWidth
         data.cell.styles.lineColor = [0, 0, 0]
-        
-        // Agregar línea vertical más gruesa en el medio para separar los equipos
-        if (data.column.index === 2) {
-          data.cell.styles.lineWidth = { top: lineWidth.top, bottom: lineWidth.bottom, left: 0.1, right: 0.2 }
-          data.cell.styles.lineColor = [0, 0, 0]
-        } else if (data.column.index === 3) {
-          data.cell.styles.lineWidth = { top: lineWidth.top, bottom: lineWidth.bottom, left: 0.2, right: 0.1 }
-          data.cell.styles.lineColor = [0, 0, 0]
-        }
         
         // Aplicar color de fondo sutil para jugadores juveniles
         if (data.section === 'body') {
@@ -543,19 +562,45 @@ export async function generarPDFHojaVocalia(
         doc.setLineWidth(savedLineWidth)
       }
     },
+    willDrawPage: (data: any) => {
+      // Dibujar marca de agua ANTES de que se dibuje cada página de la tabla
+      // Esto asegura que la marca de agua esté detrás del contenido
+      dibujarMarcaDeAgua()
+    },
   })
 
   // Obtener la posición Y después de las tablas
   const finalY = (doc as any).lastAutoTable.finalY || yPos + 50
   const tableStartY = (doc as any).lastAutoTable.startY || yPos
   
-  // Dibujar borde exterior redondeado alrededor de la tabla de jugadores
+  // Dibujar borde exterior alrededor de la tabla de jugadores
+  // Solo redondeo en los bordes superiores (top)
   const tableHeight = finalY - tableStartY
+  const tableWidth = pageWidth - (2 * margin)
   const radius = 3 // Radio de redondeo
   const savedLineWidth = doc.getLineWidth()
   doc.setLineWidth(0.1)
   doc.setDrawColor(0, 0, 0)
-  doc.roundedRect(margin, tableStartY, pageWidth - (2 * margin), tableHeight, radius, radius)
+  
+  // Dibujar borde manualmente con redondeo solo en esquinas superiores
+  // Línea superior (desde después de la esquina izquierda hasta antes de la esquina derecha)
+  doc.line(margin + radius, tableStartY, pageWidth - margin - radius, tableStartY)
+  
+  // Esquina superior izquierda redondeada (usando roundedRect solo para el arco)
+  doc.roundedRect(margin, tableStartY, radius * 2, radius * 2, radius, 0, 'S')
+  
+  // Esquina superior derecha redondeada (usando roundedRect solo para el arco)
+  doc.roundedRect(pageWidth - margin - radius * 2, tableStartY, radius * 2, radius * 2, radius, 0, 'S')
+  
+  // Línea izquierda (recta, desde después del redondeo hasta el fondo)
+  doc.line(margin, tableStartY + radius, margin, finalY)
+  
+  // Línea derecha (recta, desde después del redondeo hasta el fondo)
+  doc.line(pageWidth - margin, tableStartY + radius, pageWidth - margin, finalY)
+  
+  // Línea inferior (recta)
+  doc.line(margin, finalY, pageWidth - margin, finalY)
+  
   doc.setLineWidth(savedLineWidth)
   
   yPos = finalY + 3
@@ -639,7 +684,7 @@ export async function generarPDFHojaVocalia(
     },
     body: cambiosDataCombinada,
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 1, lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0] },
+    styles: { fontSize: 8, cellPadding: 1, lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0], fillColor: false },
     columnStyles: {
       0: { cellWidth: 10 },  // #
       1: { cellWidth: 65 },  // JUGADOR
@@ -655,9 +700,11 @@ export async function generarPDFHojaVocalia(
     didParseCell: (data: any) => {
       // Asegurar que el título se vea correctamente
       if (data.section === 'head' && data.row.index === 0) {
-        data.cell.styles.fillColor = false // Desactivar fillColor automático para dibujarlo manualmente
-        data.cell.styles.textColor = [255, 255, 255] // Texto blanco
-        data.cell.styles.lineWidth = 0 // Sin bordes en los títulos, se dibujan manualmente
+        // Evitar que autoTable dibuje fondo o bordes
+        data.cell.styles.fillColor = [255, 255, 255]
+        data.cell.styles.textColor = [255, 255, 255]
+        data.cell.styles.lineWidth = 0
+        data.cell.styles.cellPadding = 0
       } else {
         // Asegurar bordes en todas las demás celdas (excepto bordes exteriores)
         const isFirstRow = data.section === 'head' && data.row.index === 1
@@ -712,6 +759,10 @@ export async function generarPDFHojaVocalia(
         }
         doc.setLineWidth(savedLineWidthCambios)
       }
+    },
+    willDrawPage: (data: any) => {
+      // Dibujar marca de agua ANTES de que se dibuje cada página de la tabla
+      dibujarMarcaDeAgua()
     },
   })
 
@@ -869,7 +920,7 @@ export async function generarPDFHojaVocalia(
     },
     body: tarjetasDataCombinada,
     theme: 'grid',
-    styles: { fontSize: 7, cellPadding: 2, lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0] },
+    styles: { fontSize: 7, cellPadding: 2, lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0], fillColor: false },
     columnStyles: {
       0: { cellWidth: (pageWidth - (2 * margin)) / 2 },
       1: { cellWidth: (pageWidth - (2 * margin)) / 2 },
@@ -879,9 +930,11 @@ export async function generarPDFHojaVocalia(
     didParseCell: (data: any) => {
       // Asegurar que el título se vea correctamente
       if (data.section === 'head' && data.row.index === 0) {
-        data.cell.styles.fillColor = false // Desactivar fillColor automático para dibujarlo manualmente
-        data.cell.styles.textColor = [255, 255, 255] // Texto blanco
-        data.cell.styles.lineWidth = 0 // Sin bordes en los títulos, se dibujan manualmente
+        // Evitar que autoTable dibuje fondo o bordes
+        data.cell.styles.fillColor = [255, 255, 255]
+        data.cell.styles.textColor = [255, 255, 255]
+        data.cell.styles.lineWidth = 0
+        data.cell.styles.cellPadding = 0
       } else {
         // Asegurar bordes en todas las demás celdas (excepto bordes exteriores)
         const isFirstRow = data.section === 'head' && data.row.index === 1
@@ -948,6 +1001,10 @@ export async function generarPDFHojaVocalia(
         }
         doc.setLineWidth(savedLineWidthTarjetas)
       }
+    },
+    willDrawPage: (data: any) => {
+      // Dibujar marca de agua ANTES de que se dibuje cada página de la tabla
+      dibujarMarcaDeAgua()
     },
   })
 
