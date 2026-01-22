@@ -268,26 +268,6 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                 </FloatingLabel>
               </Col>
               <Col md={4}>
-                <FloatingLabel label="Nombre Calificación">
-                  <FormControl
-                    type="text"
-                    placeholder="Nombre Calificación"
-                    value={createFormData.nombre_calificacion}
-                    onChange={(e) => setCreateFormData({ ...createFormData, nombre_calificacion: e.target.value })}
-                  />
-                </FloatingLabel>
-              </Col>
-              <Col md={4}>
-                <FloatingLabel label="Disciplina">
-                  <FormControl
-                    type="text"
-                    placeholder="Disciplina"
-                    value={createFormData.disciplina}
-                    onChange={(e) => setCreateFormData({ ...createFormData, disciplina: e.target.value })}
-                  />
-                </FloatingLabel>
-              </Col>
-              <Col md={4}>
                 <FloatingLabel label="Fecha Calificación">
                   <FormControl
                     type="date"
@@ -330,8 +310,6 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                 <th>Liga</th>
                 <th>Equipo</th>
                 <th>Número</th>
-                <th>Nombre Calificación</th>
-                <th>Disciplina</th>
                 <th>Fecha Calificación</th>
                 <th style={{ width: '120px' }}>Acciones</th>
               </tr>
@@ -339,14 +317,14 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
             <tbody>
               {loading && historial.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-4">
+                  <td colSpan={5} className="text-center py-4">
                     <Spinner animation="border" size="sm" className="me-2" />
                     Cargando...
                   </td>
                 </tr>
               ) : historial.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-4 text-muted">
+                  <td colSpan={5} className="text-center py-4 text-muted">
                     No hay registros en el historial
                   </td>
                 </tr>
@@ -377,22 +355,6 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                             size="sm"
                             value={editFormData.numero}
                             onChange={(e) => setEditFormData({ ...editFormData, numero: e.target.value })}
-                          />
-                        </td>
-                        <td>
-                          <FormControl
-                            type="text"
-                            size="sm"
-                            value={editFormData.nombre_calificacion}
-                            onChange={(e) => setEditFormData({ ...editFormData, nombre_calificacion: e.target.value })}
-                          />
-                        </td>
-                        <td>
-                          <FormControl
-                            type="text"
-                            size="sm"
-                            value={editFormData.disciplina}
-                            onChange={(e) => setEditFormData({ ...editFormData, disciplina: e.target.value })}
                           />
                         </td>
                         <td>
@@ -433,8 +395,6 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                         <td>{registro.liga}</td>
                         <td>{registro.equipo || '-'}</td>
                         <td>{registro.numero || '-'}</td>
-                        <td>{registro.nombre_calificacion || '-'}</td>
-                        <td>{registro.disciplina || '-'}</td>
                         <td>
                           {registro.fecha_calificacion
                             ? new Date(registro.fecha_calificacion).toLocaleDateString('es-ES')

@@ -76,6 +76,7 @@ export const jugadorEquipoCategoria = pgTable('jugador_equipo_categoria', {
   jugador_id: varchar('jugador_id', { length: 255 }).notNull(), // Almacena la cédula del jugador
   equipo_categoria_id: integer('equipo_categoria_id').references(() => equipoCategoria.id).notNull(),
   numero_jugador: integer('numero_jugador'), // Número de camiseta del jugador en este equipo-categoría
+  situacion_jugador: text('situacion_jugador'), // Situación del jugador: PASE o PRESTAMO
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({

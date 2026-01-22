@@ -65,9 +65,50 @@ function cargarImagen(url: string): Promise<HTMLImageElement> {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
-    img.onerror = (error) => reject(error)
+    img.onerror = () => {
+      reject(new Error(`No se pudo cargar la imagen: ${url}`))
+    }
     img.src = url
   })
+}
+
+/**
+ * Tamaño de referencia de la plantilla (713x455)
+ * Todas las posiciones y tamaños se calculan proporcionalmente a este tamaño
+ */
+const PLANTILLA_REFERENCIA = {
+  width: 713,
+  height: 455
+}
+
+/**
+ * Calcula un valor proporcional basado en el tamaño de la plantilla actual
+ * @param valorReferencia Valor en la plantilla de referencia
+ * @param dimensionReferencia Dimension de referencia (width o height)
+ * @param dimensionActual Dimension actual de la plantilla
+ * @returns Valor proporcional ajustado
+ */
+function calcularProporcion(
+  valorReferencia: number,
+  dimensionReferencia: number,
+  dimensionActual: number
+): number {
+  return (valorReferencia / dimensionReferencia) * dimensionActual
+}
+
+/**
+ * Calcula el tamaño de fuente proporcional
+ * @param fontSizeReferencia Tamaño de fuente en la plantilla de referencia (ej: 32)
+ * @param widthReferencia Ancho de referencia
+ * @param widthActual Ancho actual
+ * @returns Tamaño de fuente ajustado
+ */
+function calcularTamañoFuente(
+  fontSizeReferencia: number,
+  widthReferencia: number,
+  widthActual: number
+): number {
+  return Math.round((fontSizeReferencia / widthReferencia) * widthActual)
 }
 
 /**
@@ -78,9 +119,19 @@ export async function generarCarnetJugador(jugador: JugadorWithEquipo): Promise<
     // Obtener categoría del jugador
     const categoria = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
     
-    // Usar imágenes de la categoría si existen, si no usar las por defecto
-    const imagenFrontalUrl = categoria?.imagen_carnet_frontal || '/carnets/m1.png'
-    const imagenTraseraUrl = categoria?.imagen_carnet_trasera || '/carnets/m2.jpg'
+    // Verificar que la categoría tenga imágenes configuradas
+    if (!categoria) {
+      throw new Error('El jugador no tiene una categoría asignada')
+    }
+    
+    if (!categoria.imagen_carnet_frontal || !categoria.imagen_carnet_trasera) {
+      const nombreCategoria = categoria.nombre || 'sin nombre'
+      throw new Error(`La categoría "${nombreCategoria}" no tiene imágenes de carnet configuradas. Por favor, configure las imágenes frontal y trasera en la configuración de categorías.`)
+    }
+    
+    // Usar las imágenes de la categoría del jugador
+    const imagenFrontalUrl = categoria.imagen_carnet_frontal
+    const imagenTraseraUrl = categoria.imagen_carnet_trasera
     
     // Cargar las plantillas
     const [plantillaFrontal, plantillaTrasera] = await Promise.all([
@@ -143,6 +194,12 @@ export async function generarCarnetJugador(jugador: JugadorWithEquipo): Promise<
       throw new Error('No se pudo obtener el contexto del canvas')
     }
 
+    // Calcular factores de proporción basados en el tamaño real de la plantilla
+    const factorAncho = canvasFrontal.width / PLANTILLA_REFERENCIA.width
+    const factorAlto = canvasFrontal.height / PLANTILLA_REFERENCIA.height
+    // Usar el factor promedio para mantener la proporción general
+    const factorProporcion = (factorAncho + factorAlto) / 2
+
     // Dibujar plantilla frontal
     ctxFrontal.drawImage(plantillaFrontal, 0, 0)
     
@@ -151,63 +208,76 @@ export async function generarCarnetJugador(jugador: JugadorWithEquipo): Promise<
     ctxFrontal.textAlign = 'left'
     ctxFrontal.textBaseline = 'top'
     
-    // Función auxiliar para dibujar texto con sombra
-    const dibujarTextoConSombra = (texto: string, x: number, y: number, color: string, fontSize: string, align: 'left' | 'center' | 'right' = 'left') => {
+    // Función auxiliar para dibujar texto con sombra (con tamaños proporcionales)
+    const dibujarTextoConSombra = (texto: string, x: number, y: number, color: string, fontSizePx: number, align: 'left' | 'center' | 'right' = 'left') => {
       ctxFrontal.textAlign = align
       ctxFrontal.textBaseline = 'top'
-      ctxFrontal.font = fontSize
+      const fontSizeAjustado = calcularTamañoFuente(fontSizePx, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      ctxFrontal.font = `bold ${fontSizeAjustado}px Arial`
+      const offsetSombra = Math.max(1, Math.round(2 * factorProporcion))
       // Sombra del texto
       ctxFrontal.fillStyle = 'rgba(0, 0, 0, 0.3)'
-      ctxFrontal.fillText(texto, x + 2, y + 2)
+      ctxFrontal.fillText(texto, x + offsetSombra, y + offsetSombra)
       // Texto principal
       ctxFrontal.fillStyle = color
       ctxFrontal.fillText(texto, x, y)
     }
     
+    // Calcular posiciones proporcionales (valores de referencia basados en 713x455)
+    const xInicio = calcularProporcion(50, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const yEquipo = calcularProporcion(120, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    const yApellidos = calcularProporcion(175, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    const yNombres = calcularProporcion(210, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    const yFechaNac = calcularProporcion(245, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    const yCedula = calcularProporcion(275, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    const yFechaActual = canvasFrontal.height - calcularProporcion(80, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    
     // Dibujar nombre del equipo (en negritas, más grande y en azul con sombra)
-    dibujarTextoConSombra(nombreEquipo.toUpperCase(), 50, 120, '#0000FF', 'bold 32px Arial', 'left')
+    dibujarTextoConSombra(nombreEquipo.toUpperCase(), xInicio, yEquipo, '#0000FF', 32, 'left')
     
     // Dibujar apellidos (con salto después del nombre del equipo y sombra)
-    dibujarTextoConSombra(apellidos, 50, 175, '#000000', 'bold 26px Arial', 'left')
+    dibujarTextoConSombra(apellidos, xInicio, yApellidos, '#000000', 26, 'left')
     
     // Dibujar nombres (con sombra)
-    dibujarTextoConSombra(nombres, 50, 210, '#000000', 'bold 26px Arial', 'left')
+    dibujarTextoConSombra(nombres, xInicio, yNombres, '#000000', 26, 'left')
     
     // Dibujar fecha de nacimiento (con sombra)
-    dibujarTextoConSombra(fechaNacimiento, 50, 245, '#000000', 'bold 22px Arial', 'left')
+    dibujarTextoConSombra(fechaNacimiento, xInicio, yFechaNac, '#000000', 22, 'left')
     
     // Dibujar cédula (con sombra)
-    dibujarTextoConSombra(jugador.cedula || '', 50, 275, '#000000', 'bold 22px Arial', 'left')
+    dibujarTextoConSombra(jugador.cedula || '', xInicio, yCedula, '#000000', 22, 'left')
     
     // Dibujar fecha actual (con sombra)
-    dibujarTextoConSombra(fechaActual, 50, canvasFrontal.height - 80, '#000000', 'bold 16px Arial', 'left')
+    dibujarTextoConSombra(fechaActual, xInicio, yFechaActual, '#000000', 16, 'left')
     
     // Restaurar valores por defecto
     ctxFrontal.fillStyle = '#000000'
     ctxFrontal.textAlign = 'left'
     
-    // Definir posición de la foto primero (necesario para calcular posición de categoría y número)
-    const fotoWidth = 220
-    const fotoHeight = 250
-    const fotoX = canvasFrontal.width - 240  // Movido más a la izquierda para compensar el ancho aumentado
-    const fotoY = 130
+    // Definir posición de la foto primero (valores de referencia basados en 713x455)
+    const fotoWidth = calcularProporcion(220, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const fotoHeight = calcularProporcion(250, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+    const fotoX = canvasFrontal.width - calcularProporcion(240, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const fotoY = calcularProporcion(130, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
     
     // Dibujar categoría (MASTER en azul) - centrada sobre la imagen con sombra
     const categoriaX = fotoX + (fotoWidth / 2)  // Centro horizontal de la imagen
-    const categoriaY = fotoY - 35  // Justo arriba de la imagen
-    dibujarTextoConSombra(categoriaNombre, categoriaX, categoriaY, '#0000FF', 'bold 28px Arial', 'center')
+    const categoriaY = fotoY - calcularProporcion(35, PLANTILLA_REFERENCIA.height, canvasFrontal.height)  // Justo arriba de la imagen
+    dibujarTextoConSombra(categoriaNombre, categoriaX, categoriaY, '#0000FF', 28, 'center')
     ctxFrontal.textAlign = 'left'  // Volver a alineación izquierda para el resto
     
     // Dibujar número de jugador (rojo, grande) - A LA IZQUIERDA de la foto con sombra
     ctxFrontal.textAlign = 'center'
     ctxFrontal.textBaseline = 'middle'
     // Posicionar el número a la izquierda de la foto, centrado verticalmente con la foto
-    const numeroX = fotoX - 90  // Movido más a la izquierda para compensar
+    const numeroX = fotoX - calcularProporcion(90, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
     const numeroY = fotoY + (fotoHeight / 2)  // Centrado verticalmente con la foto
+    const fontSizeNumero = calcularTamañoFuente(96, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const offsetSombraNumero = Math.max(1, Math.round(3 * factorProporcion))
     // Sombra del número
     ctxFrontal.fillStyle = 'rgba(0, 0, 0, 0.4)'
-    ctxFrontal.font = 'bold 96px Arial'
-    ctxFrontal.fillText(numeroFormateado, numeroX + 3, numeroY + 3)
+    ctxFrontal.font = `bold ${fontSizeNumero}px Arial`
+    ctxFrontal.fillText(numeroFormateado, numeroX + offsetSombraNumero, numeroY + offsetSombraNumero)
     // Número principal
     ctxFrontal.fillStyle = '#CC0000'  // Rojo más oscuro para mejor contraste
     ctxFrontal.fillText(numeroFormateado, numeroX, numeroY)
@@ -218,31 +288,37 @@ export async function generarCarnetJugador(jugador: JugadorWithEquipo): Promise<
     // Dibujar foto del jugador (ajustar posición según la plantilla)
     // Redimensionar foto a tamaño apropiado
     
-    // Crear un canvas temporal para la foto con marco y sombra
+    // Crear un canvas temporal para la foto con marco y sombra (tamaños proporcionales)
+    const marcoExtra = calcularProporcion(10, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const offsetMarco = calcularProporcion(5, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const offsetSombraMarco = calcularProporcion(8, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    const grosorMarco = Math.max(1, Math.round(calcularProporcion(3, PLANTILLA_REFERENCIA.width, canvasFrontal.width)))
+    const offsetFoto = calcularProporcion(7, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+    
     const fotoCanvas = document.createElement('canvas')
-    fotoCanvas.width = fotoWidth + 10  // Espacio extra para sombra y marco
-    fotoCanvas.height = fotoHeight + 10
+    fotoCanvas.width = fotoWidth + marcoExtra
+    fotoCanvas.height = fotoHeight + marcoExtra
     const fotoCtx = fotoCanvas.getContext('2d')
     
     if (fotoCtx) {
       // Dibujar sombra de la foto
       fotoCtx.fillStyle = 'rgba(0, 0, 0, 0.3)'
-      fotoCtx.fillRect(8, 8, fotoWidth + 4, fotoHeight + 4)
+      fotoCtx.fillRect(offsetSombraMarco, offsetSombraMarco, fotoWidth + 4, fotoHeight + 4)
       
       // Dibujar marco blanco alrededor de la foto
       fotoCtx.fillStyle = '#FFFFFF'
-      fotoCtx.fillRect(5, 5, fotoWidth + 4, fotoHeight + 4)
+      fotoCtx.fillRect(offsetMarco, offsetMarco, fotoWidth + 4, fotoHeight + 4)
       
       // Dibujar marco gris oscuro (borde)
       fotoCtx.strokeStyle = '#333333'
-      fotoCtx.lineWidth = 3
-      fotoCtx.strokeRect(5, 5, fotoWidth + 4, fotoHeight + 4)
+      fotoCtx.lineWidth = grosorMarco
+      fotoCtx.strokeRect(offsetMarco, offsetMarco, fotoWidth + 4, fotoHeight + 4)
       
       // Dibujar foto redimensionada (con margen para el marco)
-      fotoCtx.drawImage(fotoJugador, 7, 7, fotoWidth, fotoHeight)
+      fotoCtx.drawImage(fotoJugador, offsetFoto, offsetFoto, fotoWidth, fotoHeight)
       
       // Dibujar el canvas de la foto en el canvas principal (ajustando posición para la sombra)
-      ctxFrontal.drawImage(fotoCanvas, fotoX - 5, fotoY - 5)
+      ctxFrontal.drawImage(fotoCanvas, fotoX - offsetMarco, fotoY - offsetMarco)
     }
 
     // Crear canvas para el carnet trasero
@@ -364,19 +440,33 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
     const carnetsFrontales: string[] = []
     const carnetsTraseros: string[] = []
 
-    for (const jugador of jugadores) {
-      // Obtener categoría del jugador
-      const categoria = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
-      
-      // Usar imágenes de la categoría si existen, si no usar las por defecto
-      const imagenFrontalUrl = categoria?.imagen_carnet_frontal || '/carnets/m1.png'
-      const imagenTraseraUrl = categoria?.imagen_carnet_trasera || '/carnets/m2.jpg'
-      
-      // Cargar las plantillas
-      const [plantillaFrontal, plantillaTrasera] = await Promise.all([
-        cargarImagen(imagenFrontalUrl),
-        cargarImagen(imagenTraseraUrl)
-      ])
+    const errores: string[] = []
+
+    for (let i = 0; i < jugadores.length; i++) {
+      const jugador = jugadores[i]
+      try {
+        // Obtener categoría del jugador
+        const categoria = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
+        
+        // Verificar que la categoría tenga imágenes configuradas
+        if (!categoria) {
+          throw new Error('El jugador no tiene una categoría asignada')
+        }
+        
+        if (!categoria.imagen_carnet_frontal || !categoria.imagen_carnet_trasera) {
+          const nombreCategoria = categoria.nombre || 'sin nombre'
+          throw new Error(`La categoría "${nombreCategoria}" no tiene imágenes de carnet configuradas. Por favor, configure las imágenes frontal y trasera en la configuración de categorías.`)
+        }
+        
+        // Usar las imágenes de la categoría del jugador
+        const imagenFrontalUrl = categoria.imagen_carnet_frontal
+        const imagenTraseraUrl = categoria.imagen_carnet_trasera
+        
+        // Cargar las plantillas
+        const [plantillaFrontal, plantillaTrasera] = await Promise.all([
+          cargarImagen(imagenFrontalUrl),
+          cargarImagen(imagenTraseraUrl)
+        ])
 
       // Obtener foto del jugador
       const fotoJugadorUrl = jugador.foto || getTempPlayerImage(jugador.id)
@@ -432,6 +522,12 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
         throw new Error('No se pudo obtener el contexto del canvas')
       }
 
+      // Calcular factores de proporción basados en el tamaño real de la plantilla
+      const factorAncho = canvasFrontal.width / PLANTILLA_REFERENCIA.width
+      const factorAlto = canvasFrontal.height / PLANTILLA_REFERENCIA.height
+      // Usar el factor promedio para mantener la proporción general
+      const factorProporcion = (factorAncho + factorAlto) / 2
+
       // Dibujar plantilla frontal
       ctxFrontal.drawImage(plantillaFrontal, 0, 0)
       
@@ -440,81 +536,105 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
       ctxFrontal.textAlign = 'left'
       ctxFrontal.textBaseline = 'top'
       
-      // Función auxiliar para dibujar texto con sombra
-      const dibujarTextoConSombra = (texto: string, x: number, y: number, color: string, fontSize: string, align: 'left' | 'center' | 'right' = 'left') => {
+      // Función auxiliar para dibujar texto con sombra (con tamaños proporcionales)
+      const dibujarTextoConSombra = (texto: string, x: number, y: number, color: string, fontSizePx: number, align: 'left' | 'center' | 'right' = 'left') => {
         ctxFrontal.textAlign = align
         ctxFrontal.textBaseline = 'top'
-        ctxFrontal.font = fontSize
+        const fontSizeAjustado = calcularTamañoFuente(fontSizePx, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+        ctxFrontal.font = `bold ${fontSizeAjustado}px Arial`
+        const offsetSombra = Math.max(1, Math.round(2 * factorProporcion))
+        // Sombra del texto
         ctxFrontal.fillStyle = 'rgba(0, 0, 0, 0.3)'
-        ctxFrontal.fillText(texto, x + 2, y + 2)
+        ctxFrontal.fillText(texto, x + offsetSombra, y + offsetSombra)
+        // Texto principal
         ctxFrontal.fillStyle = color
         ctxFrontal.fillText(texto, x, y)
       }
       
+      // Calcular posiciones proporcionales (valores de referencia basados en 713x455)
+      const xInicio = calcularProporcion(50, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const yEquipo = calcularProporcion(120, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const yApellidos = calcularProporcion(175, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const yNombres = calcularProporcion(210, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const yFechaNac = calcularProporcion(245, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const yCedula = calcularProporcion(275, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const yFechaActual = canvasFrontal.height - calcularProporcion(80, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      
       // Dibujar nombre del equipo (en negritas, más grande y en azul con sombra)
-      dibujarTextoConSombra(nombreEquipo.toUpperCase(), 50, 120, '#0000FF', 'bold 32px Arial', 'left')
+      dibujarTextoConSombra(nombreEquipo.toUpperCase(), xInicio, yEquipo, '#0000FF', 32, 'left')
       
       // Dibujar apellidos (con salto después del nombre del equipo y sombra)
-      dibujarTextoConSombra(apellidos, 50, 175, '#000000', 'bold 26px Arial', 'left')
+      dibujarTextoConSombra(apellidos, xInicio, yApellidos, '#000000', 26, 'left')
       
       // Dibujar nombres (con sombra)
-      dibujarTextoConSombra(nombres, 50, 210, '#000000', 'bold 26px Arial', 'left')
+      dibujarTextoConSombra(nombres, xInicio, yNombres, '#000000', 26, 'left')
       
       // Dibujar fecha de nacimiento (con sombra)
-      dibujarTextoConSombra(fechaNacimiento, 50, 245, '#000000', 'bold 22px Arial', 'left')
+      dibujarTextoConSombra(fechaNacimiento, xInicio, yFechaNac, '#000000', 22, 'left')
       
       // Dibujar cédula (con sombra)
-      dibujarTextoConSombra(jugador.cedula || '', 50, 275, '#000000', 'bold 22px Arial', 'left')
+      dibujarTextoConSombra(jugador.cedula || '', xInicio, yCedula, '#000000', 22, 'left')
       
       // Dibujar fecha actual (con sombra)
-      dibujarTextoConSombra(fechaActual, 50, canvasFrontal.height - 80, '#000000', 'bold 16px Arial', 'left')
+      dibujarTextoConSombra(fechaActual, xInicio, yFechaActual, '#000000', 16, 'left')
       
       // Restaurar valores por defecto
       ctxFrontal.fillStyle = '#000000'
       ctxFrontal.textAlign = 'left'
       
-      // Definir posición de la foto primero (necesario para calcular posición de categoría y número)
-      const fotoWidth = 220
-      const fotoHeight = 250
-      const fotoX = canvasFrontal.width - 240
-      const fotoY = 130
+      // Definir posición de la foto primero (valores de referencia basados en 713x455)
+      const fotoWidth = calcularProporcion(220, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const fotoHeight = calcularProporcion(250, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const fotoX = canvasFrontal.width - calcularProporcion(240, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const fotoY = calcularProporcion(130, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
       
       // Dibujar categoría (MASTER en azul) - centrada sobre la imagen con sombra
-      const categoriaX = fotoX + (fotoWidth / 2)
-      const categoriaY = fotoY - 35
-      dibujarTextoConSombra(categoriaNombre, categoriaX, categoriaY, '#0000FF', 'bold 28px Arial', 'center')
-      ctxFrontal.textAlign = 'left'
+      const categoriaX = fotoX + (fotoWidth / 2)  // Centro horizontal de la imagen
+      const categoriaY = fotoY - calcularProporcion(35, PLANTILLA_REFERENCIA.height, canvasFrontal.height)  // Justo arriba de la imagen
+      dibujarTextoConSombra(categoriaNombre, categoriaX, categoriaY, '#0000FF', 28, 'center')
+      ctxFrontal.textAlign = 'left'  // Volver a alineación izquierda para el resto
       
       // Dibujar número de jugador (rojo, grande) - A LA IZQUIERDA de la foto con sombra
       ctxFrontal.textAlign = 'center'
       ctxFrontal.textBaseline = 'middle'
-      const numeroX = fotoX - 90
-      const numeroY = fotoY + (fotoHeight / 2)
+      // Posicionar el número a la izquierda de la foto, centrado verticalmente con la foto
+      const numeroX = fotoX - calcularProporcion(90, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const numeroY = fotoY + (fotoHeight / 2)  // Centrado verticalmente con la foto
+      const fontSizeNumero = calcularTamañoFuente(96, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const offsetSombraNumero = Math.max(1, Math.round(3 * factorProporcion))
+      // Sombra del número
       ctxFrontal.fillStyle = 'rgba(0, 0, 0, 0.4)'
-      ctxFrontal.font = 'bold 96px Arial'
-      ctxFrontal.fillText(numeroFormateado, numeroX + 3, numeroY + 3)
-      ctxFrontal.fillStyle = '#CC0000'
+      ctxFrontal.font = `bold ${fontSizeNumero}px Arial`
+      ctxFrontal.fillText(numeroFormateado, numeroX + offsetSombraNumero, numeroY + offsetSombraNumero)
+      // Número principal
+      ctxFrontal.fillStyle = '#CC0000'  // Rojo más oscuro para mejor contraste
       ctxFrontal.fillText(numeroFormateado, numeroX, numeroY)
       ctxFrontal.fillStyle = '#000000'
       ctxFrontal.textAlign = 'left'
       ctxFrontal.textBaseline = 'top'
       
-      // Dibujar foto del jugador con marco y sombra
+      // Dibujar foto del jugador con marco y sombra (tamaños proporcionales)
+      const marcoExtra = calcularProporcion(10, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const offsetMarco = calcularProporcion(5, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const offsetSombraMarco = calcularProporcion(8, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      const grosorMarco = Math.max(1, Math.round(calcularProporcion(3, PLANTILLA_REFERENCIA.width, canvasFrontal.width)))
+      const offsetFoto = calcularProporcion(7, PLANTILLA_REFERENCIA.width, canvasFrontal.width)
+      
       const fotoCanvas = document.createElement('canvas')
-      fotoCanvas.width = fotoWidth + 10
-      fotoCanvas.height = fotoHeight + 10
+      fotoCanvas.width = fotoWidth + marcoExtra
+      fotoCanvas.height = fotoHeight + marcoExtra
       const fotoCtx = fotoCanvas.getContext('2d')
       
       if (fotoCtx) {
         fotoCtx.fillStyle = 'rgba(0, 0, 0, 0.3)'
-        fotoCtx.fillRect(8, 8, fotoWidth + 4, fotoHeight + 4)
+        fotoCtx.fillRect(offsetSombraMarco, offsetSombraMarco, fotoWidth + 4, fotoHeight + 4)
         fotoCtx.fillStyle = '#FFFFFF'
-        fotoCtx.fillRect(5, 5, fotoWidth + 4, fotoHeight + 4)
+        fotoCtx.fillRect(offsetMarco, offsetMarco, fotoWidth + 4, fotoHeight + 4)
         fotoCtx.strokeStyle = '#333333'
-        fotoCtx.lineWidth = 3
-        fotoCtx.strokeRect(5, 5, fotoWidth + 4, fotoHeight + 4)
-        fotoCtx.drawImage(fotoJugador, 7, 7, fotoWidth, fotoHeight)
-        ctxFrontal.drawImage(fotoCanvas, fotoX - 5, fotoY - 5)
+        fotoCtx.lineWidth = grosorMarco
+        fotoCtx.strokeRect(offsetMarco, offsetMarco, fotoWidth + 4, fotoHeight + 4)
+        fotoCtx.drawImage(fotoJugador, offsetFoto, offsetFoto, fotoWidth, fotoHeight)
+        ctxFrontal.drawImage(fotoCanvas, fotoX - offsetMarco, fotoY - offsetMarco)
       }
 
       // Crear canvas para el carnet trasero
@@ -533,12 +653,33 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
       // Agregar las imágenes a los arrays
       carnetsFrontales.push(canvasFrontal.toDataURL('image/png'))
       carnetsTraseros.push(canvasTrasera.toDataURL('image/jpeg'))
+      } catch (error) {
+        const nombreJugador = jugador.apellido_nombre || jugador.cedula || `Jugador ${i + 1}`
+        const mensajeError = error instanceof Error ? error.message : String(error) || 'Error desconocido'
+        const errorCompleto = `Error al generar carnet para ${nombreJugador}: ${mensajeError}`
+        errores.push(errorCompleto)
+        console.error(errorCompleto, error)
+        // Continuar con el siguiente jugador
+      }
+    }
+
+    // Si no se generó ningún carnet, mostrar error
+    if (carnetsFrontales.length === 0) {
+      const mensajeError = errores.length > 0 
+        ? `No se pudo generar ningún carnet. Errores:\n${errores.join('\n')}`
+        : 'No se pudo generar ningún carnet. Por favor, intente nuevamente.'
+      throw new Error(mensajeError)
+    }
+
+    // Si hubo errores pero se generaron algunos carnets, mostrar advertencia
+    if (errores.length > 0) {
+      console.warn('Algunos carnets no se pudieron generar:', errores)
     }
 
     // Crear una ventana nueva con todos los carnets
     const ventanaImpresion = window.open('', '_blank', 'width=800,height=600')
     if (!ventanaImpresion) {
-      throw new Error('No se pudo abrir la ventana de impresión')
+      throw new Error('No se pudo abrir la ventana de impresión. Por favor, verifique que los bloqueadores de ventanas emergentes estén deshabilitados.')
     }
 
     // Crear HTML con todos los carnets
@@ -553,7 +694,7 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Carnets de Juego - ${jugadores.length} jugadores</title>
+          <title>Carnets de Juego - ${carnetsFrontales.length} jugadores</title>
           <style>
             @media print {
               @page {
@@ -623,10 +764,20 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
     `)
     
     ventanaImpresion.document.close()
+
+    // Si hubo errores, mostrar advertencia al usuario
+    if (errores.length > 0) {
+      const mensajeAdvertencia = `Se generaron ${carnetsFrontales.length} de ${jugadores.length} carnets.\n\nErrores:\n${errores.join('\n')}`
+      alert(mensajeAdvertencia)
+    }
     
   } catch (error) {
+    const mensajeError = error instanceof Error 
+      ? error.message 
+      : `Error desconocido: ${String(error)}`
     console.error('Error al generar carnets múltiples:', error)
-    alert('Error al generar los carnets. Por favor, intente nuevamente.')
+    alert(`Error al generar los carnets: ${mensajeError}`)
+    throw error // Re-lanzar el error para que el componente pueda manejarlo
   }
 }
 

@@ -29,6 +29,8 @@ import {
   updateJugadorIngreso,
   deleteJugadorIngreso,
   detectarJugadoresMultiplesCategoriasEquipos,
+  verificarJugadorEnOtroEquipo,
+  obtenerCategoriaTorneo,
   type JugadorIngreso
 } from './actions'
 
@@ -80,6 +82,7 @@ export default function IngresoJugadoresPage() {
     nacionalidad: '',
     sexo: null,
     numero_jugador: null,
+    situacion_jugador: null,
     telefono: null,
     provincia: null,
     direccion: null,
@@ -93,6 +96,13 @@ export default function IngresoJugadoresPage() {
   const [jugadoresMultiplesEquipos, setJugadoresMultiplesEquipos] = useState<Array<{cedula: string, nombre: string, equipos: string[]}>>([])
   const [jugadoresParaExportar, setJugadoresParaExportar] = useState<JugadorRow[]>([]) // Guardar jugadores para exportar después de confirmar
   const [showManualUsuario, setShowManualUsuario] = useState(false) // Modal del manual de usuario
+  const [showAdvertenciaOtroEquipo, setShowAdvertenciaOtroEquipo] = useState(false) // Modal de advertencia de jugador en otro equipo
+  const [infoJugadorOtroEquipo, setInfoJugadorOtroEquipo] = useState<{
+    jugador: string
+    cedula: string
+    otrosEquipos: Array<{ equipo: string; categoria: string; situacion: string | null }>
+    regularizado: boolean
+  } | null>(null)
 
   // Cargar equipos y torneos
   const loadFiltros = useCallback(async () => {
@@ -157,6 +167,7 @@ export default function IngresoJugadoresPage() {
       nacionalidad: '',
       sexo: null,
       numero_jugador: null,
+      situacion_jugador: null,
       telefono: null,
       provincia: null,
       direccion: null,
@@ -196,6 +207,7 @@ export default function IngresoJugadoresPage() {
           nacionalidad: '',
           sexo: null,
           numero_jugador: null,
+          situacion_jugador: null,
           telefono: null,
           provincia: null,
           direccion: null,
@@ -235,6 +247,7 @@ export default function IngresoJugadoresPage() {
             nacionalidad: jugador.nacionalidad,
             sexo: jugador.sexo,
             numero_jugador: jugador.numero_jugador,
+            situacion_jugador: jugador.situacion_jugador,
             telefono: jugador.telefono,
             provincia: jugador.provincia,
             direccion: jugador.direccion,
@@ -286,9 +299,39 @@ export default function IngresoJugadoresPage() {
       return
     }
 
-    // Si hay equipo y torneo seleccionados, se guardará la relación en jugador_equipo_categoria
-    // El número del jugador se guardará en esa relación si está presente
+    // Validar que haya un equipo seleccionado
+    if (!selectedEquipoId) {
+      setError('Debe seleccionar un equipo antes de guardar un jugador')
+      return
+    }
 
+    // Obtener la categoría del torneo para la verificación
+    try {
+      // Obtener la categoría del torneo seleccionado
+      const categoriaId = await obtenerCategoriaTorneo(selectedTorneoId)
+
+      if (categoriaId) {
+        // Verificar si el jugador ya está en otro equipo de la misma categoría
+        const verificacion = await verificarJugadorEnOtroEquipo(formData.cedula, selectedEquipoId, categoriaId)
+        
+        if (verificacion) {
+          // El jugador está en otro equipo de la misma categoría, mostrar advertencia
+          setInfoJugadorOtroEquipo(verificacion)
+          setShowAdvertenciaOtroEquipo(true)
+          return // No guardar, esperar confirmación del usuario
+        }
+      }
+    } catch (err) {
+      console.error('Error al verificar jugador en otro equipo:', err)
+      // Continuar con el guardado si hay error en la verificación
+    }
+
+    // Si no está en otro equipo o hay error en la verificación, proceder a guardar
+    await guardarJugador()
+  }
+
+  // Función auxiliar para guardar el jugador (separada para poder llamarla después de confirmar)
+  const guardarJugador = async () => {
     try {
       setSaving(true)
       setError(null)
@@ -309,6 +352,8 @@ export default function IngresoJugadoresPage() {
       
       // Limpiar formulario y cerrar modal
       clearForm()
+      setShowAdvertenciaOtroEquipo(false)
+      setInfoJugadorOtroEquipo(null)
       
       setTimeout(() => setSuccess(null), 3000)
     } catch (err) {
@@ -332,6 +377,7 @@ export default function IngresoJugadoresPage() {
       nacionalidad: row.nacionalidad,
       sexo: row.sexo,
       numero_jugador: row.numero_jugador,
+      situacion_jugador: row.situacion_jugador,
       telefono: row.telefono,
       provincia: row.provincia,
       direccion: row.direccion,
@@ -429,6 +475,19 @@ export default function IngresoJugadoresPage() {
           {row.original.numero_jugador ?? 'Sin número'}
         </span>
       ),
+    }),
+    columnHelper.accessor('situacion_jugador', {
+      header: 'Situación',
+      cell: ({ row }) => {
+        const situacion = row.original.situacion_jugador
+        if (!situacion) return <span className="text-muted">-</span>
+        const variant = situacion === 'PASE' ? 'success' : 'warning'
+        return (
+          <span className={`badge bg-${variant}-subtle text-${variant} badge-label`}>
+            {situacion}
+          </span>
+        )
+      },
     }),
     columnHelper.accessor('telefono', {
       header: 'Teléfono',
@@ -911,6 +970,25 @@ export default function IngresoJugadoresPage() {
                 </FloatingLabel>
               </Col>
               <Col md={6}>
+                <FloatingLabel label="Situación Jugador" className="mb-3">
+                  <FormSelect
+                    value={formData.situacion_jugador || ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setFormData({ 
+                        ...formData, 
+                        situacion_jugador: value === '' ? null : (value === 'PASE' ? 'PASE' : value === 'PRÉSTAMO' ? 'PRÉSTAMO' : null) as 'PASE' | 'PRÉSTAMO' | null
+                      })
+                    }}
+                    disabled={saving}
+                  >
+                    <option value="">Seleccionar...</option>
+                    <option value="PASE">PASE</option>
+                    <option value="PRÉSTAMO">PRÉSTAMO</option>
+                  </FormSelect>
+                </FloatingLabel>
+              </Col>
+              <Col md={6}>
                 <FloatingLabel label="Teléfono" className="mb-3">
                   <Form.Control
                     type="text"
@@ -959,6 +1037,78 @@ export default function IngresoJugadoresPage() {
           >
             <TbDeviceFloppy className="me-1" />
             {saving ? 'Guardando...' : editingId ? 'Actualizar Jugador' : 'Guardar Jugador'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de Advertencia - Jugador en Otro Equipo */}
+      <Modal show={showAdvertenciaOtroEquipo} onHide={() => setShowAdvertenciaOtroEquipo(false)} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="text-warning">
+            ⚠️ Advertencia: Jugador en Otro Equipo
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {infoJugadorOtroEquipo && (
+            <>
+              <Alert variant="danger" className="mb-3">
+                <strong>No se puede agregar este jugador al equipo seleccionado.</strong>
+              </Alert>
+              
+              <div className="mb-3">
+                <p>
+                  El jugador <strong>{infoJugadorOtroEquipo.jugador}</strong> (Cédula: <strong>{infoJugadorOtroEquipo.cedula}</strong>) 
+                  ya se encuentra registrado en otro(s) equipo(s):
+                </p>
+                
+                <div className="table-responsive">
+                  <table className="table table-bordered table-sm">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Equipo</th>
+                        <th>Categoría</th>
+                        <th>Situación</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {infoJugadorOtroEquipo.otrosEquipos.map((otroEquipo, index) => (
+                        <tr key={index}>
+                          <td><strong>{otroEquipo.equipo}</strong></td>
+                          <td>{otroEquipo.categoria}</td>
+                          <td>
+                            {otroEquipo.situacion ? (
+                              <span className="badge bg-success">{otroEquipo.situacion}</span>
+                            ) : (
+                              <span className="text-muted">Sin regularizar</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <Alert variant="danger" className="mb-0">
+                <strong>Jugador No Regularizado:</strong> Este jugador <strong>NO se podrá calificar</strong> hasta que se regularice su situación. 
+                Por favor, contacte con la Comisión de Calificaciones para regularizar la situación del jugador (PASE o PRÉSTAMO) 
+                antes de intentar agregarlo a otro equipo.
+                <br /><br />
+                <strong>Contacto:</strong> <strong>0995252001</strong> - Dolores Collaguazo
+              </Alert>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowAdvertenciaOtroEquipo(false)
+              setInfoJugadorOtroEquipo(null)
+            }}
+          >
+            <TbX className="me-1" />
+            Entendido
           </Button>
         </Modal.Footer>
       </Modal>

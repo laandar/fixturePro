@@ -16,6 +16,7 @@ export type JugadorIngreso = {
   nacionalidad: string
   sexo: 'masculino' | 'femenino' | 'otro' | null
   numero_jugador: number | null
+  situacion_jugador: 'PASE' | 'PRÉSTAMO' | null
   telefono: string | null
   provincia: string | null
   direccion: string | null
@@ -30,6 +31,7 @@ export async function getJugadoresIngreso(equipoId?: number, torneoId?: number) 
     let resultados: Array<{
       jugador: typeof jugadores.$inferSelect
       numero_jugador: number | null
+      situacion_jugador: string | null
     }> = []
     
     // Si hay filtros, obtener jugadores filtrados por equipo y/o torneo
@@ -92,6 +94,7 @@ export async function getJugadoresIngreso(equipoId?: number, torneoId?: number) 
         .select({
           jugador: jugadores,
           numero_jugador: jugadorEquipoCategoria.numero_jugador,
+          situacion_jugador: jugadorEquipoCategoria.situacion_jugador,
         })
         .from(jugadores)
         .innerJoin(
@@ -115,7 +118,7 @@ export async function getJugadoresIngreso(equipoId?: number, torneoId?: number) 
     }
     
     // Separar apellido_nombre en apellidos y nombres
-    return resultados.map(({ jugador, numero_jugador }) => {
+    return resultados.map(({ jugador, numero_jugador, situacion_jugador }) => {
       const partes = jugador.apellido_nombre.split(' ').filter(p => p.trim())
       const apellidos = partes.length > 1 ? partes.slice(0, -1).join(' ') : partes[0] || ''
       const nombres = partes.length > 1 ? partes[partes.length - 1] : ''
@@ -128,6 +131,11 @@ export async function getJugadoresIngreso(equipoId?: number, torneoId?: number) 
         nacionalidad: jugador.nacionalidad,
         sexo: jugador.sexo as 'masculino' | 'femenino' | 'otro' | null,
         numero_jugador: numero_jugador, // Usar el numero_jugador de jugador_equipo_categoria
+        situacion_jugador: (() => {
+          if (situacion_jugador === 'PASE') return 'PASE' as const
+          if (situacion_jugador === 'PRESTAMO' || situacion_jugador === 'PRÉSTAMO') return 'PRÉSTAMO' as const
+          return null
+        })(),
         telefono: jugador.telefono,
         provincia: jugador.provincia,
         direccion: jugador.direccion,
@@ -171,6 +179,85 @@ export async function getTorneosActivosParaFiltro() {
   } catch (error) {
     console.error('Error al obtener torneos activos:', error)
     throw new Error('Error al obtener torneos activos')
+  }
+}
+
+// Obtener la categoría de un torneo
+export async function obtenerCategoriaTorneo(torneoId: number): Promise<number | null> {
+  await requirePermiso('ingreso-jugadores', 'ver')
+  
+  try {
+    const torneo = await db
+      .select({ categoria_id: torneos.categoria_id })
+      .from(torneos)
+      .where(eq(torneos.id, torneoId))
+      .limit(1)
+    
+    return torneo.length > 0 ? torneo[0].categoria_id : null
+  } catch (error) {
+    console.error('Error al obtener categoría del torneo:', error)
+    return null
+  }
+}
+
+// Verificar si un jugador ya está en otro equipo de la misma categoría
+export async function verificarJugadorEnOtroEquipo(cedula: string, equipoIdActual: number, categoriaId: number) {
+  await requirePermiso('ingreso-jugadores', 'ver')
+  
+  try {
+    if (!cedula || !equipoIdActual || !categoriaId) {
+      return null
+    }
+
+    // Obtener todas las relaciones del jugador con equipos de la misma categoría, incluyendo la situación
+    const relaciones = await db
+      .select({
+        equipo_id: equipoCategoria.equipo_id,
+        equipo_nombre: equipos.nombre,
+        categoria_id: equipoCategoria.categoria_id,
+        categoria_nombre: categorias.nombre,
+        situacion_jugador: jugadorEquipoCategoria.situacion_jugador,
+      })
+      .from(jugadorEquipoCategoria)
+      .innerJoin(equipoCategoria, eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id))
+      .innerJoin(equipos, eq(equipoCategoria.equipo_id, equipos.id))
+      .innerJoin(categorias, eq(equipoCategoria.categoria_id, categorias.id))
+      .where(
+        and(
+          eq(jugadorEquipoCategoria.jugador_id, cedula),
+          eq(equipoCategoria.categoria_id, categoriaId) // Solo equipos de la misma categoría
+        )
+      )
+
+    // Filtrar equipos diferentes al actual (pero de la misma categoría)
+    const otrosEquipos = relaciones.filter(rel => rel.equipo_id !== equipoIdActual)
+
+    if (otrosEquipos.length > 0) {
+      // Obtener información del jugador
+      const jugador = await jugadorQueries.getByCedula(cedula)
+      const nombreJugador = jugador?.apellido_nombre || cedula
+
+      // Verificar si alguno de los otros equipos tiene situación regularizada
+      const tieneSituacionRegularizada = otrosEquipos.some(rel => 
+        rel.situacion_jugador === 'PASE' || rel.situacion_jugador === 'PRÉSTAMO'
+      )
+
+      return {
+        jugador: nombreJugador,
+        cedula: cedula,
+        otrosEquipos: otrosEquipos.map(rel => ({
+          equipo: rel.equipo_nombre,
+          categoria: rel.categoria_nombre,
+          situacion: rel.situacion_jugador,
+        })),
+        regularizado: tieneSituacionRegularizada,
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Error al verificar jugador en otro equipo:', error)
+    throw new Error('Error al verificar jugador en otro equipo')
   }
 }
 
@@ -322,6 +409,7 @@ export async function buscarJugadorPorCedula(cedula: string): Promise<JugadorIng
       nacionalidad: jugador.nacionalidad,
       sexo: jugador.sexo as 'masculino' | 'femenino' | 'otro' | null,
       numero_jugador: null, // El número de jugador ahora está en jugador_equipo_categoria
+      situacion_jugador: null, // La situación del jugador está en jugador_equipo_categoria
       telefono: jugador.telefono,
       provincia: jugador.provincia,
       direccion: jugador.direccion,
@@ -499,17 +587,21 @@ export async function createJugadorIngreso(
       const resultado = await db.insert(jugadorEquipoCategoria).values({
         jugador_id: cedulaJugador, // Guardar la cédula en lugar del ID
         equipo_categoria_id: equipoCategoriaId,
-        numero_jugador: data.numero_jugador ?? null
+        numero_jugador: data.numero_jugador ?? null,
+        situacion_jugador: data.situacion_jugador ?? null
       }).returning()
       
       if (!resultado || resultado.length === 0) {
         throw new Error('Error al crear la relación jugador-equipo-categoría')
       }
     } else {
-      // Actualizar el numero_jugador si ya existe la relación
+      // Actualizar el numero_jugador y situacion_jugador si ya existe la relación
       await db
         .update(jugadorEquipoCategoria)
-        .set({ numero_jugador: data.numero_jugador ?? null })
+        .set({ 
+          numero_jugador: data.numero_jugador ?? null,
+          situacion_jugador: data.situacion_jugador ?? null
+        })
         .where(
           and(
             eq(jugadorEquipoCategoria.jugador_id, cedulaJugador), // Usar cédula en lugar de ID
@@ -635,13 +727,17 @@ export async function updateJugadorIngreso(
         await db.insert(jugadorEquipoCategoria).values({
           jugador_id: cedulaJugador, // Guardar la cédula en lugar del ID
           equipo_categoria_id: equipoCategoriaId,
-          numero_jugador: data.numero_jugador ?? null
+          numero_jugador: data.numero_jugador ?? null,
+          situacion_jugador: data.situacion_jugador ?? null
         })
       } else {
-        // Actualizar el numero_jugador si ya existe la relación
+        // Actualizar el numero_jugador y situacion_jugador si ya existe la relación
         await db
           .update(jugadorEquipoCategoria)
-          .set({ numero_jugador: data.numero_jugador ?? null })
+          .set({ 
+            numero_jugador: data.numero_jugador ?? null,
+            situacion_jugador: data.situacion_jugador ?? null
+          })
           .where(
             and(
               eq(jugadorEquipoCategoria.jugador_id, cedulaJugador), // Usar cédula en lugar de ID

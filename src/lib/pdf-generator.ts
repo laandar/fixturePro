@@ -582,24 +582,9 @@ export async function generarPDFHojaVocalia(
   doc.setLineWidth(0.1)
   doc.setDrawColor(0, 0, 0)
   
-  // Dibujar borde manualmente con redondeo solo en esquinas superiores
-  // Línea superior (desde después de la esquina izquierda hasta antes de la esquina derecha)
-  doc.line(margin + radius, tableStartY, pageWidth - margin - radius, tableStartY)
-  
-  // Esquina superior izquierda redondeada (usando roundedRect solo para el arco)
-  doc.roundedRect(margin, tableStartY, radius * 2, radius * 2, radius, 0, 'S')
-  
-  // Esquina superior derecha redondeada (usando roundedRect solo para el arco)
-  doc.roundedRect(pageWidth - margin - radius * 2, tableStartY, radius * 2, radius * 2, radius, 0, 'S')
-  
-  // Línea izquierda (recta, desde después del redondeo hasta el fondo)
-  doc.line(margin, tableStartY + radius, margin, finalY)
-  
-  // Línea derecha (recta, desde después del redondeo hasta el fondo)
-  doc.line(pageWidth - margin, tableStartY + radius, pageWidth - margin, finalY)
-  
-  // Línea inferior (recta)
-  doc.line(margin, finalY, pageWidth - margin, finalY)
+  // Dibujar borde con redondeo solo en esquinas superiores
+  // Usar roundedRect con radius solo en la parte superior (primer parámetro)
+  doc.roundedRect(margin, tableStartY, tableWidth, tableHeight, radius, 0)
   
   doc.setLineWidth(savedLineWidth)
   

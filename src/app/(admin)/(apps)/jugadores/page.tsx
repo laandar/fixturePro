@@ -239,18 +239,6 @@ const Page = () => {
         </div>
       ),
     }),
-    columnHelper.accessor('nacionalidad', {
-      header: 'Nacionalidad',
-      cell: ({ row }) => (
-        <span className="badge bg-light text-dark badge-label">
-          {row.original.nacionalidad}
-        </span>
-      ),
-    }),
-    columnHelper.accessor('liga', {
-      header: 'Liga',
-      cell: ({ row }) => row.original.liga,
-    }),
     columnHelper.accessor('sexo', {
       header: 'Sexo',
       cell: ({ row }) => (
@@ -273,13 +261,27 @@ const Page = () => {
         )
       },
     },
+    {
+      id: 'situacion_jugador',
+      header: 'Situación',
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        // Obtener la situación del jugador de la relación jugador_equipo_categoria
+        const relacionJugador = row.original.jugadoresEquipoCategoria?.[0] as any
+        const situacion = relacionJugador?.situacion_jugador
+        if (!situacion) return <span className="text-muted">-</span>
+        // Normalizar PRESTAMO a PRÉSTAMO si viene de la base de datos
+        const situacionNormalizada = situacion === 'PRESTAMO' || situacion === 'PRÉSTAMO' ? 'PRÉSTAMO' : situacion
+        const variant = situacionNormalizada === 'PASE' ? 'success' : 'warning'
+        return (
+          <span className={`badge bg-${variant}-subtle text-${variant} badge-label`}>
+            {situacionNormalizada}
+          </span>
+        )
+      },
+    },
     columnHelper.accessor('telefono', {
       header: 'Teléfono',
       cell: ({ row }) => row.original.telefono || 'Sin teléfono',
-    }),
-    columnHelper.accessor('provincia', {
-      header: 'Provincia',
-      cell: ({ row }) => row.original.provincia || 'Sin provincia',
     }),
     columnHelper.accessor('foraneo', {
       header: 'Foráneo',
@@ -642,6 +644,11 @@ const Page = () => {
       setData(allData.slice(0, 5))
     }
   }, [hasActiveFilters, selectedCategorias, selectedEquipos, searchQuery, allData])
+
+  // Resetear selección de filas cuando cambien los filtros o la búsqueda
+  useEffect(() => {
+    setRowSelection({})
+  }, [selectedCategorias, selectedEquipos, searchQuery])
 
   // Debounce para la búsqueda local
   useEffect(() => {
@@ -1711,6 +1718,16 @@ const Page = () => {
               </Col>
 
               <Col lg={4}>
+                <FloatingLabel label="Situación Jugador">
+                  <FormSelect name="situacion_jugador">
+                    <option value="">Seleccionar...</option>
+                    <option value="PASE">PASE</option>
+                    <option value="PRÉSTAMO">PRÉSTAMO</option>
+                  </FormSelect>
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={4}>
                 <FloatingLabel label="Teléfono">
                   <FormControl 
                     type="tel" 
@@ -1984,6 +2001,24 @@ const Page = () => {
                       max="99"
                       defaultValue={(editingJugador.jugadoresEquipoCategoria?.[0] as any)?.numero_jugador || ''}
                     />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={4}>
+                  <FloatingLabel label="Situación Jugador">
+                    <FormSelect 
+                      name="situacion_jugador"
+                      defaultValue={(() => {
+                        const situacion = (editingJugador.jugadoresEquipoCategoria?.[0] as any)?.situacion_jugador
+                        if (!situacion) return ''
+                        // Normalizar PRESTAMO a PRÉSTAMO
+                        return situacion === 'PRESTAMO' || situacion === 'PRÉSTAMO' ? 'PRÉSTAMO' : situacion
+                      })()}
+                    >
+                      <option value="">Seleccionar...</option>
+                      <option value="PASE">PASE</option>
+                      <option value="PRÉSTAMO">PRÉSTAMO</option>
+                    </FormSelect>
                   </FloatingLabel>
                 </Col>
 

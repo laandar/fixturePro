@@ -656,6 +656,7 @@ export const jugadorQueries = {
         jugador_id: rel.jugadorEquipoCategoria.jugador_id,
         equipo_categoria_id: rel.jugadorEquipoCategoria.equipo_categoria_id,
         numero_jugador: rel.jugadorEquipoCategoria.numero_jugador,
+        situacion_jugador: rel.jugadorEquipoCategoria.situacion_jugador,
         createdAt: rel.jugadorEquipoCategoria.createdAt,
         updatedAt: rel.jugadorEquipoCategoria.updatedAt,
         equipoCategoria: rel.equipoCategoria ? {
@@ -1010,7 +1011,7 @@ export const jugadorEquipoCategoriaQueries = {
   },
 
   // Crear jugador con equipos-categorías
-  crearJugadorConEquiposCategorias: async (jugadorData: NewJugador, equipoCategoriaIds: number[] | Array<{ equipoCategoriaId: number; numeroJugador?: number }>) => {
+  crearJugadorConEquiposCategorias: async (jugadorData: NewJugador, equipoCategoriaIds: number[] | Array<{ equipoCategoriaId: number; numeroJugador?: number; situacionJugador?: 'PASE' | 'PRÉSTAMO' | null }>) => {
     // Crear el jugador
     const nuevoJugador = await db.insert(jugadores).values(jugadorData).returning();
     
@@ -1019,10 +1020,12 @@ export const jugadorEquipoCategoriaQueries = {
       const relacionesData = equipoCategoriaIds.map(item => {
         const equipoCategoriaId = typeof item === 'number' ? item : item.equipoCategoriaId;
         const numeroJugador = typeof item === 'number' ? undefined : item.numeroJugador;
+        const situacionJugador = typeof item === 'number' ? undefined : item.situacionJugador;
         return {
           jugador_id: nuevoJugador[0].cedula, // Guardar la cédula, no el ID
           equipo_categoria_id: equipoCategoriaId,
-          numero_jugador: numeroJugador
+          numero_jugador: numeroJugador,
+          situacion_jugador: situacionJugador
         };
       });
       

@@ -230,6 +230,10 @@ export async function createJugador(formData: FormData) {
       // Solo crear la nueva relación jugador-equipo-categoría
       const cedulaJugador = jugadorExistente.cedula
       const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : null
+      const situacionJugadorValue = formData.get('situacion_jugador') as string | null
+      const situacionNormalizada = situacionJugadorValue && (situacionJugadorValue === 'PASE' || situacionJugadorValue === 'PRÉSTAMO') 
+        ? situacionJugadorValue as 'PASE' | 'PRÉSTAMO'
+        : null
       
       // Verificar si ya existe la relación con este equipo-categoría específico
       const relacionExistente = await db
@@ -269,7 +273,8 @@ export async function createJugador(formData: FormData) {
       await db.insert(jugadorEquipoCategoria).values({
         jugador_id: cedulaJugador,
         equipo_categoria_id: equipo_categoria_id,
-        numero_jugador: numeroJugadorValue
+        numero_jugador: numeroJugadorValue,
+        situacion_jugador: situacionNormalizada
       })
       
       // Si hay una foto nueva, actualizarla
@@ -366,11 +371,19 @@ export async function createJugador(formData: FormData) {
       foraneo: foraneo || false,
     }
 
-    // Crear el jugador con equipos-categorías pasando el número de jugador en la relación
+    // Crear el jugador con equipos-categorías pasando el número de jugador y situación en la relación
     const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : undefined
+    const situacionJugadorValue = formData.get('situacion_jugador') as string | null
+    const situacionNormalizada = situacionJugadorValue && (situacionJugadorValue === 'PASE' || situacionJugadorValue === 'PRÉSTAMO') 
+      ? situacionJugadorValue as 'PASE' | 'PRÉSTAMO'
+      : null
     const nuevoJugador = await jugadorEquipoCategoriaQueries.crearJugadorConEquiposCategorias(
       jugadorData as any, 
-      [{ equipoCategoriaId: equipo_categoria_id, numeroJugador: numeroJugadorValue }]
+      [{ 
+        equipoCategoriaId: equipo_categoria_id, 
+        numeroJugador: numeroJugadorValue,
+        situacionJugador: situacionNormalizada
+      }]
     )
     
     // Si hay una foto, guardarla y actualizar el jugador
@@ -406,6 +419,7 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     // Nuevos campos
     const sexo = formData.get('sexo') as string
     const numero_jugador = formData.get('numero_jugador') as string
+    const situacion_jugador = formData.get('situacion_jugador') as string | null
     const telefono = formData.get('telefono') as string
     const provincia = formData.get('provincia') as string
     const direccion = formData.get('direccion') as string
@@ -557,6 +571,9 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     // Si se proporciona un ID de relación, solo actualizar esa relación específica
     // NO crear nuevas relaciones al modificar
     const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : null
+    const situacionJugadorValue = situacion_jugador && (situacion_jugador === 'PASE' || situacion_jugador === 'PRÉSTAMO') 
+      ? situacion_jugador as 'PASE' | 'PRÉSTAMO'
+      : null
     
     // El ID puede ser UUID o número, convertir a string para búsquedas
     const jugadorIdStr = typeof id === 'string' ? id : id.toString()
@@ -611,6 +628,7 @@ export async function updateJugador(id: number | string, formData: FormData, rel
         .set({
           equipo_categoria_id: equipo_categoria_id,
           numero_jugador: numeroJugadorValue,
+          situacion_jugador: situacionJugadorValue,
           jugador_id: cedula // Usar la cédula actualizada
         })
         .where(eq(jugadorEquipoCategoria.id, idRelacionAActualizar))

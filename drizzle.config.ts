@@ -5,7 +5,7 @@ export default defineConfig({
   out: './src/db/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://postgres:Fu41a07..@localhost:5432/FixturePro',
+    url: process.env.DATABASE_URL || 'postgresql://postgres:Fu41a07..@localhost:5432/Fixture',
   },
   verbose: true,
   strict: true,

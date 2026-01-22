@@ -61,6 +61,20 @@ VALUES (
 )
 ON CONFLICT (key) DO NOTHING;
 
+-- URLs Cloudinary (bajo Gestión Deportiva)
+INSERT INTO menus (key, label, url, icon, parent_id, orden, es_title, activo)
+VALUES (
+  'jugadores-urls-cloudinary',
+  'URLs Cloudinary',
+  '/jugadores/urls-cloudinary',
+  NULL,
+  (SELECT id FROM menus WHERE key = 'sports'),
+  14.6,
+  false,
+  true
+)
+ON CONFLICT (key) DO NOTHING;
+
 -- Fixture (bajo Gestión Deportiva)
 INSERT INTO menus (key, label, url, icon, parent_id, orden, es_title, activo)
 VALUES (
@@ -91,7 +105,7 @@ SELECT
 FROM roles r
 CROSS JOIN menus m
 WHERE r.nombre = 'admin'
-  AND m.key IN ('ingreso-jugadores', 'asignar-equipos-usuarios', 'descargar-pdfs-vocalia', 'contabilidad-tarjetas', 'fixture')
+  AND m.key IN ('ingreso-jugadores', 'asignar-equipos-usuarios', 'descargar-pdfs-vocalia', 'contabilidad-tarjetas', 'jugadores-urls-cloudinary', 'fixture')
 ON CONFLICT (rol_id, menu_id) DO UPDATE SET
   puede_ver = EXCLUDED.puede_ver,
   puede_crear = EXCLUDED.puede_crear,
@@ -125,6 +139,6 @@ ON CONFLICT (rol_id, menu_id) DO UPDATE SET
 --        CASE WHEN m.parent_id IS NULL THEN 'Raíz' ELSE pm.label END as padre
 -- FROM menus m
 -- LEFT JOIN menus pm ON m.parent_id = pm.id
--- WHERE m.key IN ('ingreso-jugadores', 'asignar-equipos-usuarios', 'descargar-pdfs-vocalia', 'contabilidad-tarjetas', 'fixture')
+-- WHERE m.key IN ('ingreso-jugadores', 'asignar-equipos-usuarios', 'descargar-pdfs-vocalia', 'contabilidad-tarjetas', 'jugadores-urls-cloudinary', 'fixture')
 -- ORDER BY m.orden;
 

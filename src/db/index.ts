@@ -3,7 +3,7 @@ import postgres from 'postgres';
 import * as schema from './schema';
 
 // Configuración de la conexión a la base de datos
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:Fu41a07..@localhost:5432/FixturePro';
+const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:Fu41a07..@localhost:5432/Fixture';
 
 // Cliente de PostgreSQL con configuración mejorada
 const client = postgres(connectionString, {
