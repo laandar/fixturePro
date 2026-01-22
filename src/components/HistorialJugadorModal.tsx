@@ -310,6 +310,7 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                 <th>Liga</th>
                 <th>Equipo</th>
                 <th>Número</th>
+                <th>Situación / Equipo Anterior</th>
                 <th>Fecha Calificación</th>
                 <th style={{ width: '120px' }}>Acciones</th>
               </tr>
@@ -317,14 +318,14 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
             <tbody>
               {loading && historial.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-4">
+                  <td colSpan={6} className="text-center py-4">
                     <Spinner animation="border" size="sm" className="me-2" />
                     Cargando...
                   </td>
                 </tr>
               ) : historial.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-4 text-muted">
+                  <td colSpan={6} className="text-center py-4 text-muted">
                     No hay registros en el historial
                   </td>
                 </tr>
@@ -356,6 +357,42 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                             value={editFormData.numero}
                             onChange={(e) => setEditFormData({ ...editFormData, numero: e.target.value })}
                           />
+                        </td>
+                        <td>
+                          <div className="text-muted small">
+                            {(() => {
+                              const registroEditando = historial.find(r => r.id === editingId)
+                              const situacionActual = (registroEditando as any)?.situacion_jugador
+                              const situacionAnterior = registroEditando?.situacion_jugador_anterior || (registroEditando as any)?.situacion_jugador_anterior
+                              const equipoAnterior = registroEditando?.equipo_anterior || (registroEditando as any)?.equipo_anterior
+                              if (!situacionActual && !situacionAnterior && !equipoAnterior) return '-'
+                              return (
+                                <>
+                                  {situacionActual && (
+                                    <div className="mb-1">
+                                      <small>Situación actual: </small>
+                                      <span className={`badge ${situacionActual === 'PASE' || situacionActual === 'PRÉSTAMO' ? 'bg-success' : situacionActual === 'PRESTAMO' ? 'bg-warning' : 'bg-secondary'}`}>
+                                        {situacionActual === 'PRESTAMO' ? 'PRÉSTAMO' : situacionActual}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {situacionAnterior && (
+                                    <div className="mb-1">
+                                      <small>Situación anterior: </small>
+                                      <span className={`badge ${situacionAnterior === 'PASE' || situacionAnterior === 'PRÉSTAMO' ? 'bg-success' : situacionAnterior === 'PRESTAMO' ? 'bg-warning' : 'bg-secondary'}`}>
+                                        {situacionAnterior === 'PRESTAMO' ? 'PRÉSTAMO' : situacionAnterior}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {equipoAnterior && (
+                                    <div className="mt-1">
+                                      <small>Equipo anterior: <strong>{equipoAnterior}</strong></small>
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
+                          </div>
                         </td>
                         <td>
                           <FormControl
@@ -395,6 +432,30 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                         <td>{registro.liga}</td>
                         <td>{registro.equipo || '-'}</td>
                         <td>{registro.numero || '-'}</td>
+                        <td>
+                          {(() => {
+                            // situacion_jugador_anterior contiene la situación actual del jugador en ese momento
+                            const situacionJugador = registro.situacion_jugador_anterior || (registro as any)?.situacion_jugador_anterior
+                            const equipoAnterior = registro.equipo_anterior
+                            if (!situacionJugador && !equipoAnterior) return <span className="text-muted">-</span>
+                            return (
+                              <div>
+                                {situacionJugador && (
+                                  <div className="mb-1">
+                                    <span className={`badge ${situacionJugador === 'PASE' ? 'bg-success' : situacionJugador === 'PRESTAMO' || situacionJugador === 'PRÉSTAMO' ? 'bg-warning' : 'bg-secondary'}`}>
+                                      {situacionJugador === 'PRESTAMO' ? 'PRÉSTAMO' : situacionJugador}
+                                    </span>
+                                  </div>
+                                )}
+                                {equipoAnterior && (
+                                  <div className="mt-1">
+                                    <small className="text-muted">Equipo anterior: <strong>{equipoAnterior}</strong></small>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </td>
                         <td>
                           {registro.fecha_calificacion
                             ? new Date(registro.fecha_calificacion).toLocaleDateString('es-ES')

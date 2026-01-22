@@ -10,6 +10,7 @@ import { existsSync } from 'fs'
 import { db } from '@/db'
 import { verificarRangoEdad, obtenerMensajeErrorEdad } from '@/lib/age-helpers'
 import { historialJugadores, jugadorEquipoCategoria, jugadores, equipoCategoria, categorias, equipos } from '@/db/schema'
+import { desc } from 'drizzle-orm'
 import { eq, and, or, inArray } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { uploadFileToCloudinary, isCloudinaryUrl, extractPublicIdFromUrl, deleteImageFromCloudinary } from '@/lib/cloudinary'
@@ -621,6 +622,11 @@ export async function updateJugador(id: number | string, formData: FormData, rel
       equipoCategoriaIdAnteriorNum !== null && 
       equipoCategoriaIdAnteriorNum !== equipoCategoriaIdNuevoNum
     
+    // Comparar si cambió el número de jugador
+    const numeroJugadorAnterior = relacionAnterior?.numero_jugador
+    const numeroJugadorCambio = relacionAnterior && 
+      numeroJugadorAnterior !== numeroJugadorValue
+    
     // Actualizar la relación
     if (idRelacionAActualizar) {
       await db
@@ -632,6 +638,33 @@ export async function updateJugador(id: number | string, formData: FormData, rel
           jugador_id: cedula // Usar la cédula actualizada
         })
         .where(eq(jugadorEquipoCategoria.id, idRelacionAActualizar))
+    }
+    
+    // Si cambió el número de jugador (sin cambiar equipo), actualizar el registro más reciente del historial
+    if (numeroJugadorCambio && !equipoCambio) {
+      try {
+        // Obtener el registro más reciente del historial para este jugador
+        const historialReciente = await db
+          .select()
+          .from(historialJugadores)
+          .where(eq(historialJugadores.jugador_id, jugadorIdStr))
+          .orderBy(desc(historialJugadores.createdAt))
+          .limit(1)
+        
+        if (historialReciente.length > 0) {
+          // Actualizar el número en el registro más reciente
+          await db
+            .update(historialJugadores)
+            .set({
+              numero: numeroJugadorValue || null,
+              updatedAt: new Date()
+            })
+            .where(eq(historialJugadores.id, historialReciente[0].id))
+        }
+      } catch (error) {
+        console.error('Error al actualizar número de jugador en historial:', error)
+        // No lanzar error aquí para no impedir la actualización del jugador
+      }
     }
     
     // Si cambió el equipo, registrar en historial_jugadores DESPUÉS de actualizar
@@ -646,12 +679,28 @@ export async function updateJugador(id: number | string, formData: FormData, rel
           }
         })
         
+        // Obtener información del equipo anterior
+        let equipoAnteriorNombre: string | null = null
+        if (relacionAnterior && relacionAnterior.equipo_categoria_id) {
+          const equipoAnteriorCategoria = await db.query.equipoCategoria.findFirst({
+            where: (ec, { eq }) => eq(ec.id, relacionAnterior.equipo_categoria_id),
+            with: {
+              equipo: true
+            }
+          })
+          equipoAnteriorNombre = equipoAnteriorCategoria?.equipo?.nombre || null
+        }
+        
         if (nuevoEquipoCategoria && nuevoEquipoCategoria.equipo) {
-          // Registrar en historial_jugadores
+          // Obtener la situación ACTUAL del jugador (la más reciente) para guardarla en situacion_jugador_anterior
+          // La función createHistorialJugador ya se encarga de obtener la situación actual si no se proporciona
           const historialData: NewHistorialJugador = {
             jugador_id: jugadorIdStr,
             liga: liga,
             equipo: nuevoEquipoCategoria.equipo.nombre,
+            equipo_anterior: equipoAnteriorNombre,
+            // No proporcionar situacion_jugador_anterior para que createHistorialJugador obtenga la situación actual
+            situacion_jugador_anterior: undefined,
             numero: numeroJugadorValue || null,
             nombre_calificacion: null,
             disciplina: null,
@@ -836,11 +885,46 @@ export async function buscarJugadorPorCedula(cedula: string) {
 
 export async function getHistorialJugador(jugadorId: number | string) {
   try {
+    const jugadorIdString = jugadorId.toString()
+    
+    // Obtener el jugador para obtener su cédula
+    const jugador = await db
+      .select({ cedula: jugadores.cedula })
+      .from(jugadores)
+      .where(eq(jugadores.id, jugadorIdString))
+      .limit(1)
+    
+    if (jugador.length === 0) {
+      return []
+    }
+    
+    const cedulaJugador = jugador[0].cedula
+    
+    // Obtener historial ordenado por fecha de creación descendente (más recientes primero)
     const historial = await db.query.historialJugadores.findMany({
-      where: eq(historialJugadores.jugador_id, jugadorId.toString()),
-      orderBy: (historialJugadores, { desc }) => [desc(historialJugadores.fecha_calificacion)],
+      where: eq(historialJugadores.jugador_id, jugadorIdString),
+      orderBy: (historialJugadores, { desc }) => [desc(historialJugadores.createdAt)],
     })
-    return historial
+    
+    // Obtener la situación actual del jugador (la más reciente)
+    const situacionActual = await db
+      .select({
+        situacion_jugador: jugadorEquipoCategoria.situacion_jugador,
+      })
+      .from(jugadorEquipoCategoria)
+      .where(eq(jugadorEquipoCategoria.jugador_id, cedulaJugador))
+      .orderBy(desc(jugadorEquipoCategoria.createdAt))
+      .limit(1)
+    
+    // Agregar la situación actual a cada registro del historial
+    const historialConInfo = historial.map((registro) => {
+      return {
+        ...registro,
+        situacion_jugador: situacionActual.length > 0 ? situacionActual[0].situacion_jugador : null,
+      }
+    })
+    
+    return historialConInfo
   } catch (error) {
     console.error('Error al obtener historial del jugador:', error)
     throw new Error('Error al obtener historial del jugador')
@@ -853,7 +937,55 @@ export async function createHistorialJugador(data: NewHistorialJugador) {
       throw new Error('Jugador y Liga son campos obligatorios')
     }
 
-    const nuevoHistorial = await db.insert(historialJugadores).values(data).returning()
+    // Obtener el jugador para obtener su cédula
+    const jugador = await db
+      .select({ cedula: jugadores.cedula })
+      .from(jugadores)
+      .where(eq(jugadores.id, data.jugador_id))
+      .limit(1)
+    
+    if (jugador.length === 0) {
+      throw new Error('Jugador no encontrado')
+    }
+    
+    const cedulaJugador = jugador[0].cedula
+    
+    // SIEMPRE obtener la situación ACTUAL del jugador para guardarla en situacion_jugador_anterior
+    // Obtener la relación más reciente del jugador (ordenada por updatedAt y luego por id)
+    const relacionActual = await db
+      .select({
+        equipo: equipos.nombre,
+        situacion_jugador: jugadorEquipoCategoria.situacion_jugador,
+      })
+      .from(jugadorEquipoCategoria)
+      .innerJoin(equipoCategoria, eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id))
+      .innerJoin(equipos, eq(equipoCategoria.equipo_id, equipos.id))
+      .where(eq(jugadorEquipoCategoria.jugador_id, cedulaJugador))
+      .orderBy(desc(jugadorEquipoCategoria.updatedAt), desc(jugadorEquipoCategoria.id))
+      .limit(1)
+    
+    // Obtener la situación ACTUAL del jugador (normalizar PRESTAMO a PRÉSTAMO)
+    let situacionActualJugador: string | null = null
+    if (relacionActual.length > 0 && relacionActual[0].situacion_jugador) {
+      const situacion = relacionActual[0].situacion_jugador
+      situacionActualJugador = situacion === 'PRESTAMO' || situacion === 'PRÉSTAMO' ? 'PRÉSTAMO' : situacion
+    }
+    
+    // Obtener el equipo anterior (usar el proporcionado o el actual del jugador)
+    const equipoAnterior = data.equipo_anterior || (relacionActual.length > 0 ? relacionActual[0].equipo : null)
+    
+    // SIEMPRE guardar la situación ACTUAL del jugador en situacion_jugador_anterior
+    // (el nombre del campo es confuso, pero guarda la situación actual del jugador en ese momento)
+    const situacionJugadorAnterior = situacionActualJugador || data.situacion_jugador_anterior
+    
+    // Preparar datos con equipo anterior y situación actual del jugador
+    const datosCompletos = {
+      ...data,
+      equipo_anterior: equipoAnterior,
+      situacion_jugador_anterior: situacionJugadorAnterior,
+    }
+    
+    const nuevoHistorial = await db.insert(historialJugadores).values(datosCompletos).returning()
     revalidatePath('/jugadores')
     return nuevoHistorial[0]
   } catch (error) {

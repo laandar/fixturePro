@@ -520,6 +520,8 @@ export const historialJugadores = pgTable('historial_jugadores', {
   jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   liga: text('liga').notNull(),
   equipo: text('equipo'), // Nombre del equipo como texto
+  equipo_anterior: text('equipo_anterior'), // Nombre del equipo anterior desde donde se cambió
+  situacion_jugador_anterior: text('situacion_jugador_anterior'), // Situación del jugador anterior (PASE o PRÉSTAMO) desde donde se cambió
   numero: integer('numero'), // Número de camiseta
   nombre_calificacion: text('nombre_calificacion'),
   disciplina: text('disciplina'),
