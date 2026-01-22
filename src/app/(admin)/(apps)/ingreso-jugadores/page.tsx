@@ -181,7 +181,7 @@ export default function IngresoJugadoresPage() {
   const handleOpenModal = () => {
     // Validar que haya un torneo seleccionado
     if (!selectedTorneoId) {
-      setError('Debe seleccionar un torneo antes de agregar un nuevo jugador')
+      setError('Debe seleccionar un torneo antes de agregar o modificar un jugador')
       setTimeout(() => setError(null), 5000)
       return
     }
@@ -367,6 +367,13 @@ export default function IngresoJugadoresPage() {
   const handleEdit = (row: JugadorRow) => {
     if (!puedeEditar) {
       setError('No tienes permiso para editar jugadores')
+      return
+    }
+
+    // Validar que haya un torneo seleccionado
+    if (!selectedTorneoId) {
+      setError('Debe seleccionar un torneo antes de agregar o modificar un jugador')
+      setTimeout(() => setError(null), 5000)
       return
     }
 

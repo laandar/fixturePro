@@ -34,88 +34,106 @@ export async function getJugadoresIngreso(equipoId?: number, torneoId?: number) 
       situacion_jugador: string | null
     }> = []
     
-    // Si hay filtros, obtener jugadores filtrados por equipo y/o torneo
-    if (equipoId || torneoId) {
-      let categoriaId: number | null = null
-      let equipoIdsParaFiltrar: number[] = []
+    let categoriaIds: number[] = []
+    let equipoIdsParaFiltrar: number[] = []
+    
+    // Si hay torneo específico seleccionado, obtener su categoría
+    if (torneoId) {
+      const torneo = await db
+        .select({ categoria_id: torneos.categoria_id })
+        .from(torneos)
+        .where(eq(torneos.id, torneoId))
+        .limit(1)
       
-      // Si hay torneo, obtener su categoría
-      if (torneoId) {
-        const torneo = await db
-          .select({ categoria_id: torneos.categoria_id })
-          .from(torneos)
-          .where(eq(torneos.id, torneoId))
-          .limit(1)
+      if (torneo.length === 0 || !torneo[0].categoria_id) {
+        return []
+      }
+      
+      categoriaIds = [torneo[0].categoria_id]
+      
+      // Si no hay equipoId específico, obtener todos los equipos del torneo
+      if (!equipoId) {
+        const equiposEnTorneo = await db
+          .select({ equipo_id: equiposTorneo.equipo_id })
+          .from(equiposTorneo)
+          .where(eq(equiposTorneo.torneo_id, torneoId))
         
-        if (torneo.length === 0 || !torneo[0].categoria_id) {
+        equipoIdsParaFiltrar = equiposEnTorneo.map(et => et.equipo_id)
+        
+        if (equipoIdsParaFiltrar.length === 0) {
           return []
         }
-        
-        categoriaId = torneo[0].categoria_id
-        
-        // Si no hay equipoId específico, obtener todos los equipos del torneo
-        if (!equipoId) {
-          const equiposEnTorneo = await db
-            .select({ equipo_id: equiposTorneo.equipo_id })
-            .from(equiposTorneo)
-            .where(eq(equiposTorneo.torneo_id, torneoId))
-          
-          equipoIdsParaFiltrar = equiposEnTorneo.map(et => et.equipo_id)
-          
-          if (equipoIdsParaFiltrar.length === 0) {
-            return []
-          }
-        } else {
-          equipoIdsParaFiltrar = [equipoId]
-        }
-      } else if (equipoId) {
-        // Solo filtro por equipo, sin torneo (no hay categoriaId)
+      } else {
         equipoIdsParaFiltrar = [equipoId]
       }
-      
-      // Construir condiciones WHERE
-      const condicionesWhere = []
-      
-      if (equipoIdsParaFiltrar.length === 1) {
-        condicionesWhere.push(eq(equipoCategoria.equipo_id, equipoIdsParaFiltrar[0]))
-      } else {
-        condicionesWhere.push(inArray(equipoCategoria.equipo_id, equipoIdsParaFiltrar))
-      }
-      
-      if (categoriaId) {
-        condicionesWhere.push(eq(equipoCategoria.categoria_id, categoriaId))
-      }
-      
-      // Hacer JOIN entre jugadores, jugador_equipo_categoria y equipo_categoria
-      // Filtrar directamente por equipo_id y categoria_id
-      // Usar cédula para el JOIN (jugador_id en jugador_equipo_categoria contiene la cédula)
-      // Solo mostrar jugadores activos (estado = true)
-      resultados = await db
-        .select({
-          jugador: jugadores,
-          numero_jugador: jugadorEquipoCategoria.numero_jugador,
-          situacion_jugador: jugadorEquipoCategoria.situacion_jugador,
-        })
-        .from(jugadores)
-        .innerJoin(
-          jugadorEquipoCategoria,
-          eq(jugadores.cedula, jugadorEquipoCategoria.jugador_id) // JOIN por cédula
-        )
-        .innerJoin(
-          equipoCategoria,
-          eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id)
-        )
-        .where(
-          and(
-            eq(jugadores.estado, true), // Solo jugadores activos
-            ...condicionesWhere
-          )
-        )
-        .orderBy(jugadores.apellido_nombre)
     } else {
-      // Sin filtros, no mostrar jugadores (requiere seleccionar equipo y/o torneo)
-      resultados = []
+      // Si no hay torneo seleccionado, obtener todas las categorías de los torneos activos
+      const torneosActivos = await db
+        .select({ categoria_id: torneos.categoria_id })
+        .from(torneos)
+        .where(inArray(torneos.estado, ['planificado', 'en_curso']))
+      
+      categoriaIds = [...new Set(torneosActivos.map(t => t.categoria_id).filter((id): id is number => id !== null))]
+      
+      if (categoriaIds.length === 0) {
+        // Si no hay torneos activos, no mostrar jugadores
+        return []
+      }
+      
+      // Si hay equipoId, filtrar por ese equipo
+      if (equipoId) {
+        equipoIdsParaFiltrar = [equipoId]
+      }
+      // Si no hay equipoId, no filtrar por equipo (mostrar todos los equipos de esas categorías)
     }
+    
+    // Construir condiciones WHERE
+    const condicionesWhere = []
+    
+    if (equipoIdsParaFiltrar.length === 1) {
+      condicionesWhere.push(eq(equipoCategoria.equipo_id, equipoIdsParaFiltrar[0]))
+    } else if (equipoIdsParaFiltrar.length > 1) {
+      condicionesWhere.push(inArray(equipoCategoria.equipo_id, equipoIdsParaFiltrar))
+    }
+    
+    // Filtrar por categorías (una o múltiples)
+    if (categoriaIds.length === 1) {
+      condicionesWhere.push(eq(equipoCategoria.categoria_id, categoriaIds[0]))
+    } else if (categoriaIds.length > 1) {
+      condicionesWhere.push(inArray(equipoCategoria.categoria_id, categoriaIds))
+    }
+    
+    // Si no hay categorías ni equipos para filtrar, no mostrar jugadores
+    if (categoriaIds.length === 0 && equipoIdsParaFiltrar.length === 0) {
+      return []
+    }
+    
+    // Hacer JOIN entre jugadores, jugador_equipo_categoria y equipo_categoria
+    // Filtrar directamente por equipo_id y categoria_id
+    // Usar cédula para el JOIN (jugador_id en jugador_equipo_categoria contiene la cédula)
+    // Solo mostrar jugadores activos (estado = true)
+    resultados = await db
+      .select({
+        jugador: jugadores,
+        numero_jugador: jugadorEquipoCategoria.numero_jugador,
+        situacion_jugador: jugadorEquipoCategoria.situacion_jugador,
+      })
+      .from(jugadores)
+      .innerJoin(
+        jugadorEquipoCategoria,
+        eq(jugadores.cedula, jugadorEquipoCategoria.jugador_id) // JOIN por cédula
+      )
+      .innerJoin(
+        equipoCategoria,
+        eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoria.id)
+      )
+      .where(
+        and(
+          eq(jugadores.estado, true), // Solo jugadores activos
+          ...condicionesWhere
+        )
+      )
+      .orderBy(jugadores.apellido_nombre)
     
     // Separar apellido_nombre en apellidos y nombres
     return resultados.map(({ jugador, numero_jugador, situacion_jugador }) => {
