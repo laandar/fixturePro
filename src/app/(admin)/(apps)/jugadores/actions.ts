@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { jugadorQueries, equipoQueries, categoriaQueries, equipoCategoriaQueries, jugadorEquipoCategoriaQueries } from '@/db/queries'
-import type { NewJugador, NewHistorialJugador } from '@/db/types'
+import type { NewJugador, NewHistorialJugador, HistorialJugadorWithRelations } from '@/db/types'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
@@ -883,7 +883,7 @@ export async function buscarJugadorPorCedula(cedula: string) {
 
 // ===== HISTORIAL DE JUGADORES =====
 
-export async function getHistorialJugador(jugadorId: number | string) {
+export async function getHistorialJugador(jugadorId: number | string): Promise<HistorialJugadorWithRelations[]> {
   try {
     const jugadorIdString = jugadorId.toString()
     
@@ -916,12 +916,21 @@ export async function getHistorialJugador(jugadorId: number | string) {
       .orderBy(desc(jugadorEquipoCategoria.createdAt))
       .limit(1)
     
-    // Agregar la situación actual a cada registro del historial
-    const historialConInfo = historial.map((registro) => {
+    // Agregar la situación actual a cada registro del historial (normalizar valores)
+    const historialConInfo: HistorialJugadorWithRelations[] = historial.map((registro) => {
+      let situacionJugador: 'PASE' | 'PRÉSTAMO' | 'PRESTAMO' | null | undefined = null
+      if (situacionActual.length > 0 && situacionActual[0].situacion_jugador) {
+        const situacion = situacionActual[0].situacion_jugador
+        if (situacion === 'PASE') {
+          situacionJugador = 'PASE'
+        } else if (situacion === 'PRESTAMO' || situacion === 'PRÉSTAMO') {
+          situacionJugador = 'PRÉSTAMO'
+        }
+      }
       return {
         ...registro,
-        situacion_jugador: situacionActual.length > 0 ? situacionActual[0].situacion_jugador : null,
-      }
+        situacion_jugador: situacionJugador,
+      } as HistorialJugadorWithRelations
     })
     
     return historialConInfo

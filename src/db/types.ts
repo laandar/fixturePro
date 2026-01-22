@@ -181,6 +181,6 @@ export interface CategoriaWithCanchas extends Categoria {
 export interface HistorialJugadorWithRelations extends HistorialJugador {
   jugador?: Jugador;
   situacion_jugador?: 'PASE' | 'PRÉSTAMO' | 'PRESTAMO' | null;
-  equipo_anterior?: string | null;
-  situacion_jugador_anterior?: 'PASE' | 'PRÉSTAMO' | 'PRESTAMO' | string | null;
+  // equipo_anterior y situacion_jugador_anterior ya están definidos en HistorialJugador
+  // No es necesario redefinirlos aquí
 }
