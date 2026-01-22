@@ -11,7 +11,7 @@ import { db } from '@/db'
 import { verificarRangoEdad, obtenerMensajeErrorEdad } from '@/lib/age-helpers'
 import { historialJugadores, jugadorEquipoCategoria, jugadores, equipoCategoria, categorias, equipos } from '@/db/schema'
 import { desc } from 'drizzle-orm'
-import { eq, and, or, inArray } from 'drizzle-orm'
+import { eq, and, or, inArray, count } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { uploadFileToCloudinary, isCloudinaryUrl, extractPublicIdFromUrl, deleteImageFromCloudinary } from '@/lib/cloudinary'
 
@@ -212,7 +212,10 @@ export async function createJugador(formData: FormData) {
     const observacion = formData.get('observacion') as string
     const foraneo = formData.get('foraneo') === 'true'
 
-    if (!cedula || !apellido_nombre || !nacionalidad || !liga || !equipo_categoria_id) {
+    // Liga ya no es requerido, usar valor por defecto si no se proporciona
+    const ligaValue = liga || 'ATAHUALPA'
+
+    if (!cedula || !apellido_nombre || !nacionalidad || !equipo_categoria_id) {
       throw new Error('Todos los campos obligatorios deben estar completos')
     }
 
@@ -268,6 +271,35 @@ export async function createJugador(formData: FormData) {
         const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'categoría'
         
         throw new Error(`El jugador ya tiene una relación con ${equipoNombre} - ${categoriaNombre}. Si desea crear una relación con otra categoría, seleccione un equipo-categoría diferente.`)
+      }
+      
+      // Validar límite de jugadores permitidos antes de crear la relación
+      const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+        where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+        with: {
+          equipo: true,
+          categoria: true
+        }
+      })
+      
+      if (equipoCategoriaInfo?.categoria?.numero_jugadores_permitidos !== null && equipoCategoriaInfo?.categoria?.numero_jugadores_permitidos !== undefined) {
+        // Contar jugadores actuales en el equipo-categoría
+        const conteoJugadores = await db
+          .select({ total: count() })
+          .from(jugadorEquipoCategoria)
+          .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id))
+
+        const numeroJugadoresActuales = conteoJugadores[0]?.total || 0
+        const limitePermitido = equipoCategoriaInfo.categoria.numero_jugadores_permitidos
+
+        if (numeroJugadoresActuales >= limitePermitido) {
+          const equipoNombre = equipoCategoriaInfo.equipo?.nombre || 'el equipo'
+          const categoriaNombre = equipoCategoriaInfo.categoria.nombre || 'la categoría'
+          
+          throw new Error(
+            `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
+          )
+        }
       }
       
       // Crear nueva relación
@@ -360,7 +392,7 @@ export async function createJugador(formData: FormData) {
       cedula,
       apellido_nombre,
       nacionalidad,
-      liga,
+      liga: ligaValue,
       estado,
       fecha_nacimiento: formatFechaNacimiento(fecha_nacimiento),
       sexo: cleanString(sexo) as 'masculino' | 'femenino' | 'otro' | null,
@@ -370,6 +402,35 @@ export async function createJugador(formData: FormData) {
       direccion: cleanString(direccion),
       observacion: cleanString(observacion),
       foraneo: foraneo || false,
+    }
+
+    // Validar límite de jugadores permitidos antes de crear el jugador
+    const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+      where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+      with: {
+        equipo: true,
+        categoria: true
+      }
+    })
+    
+    if (equipoCategoriaInfo?.categoria?.numero_jugadores_permitidos !== null && equipoCategoriaInfo?.categoria?.numero_jugadores_permitidos !== undefined) {
+      // Contar jugadores actuales en el equipo-categoría
+      const conteoJugadores = await db
+        .select({ total: count() })
+        .from(jugadorEquipoCategoria)
+        .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id))
+
+      const numeroJugadoresActuales = conteoJugadores[0]?.total || 0
+      const limitePermitido = equipoCategoriaInfo.categoria.numero_jugadores_permitidos
+
+      if (numeroJugadoresActuales >= limitePermitido) {
+        const equipoNombre = equipoCategoriaInfo.equipo?.nombre || 'el equipo'
+        const categoriaNombre = equipoCategoriaInfo.categoria.nombre || 'la categoría'
+        
+        throw new Error(
+          `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
+        )
+      }
     }
 
     // Crear el jugador con equipos-categorías pasando el número de jugador y situación en la relación

@@ -43,6 +43,9 @@ export async function createCategoria(formData: FormData) {
     const edadMinimaMeses = parseInt(formData.get('edad_minima_meses') as string) || 0
     const edadMaximaAnos = parseInt(formData.get('edad_maxima_anos') as string) || null
     const edadMaximaMeses = parseInt(formData.get('edad_maxima_meses') as string) || 0
+    
+    // Campo de número de jugadores permitidos
+    const numeroJugadoresPermitidos = parseInt(formData.get('numero_jugadores_permitidos') as string) || null
 
     if (!nombre) {
       throw new Error('El nombre de la categoría es obligatorio')
@@ -71,6 +74,7 @@ export async function createCategoria(formData: FormData) {
       edad_minima_meses: edadMinimaMeses,
       edad_maxima_anos: edadMaximaAnos,
       edad_maxima_meses: edadMaximaMeses,
+      numero_jugadores_permitidos: numeroJugadoresPermitidos,
     }
 
     await categoriaQueries.create(categoriaData)
@@ -93,6 +97,9 @@ export async function updateCategoria(id: number, formData: FormData) {
     const edadMinimaMeses = parseInt(formData.get('edad_minima_meses') as string) || 0
     const edadMaximaAnos = parseInt(formData.get('edad_maxima_anos') as string) || null
     const edadMaximaMeses = parseInt(formData.get('edad_maxima_meses') as string) || 0
+    
+    // Campo de número de jugadores permitidos
+    const numeroJugadoresPermitidos = parseInt(formData.get('numero_jugadores_permitidos') as string) || null
 
     if (!nombre) {
       throw new Error('El nombre de la categoría es obligatorio')
@@ -121,6 +128,7 @@ export async function updateCategoria(id: number, formData: FormData) {
       edad_minima_meses: edadMinimaMeses,
       edad_maxima_anos: edadMaximaAnos,
       edad_maxima_meses: edadMaximaMeses,
+      numero_jugadores_permitidos: numeroJugadoresPermitidos,
     }
 
     await categoriaQueries.update(id, categoriaData)

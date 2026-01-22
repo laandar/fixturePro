@@ -1,6 +1,10 @@
 'use client'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Select from 'react-select'
+import { Toast } from 'primereact/toast'
+import 'primereact/resources/themes/lara-light-cyan/theme.css'
+import 'primereact/resources/primereact.min.css'
+import 'primeicons/primeicons.css'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import DataTable from '@/components/table/DataTable'
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
@@ -92,6 +96,7 @@ const globalFilterFn = (row: any, columnId: string, filterValue: string): boolea
 }
 
 const Page = () => {
+  const toast = useRef<any>(null)
   const { isTrue: showCreateModal, toggle: toggleCreateModal } = useToggle()
   const { isTrue: showEditModal, toggle: toggleEditModal } = useToggle()
   const { isTrue: showFilterOffcanvas, toggle: toggleFilterOffcanvas } = useToggle()
@@ -115,6 +120,12 @@ const Page = () => {
   // Estados para el modal de historial
   const [showHistorialModal, setShowHistorialModal] = useState(false)
   const [selectedJugadorForHistorial, setSelectedJugadorForHistorial] = useState<JugadorWithEquipo | null>(null)
+  
+  // Estados para el modal de confirmación de cambio de equipo
+  const [showConfirmacionCambioEquipo, setShowConfirmacionCambioEquipo] = useState(false)
+  const [pendingFormData, setPendingFormData] = useState<FormData | null>(null)
+  const [equipoAnteriorInfo, setEquipoAnteriorInfo] = useState<{ nombre: string; categoria: string } | null>(null)
+  const [equipoNuevoInfo, setEquipoNuevoInfo] = useState<{ nombre: string; categoria: string } | null>(null)
   
   // Estados para el modal de confirmación de impresión
   const [showConfirmacionImprimir, setShowConfirmacionImprimir] = useState(false)
@@ -550,15 +561,46 @@ const Page = () => {
       return
     }
     
+    // Agregar la foto si existe
+    if (editCapturedPhoto) {
+      formData.append('foto', editCapturedPhoto, 'jugador-foto.jpg')
+    }
+    
+    // Obtener el equipo_categoria_id del formulario
+    const nuevoEquipoCategoriaId = formData.get('equipo_categoria_id') as string
+    const equipoCategoriaIdOriginal = editingJugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.id
+    
+    // Verificar si el equipo cambió
+    if (nuevoEquipoCategoriaId && equipoCategoriaIdOriginal && parseInt(nuevoEquipoCategoriaId) !== equipoCategoriaIdOriginal) {
+      // Obtener información del equipo anterior
+      const equipoAnterior = editingJugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria
+      const equipoAnteriorNombre = equipoAnterior?.equipo?.nombre || 'Sin equipo'
+      const equipoAnteriorCategoria = equipoAnterior?.categoria?.nombre || 'Sin categoría'
+      
+      // Obtener información del nuevo equipo
+      const nuevoEquipoCategoria = equipoCategoriaOptions.find(opt => opt.value === parseInt(nuevoEquipoCategoriaId))
+      const equipoNuevoNombre = nuevoEquipoCategoria?.equipoCategoria?.equipo?.nombre || 'Sin equipo'
+      const equipoNuevoCategoria = nuevoEquipoCategoria?.equipoCategoria?.categoria?.nombre || 'Sin categoría'
+      
+      // Guardar datos pendientes y mostrar modal de confirmación
+      setPendingFormData(formData)
+      setEquipoAnteriorInfo({ nombre: equipoAnteriorNombre, categoria: equipoAnteriorCategoria })
+      setEquipoNuevoInfo({ nombre: equipoNuevoNombre, categoria: equipoNuevoCategoria })
+      setShowConfirmacionCambioEquipo(true)
+      return
+    }
+    
+    // Si no cambió el equipo, proceder directamente
+    await procederConActualizacion(formData)
+  }
+  
+  const procederConActualizacion = async (formData: FormData) => {
+    if (!editingJugador) return
+    
     try {
       setLoading(true)
       setEditFormError(null)
       setEditFormSuccess(null)
-      
-      // Agregar la foto si existe
-      if (editCapturedPhoto) {
-        formData.append('foto', editCapturedPhoto, 'jugador-foto.jpg')
-      }
       
       // Obtener el ID de la relación que se está editando
       const relacionJugador = editingJugador.jugadoresEquipoCategoria?.[0] as any
@@ -579,10 +621,39 @@ const Page = () => {
         setEditingJugador(null)
       }, 1000)
     } catch (error) {
-      setEditFormError(error instanceof Error ? error.message : 'Error al actualizar jugador')
+      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar jugador'
+      
+      // Si el error es sobre jugadores permitidos, mostrarlo como toast
+      if (errorMessage.includes('No se puede agregar más jugadores') || errorMessage.includes('límite máximo permitido')) {
+        toast.current?.show({ 
+          severity: 'warn', 
+          summary: 'Límite de Jugadores', 
+          detail: errorMessage, 
+          life: 6000 
+        })
+      } else {
+        setEditFormError(errorMessage)
+      }
     } finally {
       setLoading(false)
     }
+  }
+  
+  const handleConfirmarCambioEquipo = async () => {
+    if (pendingFormData) {
+      setShowConfirmacionCambioEquipo(false)
+      await procederConActualizacion(pendingFormData)
+      setPendingFormData(null)
+      setEquipoAnteriorInfo(null)
+      setEquipoNuevoInfo(null)
+    }
+  }
+  
+  const handleCancelarCambioEquipo = () => {
+    setShowConfirmacionCambioEquipo(false)
+    setPendingFormData(null)
+    setEquipoAnteriorInfo(null)
+    setEquipoNuevoInfo(null)
   }
 
   const loadData = async () => {
@@ -1005,7 +1076,19 @@ const Page = () => {
         toggleCreateModal()
       }, 1000)
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Error al crear jugador')
+      const errorMessage = error instanceof Error ? error.message : 'Error al crear jugador'
+      
+      // Si el error es sobre jugadores permitidos, mostrarlo como toast
+      if (errorMessage.includes('No se puede agregar más jugadores') || errorMessage.includes('límite máximo permitido')) {
+        toast.current?.show({ 
+          severity: 'warn', 
+          summary: 'Límite de Jugadores', 
+          detail: errorMessage, 
+          life: 6000 
+        })
+      } else {
+        setFormError(errorMessage)
+      }
     } finally {
       setLoading(false)
     }
@@ -1075,6 +1158,7 @@ const Page = () => {
   }
 
   return (
+    <>
     <Container fluid>
       <PageBreadcrumb title="Jugadores" subtitle="Apps" />
 
@@ -1614,7 +1698,7 @@ const Page = () => {
           )}
           
           <Form action={handleCreateJugador}>
-            <Row className="g-3">
+            <Row className="g-2">
               <Col lg={4}>
                 <FloatingLabel label="Cédula" className="position-relative">
                   <FormControl 
@@ -1670,19 +1754,9 @@ const Page = () => {
                   </FormSelect>
                 </FloatingLabel>
               </Col>
-
-              <Col lg={4}>
-                <FloatingLabel label="Liga">
-                  <FormControl 
-                    type="text" 
-                    name="liga" 
-                    placeholder="Ingrese liga" 
-                    value={createFormData.liga}
-                    onChange={(e) => setCreateFormData({ ...createFormData, liga: e.target.value })}
-                    required 
-                  />
-                </FloatingLabel>
-              </Col>
+              
+              {/* Campo oculto para liga con valor por defecto */}
+              <input type="hidden" name="liga" value="ATAHUALPA" />
 
               <Col lg={4}>
                 <FloatingLabel label="Fecha de Nacimiento">
@@ -1712,8 +1786,16 @@ const Page = () => {
               </Col>
 
               <Col lg={4}>
-                <FloatingLabel label="Número de Jugador">
-                  <FormControl type="number" name="numero_jugador" placeholder="Número de camiseta" min="1" max="99" />
+                <FloatingLabel label="Número de Jugador *" className="fw-bold">
+                  <FormControl 
+                    type="number" 
+                    name="numero_jugador" 
+                    placeholder="Número de camiseta" 
+                    min="1" 
+                    max="99"
+                    className="border-primary border-2"
+                    style={{ fontSize: '1.1rem', fontWeight: '600' }}
+                  />
                 </FloatingLabel>
               </Col>
 
@@ -1751,7 +1833,7 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={12}>
+              <Col lg={4}>
                 <FloatingLabel label="Dirección">
                   <FormControl 
                     type="text" 
@@ -1763,20 +1845,7 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={12}>
-                <FloatingLabel label="Observaciones">
-                  <FormControl 
-                    as="textarea" 
-                    name="observacion" 
-                    placeholder="Observaciones del jugador"
-                    value={createFormData.observacion}
-                    onChange={(e) => setCreateFormData({ ...createFormData, observacion: e.target.value })}
-                    style={{ height: '100px' }}
-                  />
-                </FloatingLabel>
-              </Col>
-
-              <Col lg={6}>
+              <Col lg={4}>
                 
                 <Select
                   value={selectedEquipoCategoria}
@@ -1796,7 +1865,7 @@ const Page = () => {
                 />
               </Col>
 
-              <Col lg={3}>
+              <Col lg={4}>
                 <FloatingLabel label="Estado">
                   <FormSelect 
                     name="estado"
@@ -1809,8 +1878,21 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={3}>
-                <div className="form-check">
+              <Col lg={9}>
+                <FloatingLabel label="Observaciones">
+                  <FormControl 
+                    as="textarea" 
+                    name="observacion" 
+                    placeholder="Observaciones del jugador"
+                    value={createFormData.observacion}
+                    onChange={(e) => setCreateFormData({ ...createFormData, observacion: e.target.value })}
+                    style={{ height: '60px' }}
+                  />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={3} className="d-flex align-items-end">
+                <div className="form-check w-100">
                   <FormCheck
                     type="checkbox"
                     name="foraneo"
@@ -1916,7 +1998,7 @@ const Page = () => {
           
           {editingJugador && (
             <Form action={handleUpdateJugador}>
-              <Row className="g-3">
+              <Row className="g-2">
                 <Col lg={4}>
                   <FloatingLabel label="Cédula">
                     <FormControl 
@@ -1956,18 +2038,9 @@ const Page = () => {
                     </FormSelect>
                   </FloatingLabel>
                 </Col>
-
-                <Col lg={4}>
-                  <FloatingLabel label="Liga">
-                    <FormControl 
-                      type="text" 
-                      name="liga" 
-                      placeholder="Ingrese liga" 
-                      defaultValue={editingJugador.liga}
-                      required 
-                    />
-                  </FloatingLabel>
-                </Col>
+                
+                {/* Campo oculto para liga con valor por defecto */}
+                <input type="hidden" name="liga" value={editingJugador.liga || 'ATAHUALPA'} />
 
                 <Col lg={4}>
                   <FloatingLabel label="Fecha de Nacimiento">
@@ -1992,7 +2065,7 @@ const Page = () => {
                 </Col>
 
                 <Col lg={4}>
-                  <FloatingLabel label="Número de Jugador">
+                  <FloatingLabel label="Número de Jugador *" className="fw-bold">
                     <FormControl 
                       type="number" 
                       name="numero_jugador" 
@@ -2000,6 +2073,8 @@ const Page = () => {
                       min="1" 
                       max="99"
                       defaultValue={(editingJugador.jugadoresEquipoCategoria?.[0] as any)?.numero_jugador || ''}
+                      className="border-primary border-2"
+                      style={{ fontSize: '1.1rem', fontWeight: '600' }}
                     />
                   </FloatingLabel>
                 </Col>
@@ -2044,7 +2119,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={12}>
+                <Col lg={4}>
                   <FloatingLabel label="Dirección">
                     <FormControl 
                       type="text" 
@@ -2055,19 +2130,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={12}>
-                  <FloatingLabel label="Observaciones">
-                    <FormControl 
-                      as="textarea" 
-                      name="observacion" 
-                      placeholder="Observaciones del jugador" 
-                      style={{ height: '100px' }}
-                      defaultValue={editingJugador.observacion || ''}
-                    />
-                  </FloatingLabel>
-                </Col>
-
-                <Col lg={6}>
+                <Col lg={4}>
                   
                   <Select
                     value={selectedEditEquipoCategoria}
@@ -2087,7 +2150,7 @@ const Page = () => {
                   />
                 </Col>
 
-                <Col lg={3}>
+                <Col lg={4}>
                   <FloatingLabel label="Estado">
                     <FormSelect name="estado" defaultValue={(editingJugador.estado ?? true).toString()}>
                       <option value="true">Activo</option>
@@ -2096,8 +2159,20 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={3}>
-                  <div className="form-check">
+                <Col lg={9}>
+                  <FloatingLabel label="Observaciones">
+                    <FormControl 
+                      as="textarea" 
+                      name="observacion" 
+                      placeholder="Observaciones del jugador" 
+                      style={{ height: '60px' }}
+                      defaultValue={editingJugador.observacion || ''}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={3} className="d-flex align-items-end">
+                  <div className="form-check w-100">
                     <FormCheck
                       type="checkbox"
                       name="foraneo"
@@ -2653,7 +2728,65 @@ const Page = () => {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* Modal de confirmación de cambio de equipo */}
+      <Modal 
+        show={showConfirmacionCambioEquipo} 
+        onHide={handleCancelarCambioEquipo} 
+        centered
+      >
+        <ModalHeader closeButton>
+          <ModalTitle>Confirmar Cambio de Equipo</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          <Alert variant="warning" className="mb-3">
+            <strong>¿Estás seguro de que deseas cambiar el equipo de este jugador?</strong>
+          </Alert>
+          {equipoAnteriorInfo && equipoNuevoInfo && (
+            <div>
+              <p className="mb-2">
+                <strong>Jugador:</strong> {editingJugador?.apellido_nombre}
+              </p>
+              <div className="mb-3">
+                <p className="mb-1"><strong>Equipo Actual:</strong></p>
+                <div className="ps-3">
+                  <p className="mb-0">• <strong>Equipo:</strong> {equipoAnteriorInfo.nombre}</p>
+                  <p className="mb-0">• <strong>Categoría:</strong> {equipoAnteriorInfo.categoria}</p>
+                </div>
+              </div>
+              <div className="mb-3">
+                <p className="mb-1"><strong>Nuevo Equipo:</strong></p>
+                <div className="ps-3">
+                  <p className="mb-0">• <strong>Equipo:</strong> {equipoNuevoInfo.nombre}</p>
+                  <p className="mb-0">• <strong>Categoría:</strong> {equipoNuevoInfo.categoria}</p>
+                </div>
+              </div>
+              <Alert variant="info" className="mb-0">
+                <small>
+                  <strong>Nota:</strong> Este cambio se registrará en el historial del jugador.
+                </small>
+                <small>
+                  Verifica si se encuera regularizada su situación (PASE/PRÉSTAMO)
+                </small>
+              </Alert>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={handleCancelarCambioEquipo}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleConfirmarCambioEquipo}>
+            Confirmar Cambio
+          </Button>
+        </ModalFooter>
+      </Modal>
+
     </Container>
+    
+    {/* Toast de PrimeReact - Fuera del Container para mejor visibilidad */}
+    <Toast ref={toast} position="top-right" style={{ zIndex: 1100 }} />
+  </>
   )
 }
 

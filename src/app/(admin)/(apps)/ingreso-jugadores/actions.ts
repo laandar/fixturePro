@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { jugadores, jugadorEquipoCategoria, equipoCategoria, torneos, equiposTorneo, categorias, equipos } from '@/db/schema'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, count } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { randomUUID } from 'crypto'
 import { jugadorQueries, jugadorEquipoCategoriaQueries, equipoCategoriaQueries } from '@/db/queries'
@@ -600,6 +600,48 @@ export async function createJugadorIngreso(
       )
       .limit(1)
 
+    // 4. Validar límite de jugadores permitidos si es un jugador nuevo en el equipo-categoría
+    if (relacionExistente.length === 0) {
+      // Obtener la categoría para verificar el límite de jugadores
+      const categoria = await db
+        .select()
+        .from(categorias)
+        .where(eq(categorias.id, categoriaId))
+        .limit(1)
+
+      if (categoria.length > 0 && categoria[0].numero_jugadores_permitidos !== null) {
+        // Contar jugadores actuales en el equipo-categoría
+        const conteoJugadores = await db
+          .select({ total: count() })
+          .from(jugadorEquipoCategoria)
+          .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId))
+
+        const numeroJugadoresActuales = conteoJugadores[0]?.total || 0
+        const limitePermitido = categoria[0].numero_jugadores_permitidos
+
+        if (numeroJugadoresActuales >= limitePermitido) {
+          // Obtener nombre del equipo y categoría para el mensaje de error
+          const equipoCategoriaInfo = await db
+            .select({
+              equipo_nombre: equipos.nombre,
+              categoria_nombre: categorias.nombre
+            })
+            .from(equipoCategoria)
+            .innerJoin(equipos, eq(equipoCategoria.equipo_id, equipos.id))
+            .innerJoin(categorias, eq(equipoCategoria.categoria_id, categorias.id))
+            .where(eq(equipoCategoria.id, equipoCategoriaId))
+            .limit(1)
+
+          const equipoNombre = equipoCategoriaInfo[0]?.equipo_nombre || 'el equipo'
+          const categoriaNombre = equipoCategoriaInfo[0]?.categoria_nombre || 'la categoría'
+
+          throw new Error(
+            `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
+          )
+        }
+      }
+    }
+
     if (relacionExistente.length === 0) {
       // Crear nueva relación en jugador_equipo_categoria con el numero_jugador (usando cédula)
       const resultado = await db.insert(jugadorEquipoCategoria).values({
@@ -741,6 +783,45 @@ export async function updateJugadorIngreso(
         .limit(1)
 
       if (relacionExistente.length === 0) {
+        // Validar límite de jugadores permitidos antes de crear la relación
+        const categoria = await db
+          .select()
+          .from(categorias)
+          .where(eq(categorias.id, categoriaId))
+          .limit(1)
+
+        if (categoria.length > 0 && categoria[0].numero_jugadores_permitidos !== null) {
+          // Contar jugadores actuales en el equipo-categoría
+          const conteoJugadores = await db
+            .select({ total: count() })
+            .from(jugadorEquipoCategoria)
+            .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipoCategoriaId))
+
+          const numeroJugadoresActuales = conteoJugadores[0]?.total || 0
+          const limitePermitido = categoria[0].numero_jugadores_permitidos
+
+          if (numeroJugadoresActuales >= limitePermitido) {
+            // Obtener nombre del equipo y categoría para el mensaje de error
+            const equipoCategoriaInfo = await db
+              .select({
+                equipo_nombre: equipos.nombre,
+                categoria_nombre: categorias.nombre
+              })
+              .from(equipoCategoria)
+              .innerJoin(equipos, eq(equipoCategoria.equipo_id, equipos.id))
+              .innerJoin(categorias, eq(equipoCategoria.categoria_id, categorias.id))
+              .where(eq(equipoCategoria.id, equipoCategoriaId))
+              .limit(1)
+
+            const equipoNombre = equipoCategoriaInfo[0]?.equipo_nombre || 'el equipo'
+            const categoriaNombre = equipoCategoriaInfo[0]?.categoria_nombre || 'la categoría'
+
+            throw new Error(
+              `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
+            )
+          }
+        }
+
         // Crear nueva relación en jugador_equipo_categoria con el numero_jugador (usando cédula)
         await db.insert(jugadorEquipoCategoria).values({
           jugador_id: cedulaJugador, // Guardar la cédula en lugar del ID

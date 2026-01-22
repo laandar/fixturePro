@@ -106,6 +106,20 @@ const Page = () => {
         return <span className="text-muted">Sin rango definido</span>
       },
     },
+    {
+      header: 'Jugadores Permitidos',
+      cell: ({ row }: { row: TableRow<Categoria> }) => {
+        const categoria = row.original
+        if (categoria.numero_jugadores_permitidos !== null && categoria.numero_jugadores_permitidos !== undefined) {
+          return (
+            <span className="badge bg-primary-subtle text-primary">
+              {categoria.numero_jugadores_permitidos} jugadores
+            </span>
+          )
+        }
+        return <span className="text-muted">No definido</span>
+      },
+    },
     columnHelper.accessor('createdAt', { 
       header: 'Fecha Creación',
       cell: ({ row }) => row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString('es-ES') : 'N/A'
@@ -635,6 +649,18 @@ const Page = () => {
               </Col>
 
               <Col lg={12}>
+                <FloatingLabel label="Número de Jugadores Permitidos por Equipo">
+                  <FormControl 
+                    type="number" 
+                    name="numero_jugadores_permitidos" 
+                    placeholder="Ej: 20" 
+                    min="1" 
+                    max="50" 
+                  />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={12}>
                 <FloatingLabel label="Estado">
                   <FormSelect name="estado">
                     <option value="false">Inactivo</option>
@@ -740,6 +766,19 @@ const Page = () => {
                       min="0" 
                       max="11" 
                       defaultValue={editingCategoria.edad_maxima_meses || 0}
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={12}>
+                  <FloatingLabel label="Número de Jugadores Permitidos por Equipo">
+                    <FormControl 
+                      type="number" 
+                      name="numero_jugadores_permitidos" 
+                      placeholder="Ej: 20" 
+                      min="1" 
+                      max="50" 
+                      defaultValue={editingCategoria.numero_jugadores_permitidos || ''}
                     />
                   </FloatingLabel>
                 </Col>

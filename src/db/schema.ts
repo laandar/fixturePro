@@ -12,6 +12,8 @@ export const categorias = pgTable('categorias', {
   edad_minima_meses: integer('edad_minima_meses').default(0), // Meses adicionales para edad mínima
   edad_maxima_anos: integer('edad_maxima_anos'), // Edad máxima en años
   edad_maxima_meses: integer('edad_maxima_meses').default(0), // Meses adicionales para edad máxima
+  // Número de jugadores permitidos por equipo en esta categoría
+  numero_jugadores_permitidos: integer('numero_jugadores_permitidos'), // Número máximo de jugadores permitidos por equipo
   // Imágenes del carnet por categoría
   imagen_carnet_frontal: text('imagen_carnet_frontal'), // Ruta de la imagen frontal del carnet
   imagen_carnet_trasera: text('imagen_carnet_trasera'), // Ruta de la imagen trasera del carnet

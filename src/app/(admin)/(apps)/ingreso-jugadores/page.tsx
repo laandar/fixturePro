@@ -1,6 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Toast } from 'primereact/toast'
+import 'primereact/resources/themes/lara-light-cyan/theme.css'
+import 'primereact/resources/primereact.min.css'
+import 'primeicons/primeicons.css'
 import DataTable from '@/components/table/DataTable'
 import TablePagination from '@/components/table/TablePagination'
 import {
@@ -46,6 +50,7 @@ const sexoOptions = [
 ]
 
 export default function IngresoJugadoresPage() {
+  const toast = useRef<any>(null)
   const { puedeVer, puedeCrear, puedeEditar, puedeEliminar, cargando: cargandoPermisos } = usePermisos('ingreso-jugadores')
   const { user, isLoading: isLoadingAuth } = useAuth()
   
@@ -357,7 +362,19 @@ export default function IngresoJugadoresPage() {
       
       setTimeout(() => setSuccess(null), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar jugador')
+      const errorMessage = err instanceof Error ? err.message : 'Error al guardar jugador'
+      
+      // Si el error es sobre jugadores permitidos, mostrarlo como toast
+      if (errorMessage.includes('No se puede agregar más jugadores') || errorMessage.includes('límite máximo permitido')) {
+        toast.current?.show({ 
+          severity: 'warn', 
+          summary: 'Límite de Jugadores', 
+          detail: errorMessage, 
+          life: 6000 
+        })
+      } else {
+        setError(errorMessage)
+      }
     } finally {
       setSaving(false)
     }
@@ -801,6 +818,7 @@ export default function IngresoJugadoresPage() {
   }
 
   return (
+    <>
     <Container fluid>
       <PageBreadcrumb title="Ingreso de Jugadores" />
       
@@ -1494,5 +1512,9 @@ export default function IngresoJugadoresPage() {
         </CardBody>
       </Card>
     </Container>
+    
+    {/* Toast de PrimeReact - Fuera del Container para mejor visibilidad */}
+    <Toast ref={toast} position="top-right" style={{ zIndex: 1100 }} />
+  </>
   )
 }
