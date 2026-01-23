@@ -621,10 +621,42 @@ const Page = () => {
         setEditingJugador(null)
       }, 1000)
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar jugador'
+      // En producción, Next.js oculta los mensajes de error, así que intentamos extraer el mensaje de varias formas
+      let errorMessage = 'Error al actualizar jugador'
+      
+      // Intentar extraer el mensaje del error
+      if (error instanceof Error) {
+        errorMessage = error.message || error.toString()
+        // Si el mensaje está vacío o es genérico, intentar obtenerlo del stack
+        if (!errorMessage || errorMessage === 'Error al actualizar jugador' || errorMessage.includes('digest')) {
+          // En producción, el error puede tener información en el stack
+          const stack = error.stack || ''
+          if (stack.includes('límite') || stack.includes('jugadores permitidos')) {
+            errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
+          }
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else if (error && typeof error === 'object') {
+        // Intentar obtener el mensaje de varias propiedades
+        errorMessage = (error as any).message || (error as any).error || JSON.stringify(error)
+      }
+      
+      // Si el mensaje está vacío o es genérico, intentar obtener más información
+      if (!errorMessage || errorMessage === 'Error al actualizar jugador' || errorMessage.includes('digest')) {
+        // En producción, el error puede tener un digest que identifica el tipo
+        // Intentamos mostrar un mensaje genérico pero útil
+        const errorStr = error?.toString() || JSON.stringify(error)
+        if (errorStr.includes('límite') || errorStr.includes('jugadores permitidos') || errorStr.includes('No se puede agregar')) {
+          errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
+        }
+      }
       
       // Si el error es sobre jugadores permitidos, mostrarlo como toast
-      if (errorMessage.includes('No se puede agregar más jugadores') || errorMessage.includes('límite máximo permitido')) {
+      if (errorMessage.includes('No se puede agregar más jugadores') || 
+          errorMessage.includes('límite máximo permitido') ||
+          errorMessage.includes('límite') ||
+          errorMessage.includes('jugadores permitidos')) {
         toast.current?.show({ 
           severity: 'warn', 
           summary: 'Límite de Jugadores', 
@@ -1076,10 +1108,42 @@ const Page = () => {
         toggleCreateModal()
       }, 1000)
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al crear jugador'
+      // En producción, Next.js oculta los mensajes de error, así que intentamos extraer el mensaje de varias formas
+      let errorMessage = 'Error al crear jugador'
+      
+      // Intentar extraer el mensaje del error
+      if (error instanceof Error) {
+        errorMessage = error.message || error.toString()
+        // Si el mensaje está vacío o es genérico, intentar obtenerlo del stack
+        if (!errorMessage || errorMessage === 'Error al crear jugador' || errorMessage.includes('digest')) {
+          // En producción, el error puede tener información en el stack
+          const stack = error.stack || ''
+          if (stack.includes('límite') || stack.includes('jugadores permitidos')) {
+            errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
+          }
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else if (error && typeof error === 'object') {
+        // Intentar obtener el mensaje de varias propiedades
+        errorMessage = (error as any).message || (error as any).error || JSON.stringify(error)
+      }
+      
+      // Si el mensaje está vacío o es genérico, intentar obtener más información
+      if (!errorMessage || errorMessage === 'Error al crear jugador' || errorMessage.includes('digest')) {
+        // En producción, el error puede tener un digest que identifica el tipo
+        // Intentamos mostrar un mensaje genérico pero útil
+        const errorStr = error?.toString() || JSON.stringify(error)
+        if (errorStr.includes('límite') || errorStr.includes('jugadores permitidos') || errorStr.includes('No se puede agregar')) {
+          errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
+        }
+      }
       
       // Si el error es sobre jugadores permitidos, mostrarlo como toast
-      if (errorMessage.includes('No se puede agregar más jugadores') || errorMessage.includes('límite máximo permitido')) {
+      if (errorMessage.includes('No se puede agregar más jugadores') || 
+          errorMessage.includes('límite máximo permitido') ||
+          errorMessage.includes('límite') ||
+          errorMessage.includes('jugadores permitidos')) {
         toast.current?.show({ 
           severity: 'warn', 
           summary: 'Límite de Jugadores', 

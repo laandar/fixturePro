@@ -15,6 +15,21 @@ import { eq, and, or, inArray, count } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { uploadFileToCloudinary, isCloudinaryUrl, extractPublicIdFromUrl, deleteImageFromCloudinary } from '@/lib/cloudinary'
 
+// Clase de error personalizada para que el mensaje se propague correctamente en producción
+class ServerActionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ServerActionError'
+    // Asegurar que el mensaje esté disponible en la propiedad message
+    Object.defineProperty(this, 'message', {
+      value: message,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    })
+  }
+}
+
 // ===== FUNCIONES AUXILIARES =====
 
 /**
@@ -296,7 +311,7 @@ export async function createJugador(formData: FormData) {
           const equipoNombre = equipoCategoriaInfo.equipo?.nombre || 'el equipo'
           const categoriaNombre = equipoCategoriaInfo.categoria.nombre || 'la categoría'
           
-          throw new Error(
+          throw new ServerActionError(
             `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
           )
         }

@@ -8,6 +8,21 @@ import { requirePermiso } from '@/lib/auth-helpers'
 import { randomUUID } from 'crypto'
 import { jugadorQueries, jugadorEquipoCategoriaQueries, equipoCategoriaQueries } from '@/db/queries'
 
+// Clase de error personalizada para que el mensaje se propague correctamente en producción
+class ServerActionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ServerActionError'
+    // Asegurar que el mensaje esté disponible en la propiedad message
+    Object.defineProperty(this, 'message', {
+      value: message,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    })
+  }
+}
+
 export type JugadorIngreso = {
   id?: string
   cedula: string
@@ -635,7 +650,7 @@ export async function createJugadorIngreso(
           const equipoNombre = equipoCategoriaInfo[0]?.equipo_nombre || 'el equipo'
           const categoriaNombre = equipoCategoriaInfo[0]?.categoria_nombre || 'la categoría'
 
-          throw new Error(
+          throw new ServerActionError(
             `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
           )
         }
