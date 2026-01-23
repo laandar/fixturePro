@@ -8,26 +8,18 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { db } from '@/db'
-import { verificarRangoEdad, obtenerMensajeErrorEdad } from '@/lib/age-helpers'
+import { verificarRangoEdad, obtenerMensajeErrorEdad, esMenorALaEdadMinima, esMayorALaEdadMaxima, calcularEdad, edadAMeses } from '@/lib/age-helpers'
 import { historialJugadores, jugadorEquipoCategoria, jugadores, equipoCategoria, categorias, equipos } from '@/db/schema'
 import { desc } from 'drizzle-orm'
-import { eq, and, or, inArray, count } from 'drizzle-orm'
+import { eq, and, or, inArray, count, ne } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
 import { uploadFileToCloudinary, isCloudinaryUrl, extractPublicIdFromUrl, deleteImageFromCloudinary } from '@/lib/cloudinary'
 
-// Clase de error personalizada para que el mensaje se propague correctamente en producción
-class ServerActionError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ServerActionError'
-    // Asegurar que el mensaje esté disponible en la propiedad message
-    Object.defineProperty(this, 'message', {
-      value: message,
-      writable: true,
-      enumerable: true,
-      configurable: true
-    })
-  }
+// Tipo de resultado para Server Actions
+export type JugadorActionResult = {
+  success: boolean
+  error?: string
+  data?: any
 }
 
 // ===== FUNCIONES AUXILIARES =====
@@ -205,18 +197,33 @@ export async function getJugadoresByIds(ids: string[]) {
   }
 }
 
-export async function createJugador(formData: FormData) {
+export async function createJugador(formData: FormData): Promise<JugadorActionResult> {
   await requirePermiso('jugadores', 'crear')
   try {
     const cedula = formData.get('cedula') as string
     const apellido_nombre = formData.get('apellido_nombre') as string
     const nacionalidad = formData.get('nacionalidad') as string
     const liga = formData.get('liga') as string
-    const equipo_categoria_id = parseInt(formData.get('equipo_categoria_id') as string)
+    const equipo_categoria_id_str = formData.get('equipo_categoria_id') as string
     const estado = formData.get('estado') === 'true'
     const fecha_nacimiento = formData.get('fecha_nacimiento') as string
     const foto = formData.get('foto') as File | null
     const jugador_existente_id = formData.get('jugador_existente_id') as string | null
+    
+    // Validar campos obligatorios
+    if (!equipo_categoria_id_str || equipo_categoria_id_str.trim() === '') {
+      return { success: false, error: 'El equipo-categoría es obligatorio' }
+    }
+    
+    if (!fecha_nacimiento || fecha_nacimiento.trim() === '') {
+      return { success: false, error: 'La fecha de nacimiento es obligatoria' }
+    }
+    
+    const equipo_categoria_id = parseInt(equipo_categoria_id_str)
+    
+    if (isNaN(equipo_categoria_id)) {
+      return { success: false, error: 'El equipo-categoría seleccionado no es válido' }
+    }
     
     // Nuevos campos
     const sexo = formData.get('sexo') as string
@@ -231,28 +238,37 @@ export async function createJugador(formData: FormData) {
     const ligaValue = liga || 'ATAHUALPA'
 
     if (!cedula || !apellido_nombre || !nacionalidad || !equipo_categoria_id) {
-      throw new Error('Todos los campos obligatorios deben estar completos')
+      return { success: false, error: 'Todos los campos obligatorios deben estar completos' }
     }
 
     // Si se proporciona un ID de jugador existente, solo crear la relación
     if (jugador_existente_id) {
       const jugadorExistente = await jugadorQueries.getById(jugador_existente_id)
       if (!jugadorExistente) {
-        throw new Error('El jugador existente no se encontró')
+        return { success: false, error: 'El jugador existente no se encontró' }
       }
       
       // Verificar que la cédula coincida
       if (jugadorExistente.cedula !== cedula) {
-        throw new Error('La cédula no coincide con el jugador existente')
+        return { success: false, error: 'La cédula no coincide con el jugador existente' }
       }
       
       // Solo crear la nueva relación jugador-equipo-categoría
       const cedulaJugador = jugadorExistente.cedula
       const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : null
       const situacionJugadorValue = formData.get('situacion_jugador') as string | null
-      const situacionNormalizada = situacionJugadorValue && (situacionJugadorValue === 'PASE' || situacionJugadorValue === 'PRÉSTAMO') 
-        ? situacionJugadorValue as 'PASE' | 'PRÉSTAMO'
-        : null
+      
+      // Validar que situacion_jugador sea obligatorio
+      if (!situacionJugadorValue || situacionJugadorValue.trim() === '') {
+        return { success: false, error: 'La situación del jugador es obligatoria' }
+      }
+      
+      // Validar que sea un valor válido
+      if (situacionJugadorValue !== 'PASE' && situacionJugadorValue !== 'PRÉSTAMO') {
+        return { success: false, error: 'La situación del jugador debe ser PASE o PRÉSTAMO' }
+      }
+      
+      const situacionNormalizada = situacionJugadorValue as 'PASE' | 'PRÉSTAMO'
       
       // Verificar si ya existe la relación con este equipo-categoría específico
       const relacionExistente = await db
@@ -285,7 +301,7 @@ export async function createJugador(formData: FormData) {
         const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'equipo'
         const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'categoría'
         
-        throw new Error(`El jugador ya tiene una relación con ${equipoNombre} - ${categoriaNombre}. Si desea crear una relación con otra categoría, seleccione un equipo-categoría diferente.`)
+        return { success: false, error: `El jugador ya tiene una relación con ${equipoNombre} - ${categoriaNombre}. Si desea crear una relación con otra categoría, seleccione un equipo-categoría diferente.` }
       }
       
       // Validar límite de jugadores permitidos antes de crear la relación
@@ -296,6 +312,77 @@ export async function createJugador(formData: FormData) {
           categoria: true
         }
       })
+      
+      // VALIDAR EDAD DEL JUGADOR EXISTENTE
+      // Usar la fecha de nacimiento del jugador existente si no se proporciona una nueva
+      const fechaNacimientoParaValidar = fecha_nacimiento || (jugadorExistente.fecha_nacimiento ? new Date(jugadorExistente.fecha_nacimiento).toISOString().split('T')[0] : null)
+      
+      if (fechaNacimientoParaValidar && equipoCategoriaInfo?.categoria) {
+        const categoria = equipoCategoriaInfo.categoria
+        
+        if (categoria.edad_minima_anos !== null && categoria.edad_maxima_anos !== null) {
+          const rango = {
+            edadMinimaAnos: categoria.edad_minima_anos,
+            edadMinimaMeses: categoria.edad_minima_meses || 0,
+            edadMaximaAnos: categoria.edad_maxima_anos,
+            edadMaximaMeses: categoria.edad_maxima_meses || 0
+          }
+          
+          const fechaNacimiento = new Date(fechaNacimientoParaValidar)
+          
+          // Verificar si está dentro del rango
+          const estaEnRango = verificarRangoEdad(fechaNacimiento, rango)
+          const esMenor = esMenorALaEdadMinima(fechaNacimiento, rango)
+          const esMayor = esMayorALaEdadMaxima(fechaNacimiento, rango)
+          
+          if (!estaEnRango) {
+            // Si no está en el rango, verificar si es menor a la edad mínima
+            if (esMenor) {
+              // Verificar si la categoría permite jugadores menores
+              const numeroMenoresPermitidos = categoria.numero_jugadores_menores_permitidos
+              
+              if (numeroMenoresPermitidos === null || numeroMenoresPermitidos === undefined || numeroMenoresPermitidos === 0) {
+                // No se permiten jugadores menores
+                return { success: false, error: obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre) }
+              }
+              
+              // Contar cuántos jugadores menores a la edad mínima ya hay en este equipo-categoría
+              const jugadoresEnEquipoCategoria = await db
+                .select({
+                  jugador_id: jugadorEquipoCategoria.jugador_id,
+                  fecha_nacimiento: jugadores.fecha_nacimiento,
+                  cedula: jugadores.cedula
+                })
+                .from(jugadorEquipoCategoria)
+                .innerJoin(jugadores, eq(jugadorEquipoCategoria.jugador_id, jugadores.cedula))
+                .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id))
+              
+              let contadorMenores = 0
+              for (const jugador of jugadoresEnEquipoCategoria) {
+                if (jugador.fecha_nacimiento) {
+                  const fechaNacJugador = new Date(jugador.fecha_nacimiento)
+                  if (esMenorALaEdadMinima(fechaNacJugador, rango)) {
+                    contadorMenores++
+                  }
+                }
+              }
+              
+              // Verificar si ya se alcanzó el límite
+              if (contadorMenores >= numeroMenoresPermitidos) {
+                const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+                const categoriaNombre = categoria.nombre || 'la categoría'
+                return { 
+                  success: false, 
+                  error: `No se puede agregar más jugadores menores a la edad mínima. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${contadorMenores} jugadores menores permitidos (máximo: ${numeroMenoresPermitidos}).` 
+                }
+              }
+            } else if (esMayor) {
+              // Si es mayor a la edad máxima, siempre rechazar
+              return { success: false, error: obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre) }
+            }
+          }
+        }
+      }
       
       if (equipoCategoriaInfo?.categoria?.numero_jugadores_permitidos !== null && equipoCategoriaInfo?.categoria?.numero_jugadores_permitidos !== undefined) {
         // Contar jugadores actuales en el equipo-categoría
@@ -311,9 +398,43 @@ export async function createJugador(formData: FormData) {
           const equipoNombre = equipoCategoriaInfo.equipo?.nombre || 'el equipo'
           const categoriaNombre = equipoCategoriaInfo.categoria.nombre || 'la categoría'
           
-          throw new ServerActionError(
-            `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
-          )
+          return { 
+            success: false, 
+            error: `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).` 
+          }
+        }
+      }
+      
+      // Validar que el número de jugador sea único en el equipo-categoría
+      if (numeroJugadorValue !== null && numeroJugadorValue !== undefined) {
+        // Construir la condición where
+        const condiciones = [
+          eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id),
+          eq(jugadorEquipoCategoria.numero_jugador, numeroJugadorValue)
+        ]
+        
+        // Si el jugador ya tiene una relación, excluir su propia relación
+        if (relacionExistente.length > 0) {
+          condiciones.push(ne(jugadorEquipoCategoria.jugador_id, cedulaJugador))
+        }
+        
+        const numeroJugadorExistente = await db
+          .select({
+            id: jugadorEquipoCategoria.id,
+            jugador_id: jugadorEquipoCategoria.jugador_id,
+          })
+          .from(jugadorEquipoCategoria)
+          .where(and(...condiciones))
+          .limit(1)
+        
+        if (numeroJugadorExistente.length > 0) {
+          const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+          const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+          
+          return { 
+            success: false, 
+            error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". Por favor, seleccione otro número.` 
+          }
         }
       }
       
@@ -338,14 +459,14 @@ export async function createJugador(formData: FormData) {
       }
       
       revalidatePath('/jugadores')
-      return
+      return { success: true }
     }
 
     // Si no hay jugador existente, crear uno nuevo (código original)
     // Verificar si la cédula ya existe
     const jugadorExistente = await jugadorQueries.getByCedula(cedula)
     if (jugadorExistente) {
-      throw new Error('Ya existe un jugador con esta cédula. Si desea crear una nueva relación, busque el jugador por cédula primero.')
+      return { success: false, error: 'Ya existe un jugador con esta cédula. Si desea crear una nueva relación, busque el jugador por cédula primero.' }
     }
 
     // Validar rango de edad si se proporciona fecha de nacimiento y la categoría tiene rango definido
@@ -354,10 +475,12 @@ export async function createJugador(formData: FormData) {
       const equipoCategoria = await db.query.equipoCategoria.findFirst({
         where: (equipoCategoria, { eq }) => eq(equipoCategoria.id, equipo_categoria_id),
         with: {
-          categoria: true
+          categoria: true,
+          equipo: true
         }
       })
       const categoria = equipoCategoria?.categoria
+      
       if (categoria && categoria.edad_minima_anos !== null && categoria.edad_maxima_anos !== null) {
         const rango = {
           edadMinimaAnos: categoria.edad_minima_anos,
@@ -367,8 +490,57 @@ export async function createJugador(formData: FormData) {
         }
         
         const fechaNacimiento = new Date(fecha_nacimiento)
-        if (!verificarRangoEdad(fechaNacimiento, rango)) {
-          throw new Error(obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre))
+        
+        // Verificar si está dentro del rango
+        const estaEnRango = verificarRangoEdad(fechaNacimiento, rango)
+        const esMenor = esMenorALaEdadMinima(fechaNacimiento, rango)
+        const esMayor = esMayorALaEdadMaxima(fechaNacimiento, rango)
+        
+        if (!estaEnRango) {
+          // Si no está en el rango, verificar si es menor a la edad mínima
+          if (esMenor) {
+            // Verificar si la categoría permite jugadores menores
+            const numeroMenoresPermitidos = categoria.numero_jugadores_menores_permitidos
+            
+            if (numeroMenoresPermitidos === null || numeroMenoresPermitidos === undefined || numeroMenoresPermitidos === 0) {
+              // No se permiten jugadores menores
+              return { success: false, error: obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre) }
+            }
+            
+            // Contar cuántos jugadores menores a la edad mínima ya hay en este equipo-categoría
+            const jugadoresEnEquipoCategoria = await db
+              .select({
+                jugador_id: jugadorEquipoCategoria.jugador_id,
+                fecha_nacimiento: jugadores.fecha_nacimiento,
+                cedula: jugadores.cedula
+              })
+              .from(jugadorEquipoCategoria)
+              .innerJoin(jugadores, eq(jugadorEquipoCategoria.jugador_id, jugadores.cedula))
+              .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id))
+            
+            let contadorMenores = 0
+            for (const jugador of jugadoresEnEquipoCategoria) {
+              if (jugador.fecha_nacimiento) {
+                const fechaNacJugador = new Date(jugador.fecha_nacimiento)
+                if (esMenorALaEdadMinima(fechaNacJugador, rango)) {
+                  contadorMenores++
+                }
+              }
+            }
+            
+            // Verificar si ya se alcanzó el límite
+            if (contadorMenores >= numeroMenoresPermitidos) {
+              const equipoNombre = equipoCategoria?.equipo?.nombre || 'el equipo'
+              const categoriaNombre = categoria.nombre || 'la categoría'
+              return { 
+                success: false, 
+                error: `No se puede agregar más jugadores menores a la edad mínima. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${contadorMenores} jugadores menores permitidos (máximo: ${numeroMenoresPermitidos}).` 
+              }
+            }
+          } else if (esMayor) {
+            // Si es mayor a la edad máxima, siempre rechazar
+            return { success: false, error: obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre) }
+          }
         }
       }
     }
@@ -442,18 +614,56 @@ export async function createJugador(formData: FormData) {
         const equipoNombre = equipoCategoriaInfo.equipo?.nombre || 'el equipo'
         const categoriaNombre = equipoCategoriaInfo.categoria.nombre || 'la categoría'
         
-        throw new Error(
-          `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
-        )
+        return { 
+          success: false, 
+          error: `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).` 
+        }
       }
     }
 
     // Crear el jugador con equipos-categorías pasando el número de jugador y situación en la relación
     const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : undefined
     const situacionJugadorValue = formData.get('situacion_jugador') as string | null
-    const situacionNormalizada = situacionJugadorValue && (situacionJugadorValue === 'PASE' || situacionJugadorValue === 'PRÉSTAMO') 
-      ? situacionJugadorValue as 'PASE' | 'PRÉSTAMO'
-      : null
+    
+    // Validar que situacion_jugador sea obligatorio
+    if (!situacionJugadorValue || situacionJugadorValue.trim() === '') {
+      return { success: false, error: 'La situación del jugador es obligatoria' }
+    }
+    
+    // Validar que sea un valor válido
+    if (situacionJugadorValue !== 'PASE' && situacionJugadorValue !== 'PRÉSTAMO') {
+      return { success: false, error: 'La situación del jugador debe ser PASE o PRÉSTAMO' }
+    }
+    
+    const situacionNormalizada = situacionJugadorValue as 'PASE' | 'PRÉSTAMO'
+    
+    // Validar que el número de jugador sea único en el equipo-categoría
+    if (numeroJugadorValue !== null && numeroJugadorValue !== undefined) {
+      const numeroJugadorExistente = await db
+        .select({
+          id: jugadorEquipoCategoria.id,
+          jugador_id: jugadorEquipoCategoria.jugador_id,
+        })
+        .from(jugadorEquipoCategoria)
+        .where(
+          and(
+            eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id),
+            eq(jugadorEquipoCategoria.numero_jugador, numeroJugadorValue)
+          )
+        )
+        .limit(1)
+      
+      if (numeroJugadorExistente.length > 0) {
+        const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+        const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+        
+        return { 
+          success: false, 
+          error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". Por favor, seleccione otro número.` 
+        }
+      }
+    }
+    
     const nuevoJugador = await jugadorEquipoCategoriaQueries.crearJugadorConEquiposCategorias(
       jugadorData as any, 
       [{ 
@@ -475,23 +685,39 @@ export async function createJugador(formData: FormData) {
     }
 
     revalidatePath('/jugadores')
+    return { success: true }
   } catch (error) {
     console.error('Error al crear jugador:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al crear jugador')
+    return { success: false, error: error instanceof Error ? error.message : 'Error al crear jugador' }
   }
 }
 
-export async function updateJugador(id: number | string, formData: FormData, relacionId?: number) {
+export async function updateJugador(id: number | string, formData: FormData, relacionId?: number): Promise<JugadorActionResult> {
   await requirePermiso('jugadores', 'editar')
   try {
     const cedula = formData.get('cedula') as string
     const apellido_nombre = formData.get('apellido_nombre') as string
     const nacionalidad = formData.get('nacionalidad') as string
     const liga = formData.get('liga') as string
-    const equipo_categoria_id = parseInt(formData.get('equipo_categoria_id') as string)
+    const equipo_categoria_id_str = formData.get('equipo_categoria_id') as string
     const estado = formData.get('estado') === 'true'
     const fecha_nacimiento = formData.get('fecha_nacimiento') as string
     const foto = formData.get('foto') as File | null
+    
+    // Validar campos obligatorios
+    if (!equipo_categoria_id_str || equipo_categoria_id_str.trim() === '') {
+      return { success: false, error: 'El equipo-categoría es obligatorio' }
+    }
+    
+    if (!fecha_nacimiento || fecha_nacimiento.trim() === '') {
+      return { success: false, error: 'La fecha de nacimiento es obligatoria' }
+    }
+    
+    const equipo_categoria_id = parseInt(equipo_categoria_id_str)
+    
+    if (isNaN(equipo_categoria_id)) {
+      return { success: false, error: 'El equipo-categoría seleccionado no es válido' }
+    }
     
     // Nuevos campos
     const sexo = formData.get('sexo') as string
@@ -503,8 +729,21 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     const observacion = formData.get('observacion') as string
     const foraneo = formData.get('foraneo') === 'true'
 
-    if (!cedula || !apellido_nombre || !nacionalidad || !liga || !equipo_categoria_id) {
-      throw new Error('Todos los campos obligatorios deben estar completos')
+    if (!cedula || !apellido_nombre || !nacionalidad || !liga) {
+      return { success: false, error: 'Todos los campos obligatorios deben estar completos' }
+    }
+    
+    // Validar campos obligatorios específicos
+    if (!equipo_categoria_id_str || equipo_categoria_id_str.trim() === '') {
+      return { success: false, error: 'El equipo-categoría es obligatorio' }
+    }
+    
+    if (!fecha_nacimiento || fecha_nacimiento.trim() === '') {
+      return { success: false, error: 'La fecha de nacimiento es obligatoria' }
+    }
+    
+    if (isNaN(equipo_categoria_id)) {
+      return { success: false, error: 'El equipo-categoría seleccionado no es válido' }
     }
 
     // Obtener el jugador actual por ID para obtener su cédula original
@@ -513,12 +752,12 @@ export async function updateJugador(id: number | string, formData: FormData, rel
       jugadorActual = await jugadorQueries.getById(id)
     } catch (error) {
       console.error('Error al obtener jugador por ID:', id, error)
-      throw new Error('Error al obtener información del jugador')
+      return { success: false, error: 'Error al obtener información del jugador' }
     }
     
     if (!jugadorActual) {
       console.error('Jugador no encontrado con ID:', id, typeof id)
-      throw new Error(`Jugador no encontrado con ID: ${id}`)
+      return { success: false, error: `Jugador no encontrado con ID: ${id}` }
     }
     
     const cedulaOriginal = jugadorActual.cedula
@@ -527,7 +766,7 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     if (cedula !== cedulaOriginal) {
       const jugadorExistente = await jugadorQueries.getByCedula(cedula)
       if (jugadorExistente && jugadorExistente.id.toString() !== id.toString()) {
-        throw new Error('Ya existe otro jugador con esta cédula')
+        return { success: false, error: 'Ya existe otro jugador con esta cédula' }
       }
     }
 
@@ -537,10 +776,12 @@ export async function updateJugador(id: number | string, formData: FormData, rel
       const equipoCategoria = await db.query.equipoCategoria.findFirst({
         where: (equipoCategoria, { eq }) => eq(equipoCategoria.id, equipo_categoria_id),
         with: {
-          categoria: true
+          categoria: true,
+          equipo: true
         }
       })
       const categoria = equipoCategoria?.categoria
+      
       if (categoria && categoria.edad_minima_anos !== null && categoria.edad_maxima_anos !== null) {
         const rango = {
           edadMinimaAnos: categoria.edad_minima_anos,
@@ -550,8 +791,62 @@ export async function updateJugador(id: number | string, formData: FormData, rel
         }
         
         const fechaNacimiento = new Date(fecha_nacimiento)
-        if (!verificarRangoEdad(fechaNacimiento, rango)) {
-          throw new Error(obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre))
+        
+        // Verificar si está dentro del rango
+        const estaEnRango = verificarRangoEdad(fechaNacimiento, rango)
+        const esMenor = esMenorALaEdadMinima(fechaNacimiento, rango)
+        const esMayor = esMayorALaEdadMaxima(fechaNacimiento, rango)
+        
+        if (!estaEnRango) {
+          // Si no está en el rango, verificar si es menor a la edad mínima
+          if (esMenor) {
+            // Verificar si la categoría permite jugadores menores
+            const numeroMenoresPermitidos = categoria.numero_jugadores_menores_permitidos
+            
+            if (numeroMenoresPermitidos === null || numeroMenoresPermitidos === undefined || numeroMenoresPermitidos === 0) {
+              // No se permiten jugadores menores
+              return { success: false, error: obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre) }
+            }
+            
+            // Contar cuántos jugadores menores a la edad mínima ya hay en este equipo-categoría
+            // Excluir el jugador actual si ya tiene una relación en este equipo-categoría
+            const jugadoresEnEquipoCategoria = await db
+              .select({
+                jugador_id: jugadorEquipoCategoria.jugador_id,
+                fecha_nacimiento: jugadores.fecha_nacimiento,
+                cedula: jugadores.cedula
+              })
+              .from(jugadorEquipoCategoria)
+              .innerJoin(jugadores, eq(jugadorEquipoCategoria.jugador_id, jugadores.cedula))
+              .where(eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id))
+            
+            let contadorMenores = 0
+            for (const jugador of jugadoresEnEquipoCategoria) {
+              if (jugador.fecha_nacimiento) {
+                const fechaNacJugador = new Date(jugador.fecha_nacimiento)
+                const esMenorJugador = esMenorALaEdadMinima(fechaNacJugador, rango)
+                // Excluir el jugador actual (por cédula original o nueva)
+                const esJugadorActual = jugador.jugador_id === cedulaOriginal || jugador.jugador_id === cedula
+                
+                if (esMenorJugador && !esJugadorActual) {
+                  contadorMenores++
+                }
+              }
+            }
+            
+            // Verificar si ya se alcanzó el límite
+            if (contadorMenores >= numeroMenoresPermitidos) {
+              const equipoNombre = equipoCategoria?.equipo?.nombre || 'el equipo'
+              const categoriaNombre = categoria.nombre || 'la categoría'
+              return { 
+                success: false, 
+                error: `No se puede agregar más jugadores menores a la edad mínima. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${contadorMenores} jugadores menores permitidos (máximo: ${numeroMenoresPermitidos}).` 
+              }
+            }
+          } else if (esMayor) {
+            // Si es mayor a la edad máxima, siempre rechazar
+            return { success: false, error: obtenerMensajeErrorEdad(fechaNacimiento, rango, apellido_nombre) }
+          }
         }
       }
     }
@@ -648,9 +943,18 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     // Si se proporciona un ID de relación, solo actualizar esa relación específica
     // NO crear nuevas relaciones al modificar
     const numeroJugadorValue = numero_jugador ? parseInt(numero_jugador) : null
-    const situacionJugadorValue = situacion_jugador && (situacion_jugador === 'PASE' || situacion_jugador === 'PRÉSTAMO') 
-      ? situacion_jugador as 'PASE' | 'PRÉSTAMO'
-      : null
+    
+    // Validar que situacion_jugador sea obligatorio
+    if (!situacion_jugador || situacion_jugador.trim() === '') {
+      return { success: false, error: 'La situación del jugador es obligatoria' }
+    }
+    
+    // Validar que sea un valor válido
+    if (situacion_jugador !== 'PASE' && situacion_jugador !== 'PRÉSTAMO') {
+      return { success: false, error: 'La situación del jugador debe ser PASE o PRÉSTAMO' }
+    }
+    
+    const situacionJugadorValue = situacion_jugador as 'PASE' | 'PRÉSTAMO'
     
     // El ID puede ser UUID o número, convertir a string para búsquedas
     const jugadorIdStr = typeof id === 'string' ? id : id.toString()
@@ -702,6 +1006,44 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     const numeroJugadorAnterior = relacionAnterior?.numero_jugador
     const numeroJugadorCambio = relacionAnterior && 
       numeroJugadorAnterior !== numeroJugadorValue
+    
+    // Validar que el número de jugador sea único en el equipo-categoría (si cambió)
+    if (numeroJugadorCambio && numeroJugadorValue !== null && numeroJugadorValue !== undefined) {
+      const numeroJugadorExistente = await db
+        .select({
+          id: jugadorEquipoCategoria.id,
+          jugador_id: jugadorEquipoCategoria.jugador_id,
+        })
+        .from(jugadorEquipoCategoria)
+        .where(
+          and(
+            eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id),
+            eq(jugadorEquipoCategoria.numero_jugador, numeroJugadorValue),
+            // Excluir la relación actual del jugador
+            ne(jugadorEquipoCategoria.id, idRelacionAActualizar!)
+          )
+        )
+        .limit(1)
+      
+      if (numeroJugadorExistente.length > 0) {
+        // Obtener información del equipo-categoría para el mensaje de error
+        const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+          where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+          with: {
+            equipo: true,
+            categoria: true
+          }
+        })
+        
+        const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+        const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+        
+        return { 
+          success: false, 
+          error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". Por favor, seleccione otro número.` 
+        }
+      }
+    }
     
     // Actualizar la relación
     if (idRelacionAActualizar) {
@@ -792,9 +1134,10 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     }
     
     revalidatePath('/jugadores')
+    return { success: true }
   } catch (error) {
     console.error('Error al actualizar jugador:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al actualizar jugador')
+    return { success: false, error: error instanceof Error ? error.message : 'Error al actualizar jugador' }
   }
 }
 

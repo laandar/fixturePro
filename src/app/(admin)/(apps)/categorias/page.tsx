@@ -660,6 +660,19 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
+              <Col lg={6}>
+                <FloatingLabel label="Jugadores Menores a Edad Mínima Permitidos">
+                  <FormControl 
+                    type="number" 
+                    name="numero_jugadores_menores_permitidos" 
+                    placeholder="Ej: 2 (0 = no permitir)" 
+                    min="0" 
+                    max="10" 
+                  />
+                  <small className="text-muted">Número máximo de jugadores menores a la edad mínima permitidos por equipo. Dejar vacío o 0 para no permitir.</small>
+                </FloatingLabel>
+              </Col>
+
               <Col lg={12}>
                 <FloatingLabel label="Estado">
                   <FormSelect name="estado">
@@ -780,6 +793,20 @@ const Page = () => {
                       max="50" 
                       defaultValue={editingCategoria.numero_jugadores_permitidos || ''}
                     />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={6}>
+                  <FloatingLabel label="Jugadores Menores a Edad Mínima Permitidos">
+                    <FormControl 
+                      type="number" 
+                      name="numero_jugadores_menores_permitidos" 
+                      placeholder="Ej: 2 (0 = no permitir)" 
+                      min="0" 
+                      max="10" 
+                      defaultValue={editingCategoria.numero_jugadores_menores_permitidos || ''}
+                    />
+                    <small className="text-muted">Número máximo de jugadores menores a la edad mínima permitidos por equipo. Dejar vacío o 0 para no permitir.</small>
                   </FloatingLabel>
                 </Col>
 

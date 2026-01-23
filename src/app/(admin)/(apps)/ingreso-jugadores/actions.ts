@@ -8,19 +8,11 @@ import { requirePermiso } from '@/lib/auth-helpers'
 import { randomUUID } from 'crypto'
 import { jugadorQueries, jugadorEquipoCategoriaQueries, equipoCategoriaQueries } from '@/db/queries'
 
-// Clase de error personalizada para que el mensaje se propague correctamente en producción
-class ServerActionError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ServerActionError'
-    // Asegurar que el mensaje esté disponible en la propiedad message
-    Object.defineProperty(this, 'message', {
-      value: message,
-      writable: true,
-      enumerable: true,
-      configurable: true
-    })
-  }
+// Tipo de resultado para Server Actions
+export type JugadorIngresoActionResult = {
+  success: boolean
+  error?: string
+  data?: any
 }
 
 export type JugadorIngreso = {
@@ -489,18 +481,18 @@ export async function createJugadorIngreso(
   data: JugadorIngreso,
   equipoId?: number,
   torneoId?: number
-) {
+): Promise<JugadorIngresoActionResult> {
   await requirePermiso('ingreso-jugadores', 'crear')
   
   try {
     // Validar campos requeridos
     if (!data.cedula || !data.apellidos || !data.nombres || !data.nacionalidad) {
-      throw new Error('Cédula, apellidos, nombres y nacionalidad son campos obligatorios')
+      return { success: false, error: 'Cédula, apellidos, nombres y nacionalidad son campos obligatorios' }
     }
 
     // Validar que se proporcionen equipoId y torneoId para crear la relación
     if (!equipoId || !torneoId) {
-      throw new Error('Debe seleccionar un equipo y un torneo para crear el jugador')
+      return { success: false, error: 'Debe seleccionar un equipo y un torneo para crear el jugador' }
     }
 
     // Verificar si el jugador ya existe por cédula
@@ -560,11 +552,11 @@ export async function createJugadorIngreso(
       .limit(1)
 
     if (torneo.length === 0) {
-      throw new Error('Torneo no encontrado')
+      return { success: false, error: 'Torneo no encontrado' }
     }
 
     if (!torneo[0].categoria_id) {
-      throw new Error('El torneo seleccionado no tiene una categoría asignada')
+      return { success: false, error: 'El torneo seleccionado no tiene una categoría asignada' }
     }
 
     const categoriaId = torneo[0].categoria_id
@@ -597,7 +589,7 @@ export async function createJugadorIngreso(
         .returning()
       
       if (!nuevoEquipoCategoria) {
-        throw new Error('Error al crear la relación equipo-categoría')
+        return { success: false, error: 'Error al crear la relación equipo-categoría' }
       }
       
       equipoCategoriaId = nuevoEquipoCategoria.id
@@ -650,9 +642,10 @@ export async function createJugadorIngreso(
           const equipoNombre = equipoCategoriaInfo[0]?.equipo_nombre || 'el equipo'
           const categoriaNombre = equipoCategoriaInfo[0]?.categoria_nombre || 'la categoría'
 
-          throw new ServerActionError(
-            `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
-          )
+          return { 
+            success: false, 
+            error: `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).` 
+          }
         }
       }
     }
@@ -667,7 +660,7 @@ export async function createJugadorIngreso(
       }).returning()
       
       if (!resultado || resultado.length === 0) {
-        throw new Error('Error al crear la relación jugador-equipo-categoría')
+        return { success: false, error: 'Error al crear la relación jugador-equipo-categoría' }
       }
     } else {
       // Actualizar el numero_jugador y situacion_jugador si ya existe la relación
@@ -693,10 +686,10 @@ export async function createJugadorIngreso(
       .limit(1)
 
     revalidatePath('/ingreso-jugadores')
-    return { success: true, jugador: jugadorFinal[0] }
+    return { success: true, data: jugadorFinal[0] }
   } catch (error) {
     console.error('Error al crear jugador:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al crear jugador')
+    return { success: false, error: error instanceof Error ? error.message : 'Error al crear jugador' }
   }
 }
 
@@ -706,7 +699,7 @@ export async function updateJugadorIngreso(
   data: Partial<JugadorIngreso>,
   equipoId?: number,
   torneoId?: number
-) {
+): Promise<JugadorIngresoActionResult> {
   await requirePermiso('ingreso-jugadores', 'editar')
   
   try {
@@ -718,7 +711,7 @@ export async function updateJugadorIngreso(
       .limit(1)
     
     if (jugadorExistente.length === 0) {
-      throw new Error('Jugador no encontrado')
+      return { success: false, error: 'Jugador no encontrado' }
     }
 
     // Obtener la cédula del jugador para usar en jugador_equipo_categoria
@@ -751,7 +744,7 @@ export async function updateJugadorIngreso(
         .limit(1)
 
       if (torneo.length === 0 || !torneo[0].categoria_id) {
-        throw new Error('El torneo seleccionado no tiene una categoría asignada')
+        return { success: false, error: 'El torneo seleccionado no tiene una categoría asignada' }
       }
 
       const categoriaId = torneo[0].categoria_id
@@ -831,9 +824,10 @@ export async function updateJugadorIngreso(
             const equipoNombre = equipoCategoriaInfo[0]?.equipo_nombre || 'el equipo'
             const categoriaNombre = equipoCategoriaInfo[0]?.categoria_nombre || 'la categoría'
 
-            throw new Error(
-              `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).`
-            )
+            return { 
+              success: false, 
+              error: `No se puede agregar más jugadores. El equipo "${equipoNombre}" en la categoría "${categoriaNombre}" ya tiene ${numeroJugadoresActuales} jugadores, que es el límite máximo permitido (${limitePermitido} jugadores).` 
+            }
           }
         }
 
@@ -866,7 +860,7 @@ export async function updateJugadorIngreso(
     return { success: true }
   } catch (error) {
     console.error('Error al actualizar jugador:', error)
-    throw new Error(error instanceof Error ? error.message : 'Error al actualizar jugador')
+    return { success: false, error: error instanceof Error ? error.message : 'Error al actualizar jugador' }
   }
 }
 

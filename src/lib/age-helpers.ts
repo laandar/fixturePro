@@ -137,6 +137,34 @@ export function validarRangoEdad(rango: RangoEdad): { valido: boolean; error?: s
 }
 
 /**
+ * Verifica si un jugador es menor a la edad mínima del rango
+ */
+export function esMenorALaEdadMinima(
+  fechaNacimiento: Date,
+  rango: RangoEdad
+): boolean {
+  const edad = calcularEdad(fechaNacimiento);
+  const edadTotalMeses = edadAMeses(edad.anos, edad.meses);
+  const edadMinimaMeses = edadAMeses(rango.edadMinimaAnos, rango.edadMinimaMeses);
+  
+  return edadTotalMeses < edadMinimaMeses;
+}
+
+/**
+ * Verifica si un jugador es mayor a la edad máxima del rango
+ */
+export function esMayorALaEdadMaxima(
+  fechaNacimiento: Date,
+  rango: RangoEdad
+): boolean {
+  const edad = calcularEdad(fechaNacimiento);
+  const edadTotalMeses = edadAMeses(edad.anos, edad.meses);
+  const edadMaximaMeses = edadAMeses(rango.edadMaximaAnos, rango.edadMaximaMeses);
+  
+  return edadTotalMeses > edadMaximaMeses;
+}
+
+/**
  * Crea un rango de edad para categorías comunes
  */
 export function crearRangoCategoriaComun(nombreCategoria: string): RangoEdad | null {

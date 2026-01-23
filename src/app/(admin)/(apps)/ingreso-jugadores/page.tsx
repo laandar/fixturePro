@@ -342,15 +342,43 @@ export default function IngresoJugadoresPage() {
       setError(null)
       setSuccess(null)
 
+      let result
       if (editingId && !editingId.startsWith('new-')) {
         // Actualizar jugador existente en la base de datos
-        await updateJugadorIngreso(editingId, formData, selectedEquipoId, selectedTorneoId)
-        setSuccess('Jugador actualizado exitosamente')
+        result = await updateJugadorIngreso(editingId, formData, selectedEquipoId, selectedTorneoId)
       } else {
         // Crear nuevo jugador en la base de datos
-        await createJugadorIngreso(formData, selectedEquipoId, selectedTorneoId)
-        setSuccess('Jugador creado exitosamente')
+        result = await createJugadorIngreso(formData, selectedEquipoId, selectedTorneoId)
       }
+      
+      if (!result.success) {
+        // Si hay un error, verificar si es de límite de jugadores
+        const isLimitError = result.error?.includes('No se puede agregar más jugadores') || 
+            result.error?.includes('límite máximo permitido') ||
+            result.error?.includes('límite') ||
+            result.error?.includes('jugadores permitidos')
+        
+        if (isLimitError) {
+          // Mostrar como toast
+          setTimeout(() => {
+            if (toast.current) {
+              toast.current.show({ 
+                severity: 'warn', 
+                summary: 'Límite de Jugadores', 
+                detail: result.error || 'No se puede agregar más jugadores', 
+                life: 6000 
+              })
+            } else {
+              setError(result.error || 'Error al guardar jugador')
+            }
+          }, 100)
+        } else {
+          setError(result.error || 'Error al guardar jugador')
+        }
+        return
+      }
+      
+      setSuccess(editingId && !editingId.startsWith('new-') ? 'Jugador actualizado exitosamente' : 'Jugador creado exitosamente')
 
       // Recargar la lista
       await loadJugadores()
@@ -362,51 +390,9 @@ export default function IngresoJugadoresPage() {
       
       setTimeout(() => setSuccess(null), 3000)
     } catch (err) {
-      // En producción, Next.js oculta los mensajes de error, así que intentamos extraer el mensaje de varias formas
-      let errorMessage = 'Error al guardar jugador'
-      
-      // Intentar extraer el mensaje del error
-      if (err instanceof Error) {
-        errorMessage = err.message || err.toString()
-        // Si el mensaje está vacío o es genérico, intentar obtenerlo del stack
-        if (!errorMessage || errorMessage === 'Error al guardar jugador' || errorMessage.includes('digest')) {
-          // En producción, el error puede tener información en el stack
-          const stack = err.stack || ''
-          if (stack.includes('límite') || stack.includes('jugadores permitidos')) {
-            errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
-          }
-        }
-      } else if (typeof err === 'string') {
-        errorMessage = err
-      } else if (err && typeof err === 'object') {
-        // Intentar obtener el mensaje de varias propiedades
-        errorMessage = (err as any).message || (err as any).error || JSON.stringify(err)
-      }
-      
-      // Si el mensaje está vacío o es genérico, intentar obtener más información
-      if (!errorMessage || errorMessage === 'Error al guardar jugador' || errorMessage.includes('digest')) {
-        // En producción, el error puede tener un digest que identifica el tipo
-        // Intentamos mostrar un mensaje genérico pero útil
-        const errorStr = err?.toString() || JSON.stringify(err)
-        if (errorStr.includes('límite') || errorStr.includes('jugadores permitidos') || errorStr.includes('No se puede agregar')) {
-          errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
-        }
-      }
-      
-      // Si el error es sobre jugadores permitidos, mostrarlo como toast
-      if (errorMessage.includes('No se puede agregar más jugadores') || 
-          errorMessage.includes('límite máximo permitido') ||
-          errorMessage.includes('límite') ||
-          errorMessage.includes('jugadores permitidos')) {
-        toast.current?.show({ 
-          severity: 'warn', 
-          summary: 'Límite de Jugadores', 
-          detail: errorMessage, 
-          life: 6000 
-        })
-      } else {
-        setError(errorMessage)
-      }
+      // Error inesperado (no debería pasar si las Server Actions retornan correctamente)
+      console.error('Error inesperado:', err)
+      setError('Error inesperado al guardar jugador')
     } finally {
       setSaving(false)
     }

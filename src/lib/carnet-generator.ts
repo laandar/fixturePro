@@ -2,6 +2,7 @@
 
 import type { JugadorWithEquipo } from '@/db/types'
 import { getTempPlayerImage } from '@/components/TempPlayerImages'
+import { esMenorALaEdadMinima } from '@/lib/age-helpers'
 
 /**
  * Formatea una fecha al formato español completo
@@ -184,6 +185,18 @@ export async function generarCarnetJugador(jugador: JugadorWithEquipo): Promise<
     // Obtener nombre del equipo
     const nombreEquipo = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || 'SIN EQUIPO'
     
+    // Verificar si el jugador es refuerzo (menor a la edad mínima)
+    let esRefuerzo = false
+    if (jugador.fecha_nacimiento && categoria && categoria.edad_minima_anos !== null && categoria.edad_minima_meses !== null) {
+      const rango = {
+        edadMinimaAnos: categoria.edad_minima_anos,
+        edadMinimaMeses: categoria.edad_minima_meses || 0,
+        edadMaximaAnos: categoria.edad_maxima_anos || 0,
+        edadMaximaMeses: categoria.edad_maxima_meses || 0
+      }
+      esRefuerzo = esMenorALaEdadMinima(new Date(jugador.fecha_nacimiento), rango)
+    }
+    
     // Crear canvas para el carnet frontal
     const canvasFrontal = document.createElement('canvas')
     canvasFrontal.width = plantillaFrontal.width
@@ -246,6 +259,22 @@ export async function generarCarnetJugador(jugador: JugadorWithEquipo): Promise<
     
     // Dibujar cédula (con sombra)
     dibujarTextoConSombra(jugador.cedula || '', xInicio, yCedula, '#000000', 22, 'left')
+    
+    // Dibujar "J" para refuerzos (debajo de la cédula)
+    if (esRefuerzo) {
+      const yJ = yCedula + calcularProporcion(25, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+      const fontSizeJ = calcularTamañoFuente(48, PLANTILLA_REFERENCIA.width, canvasFrontal.width) // Más grande
+      const offsetSombraJ = Math.max(1, Math.round(2 * factorProporcion))
+      // Sombra de la J
+      ctxFrontal.fillStyle = 'rgba(0, 0, 0, 0.4)'
+      ctxFrontal.font = `bold ${fontSizeJ}px Arial`
+      ctxFrontal.textAlign = 'left'
+      ctxFrontal.textBaseline = 'top'
+      ctxFrontal.fillText('J', xInicio + offsetSombraJ, yJ + offsetSombraJ)
+      // J principal (naranja para destacar)
+      ctxFrontal.fillStyle = '#FF8800'  // Naranja para destacar
+      ctxFrontal.fillText('J', xInicio, yJ)
+    }
     
     // Dibujar fecha actual (con sombra)
     dibujarTextoConSombra(fechaActual, xInicio, yFechaActual, '#000000', 16, 'left')
@@ -512,6 +541,18 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
       // Obtener nombre del equipo
       const nombreEquipo = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || 'SIN EQUIPO'
       
+      // Verificar si el jugador es refuerzo (menor a la edad mínima)
+      let esRefuerzo = false
+      if (jugador.fecha_nacimiento && categoria && categoria.edad_minima_anos !== null && categoria.edad_minima_meses !== null) {
+        const rango = {
+          edadMinimaAnos: categoria.edad_minima_anos,
+          edadMinimaMeses: categoria.edad_minima_meses || 0,
+          edadMaximaAnos: categoria.edad_maxima_anos || 0,
+          edadMaximaMeses: categoria.edad_maxima_meses || 0
+        }
+        esRefuerzo = esMenorALaEdadMinima(new Date(jugador.fecha_nacimiento), rango)
+      }
+      
       // Crear canvas para el carnet frontal
       const canvasFrontal = document.createElement('canvas')
       canvasFrontal.width = plantillaFrontal.width
@@ -574,6 +615,22 @@ export async function generarCarnetsMultiples(jugadores: JugadorWithEquipo[]): P
       
       // Dibujar cédula (con sombra)
       dibujarTextoConSombra(jugador.cedula || '', xInicio, yCedula, '#000000', 22, 'left')
+      
+      // Dibujar "J" para refuerzos (debajo de la cédula)
+      if (esRefuerzo) {
+        const yJ = yCedula + calcularProporcion(25, PLANTILLA_REFERENCIA.height, canvasFrontal.height)
+        const fontSizeJ = calcularTamañoFuente(48, PLANTILLA_REFERENCIA.width, canvasFrontal.width) // Más grande
+        const offsetSombraJ = Math.max(1, Math.round(2 * factorProporcion))
+        // Sombra de la J
+        ctxFrontal.fillStyle = 'rgba(0, 0, 0, 0.4)'
+        ctxFrontal.font = `bold ${fontSizeJ}px Arial`
+        ctxFrontal.textAlign = 'left'
+        ctxFrontal.textBaseline = 'top'
+        ctxFrontal.fillText('J', xInicio + offsetSombraJ, yJ + offsetSombraJ)
+        // J principal (naranja para destacar)
+        ctxFrontal.fillStyle = '#FF8800'  // Naranja para destacar
+        ctxFrontal.fillText('J', xInicio, yJ)
+      }
       
       // Dibujar fecha actual (con sombra)
       dibujarTextoConSombra(fechaActual, xInicio, yFechaActual, '#000000', 16, 'left')

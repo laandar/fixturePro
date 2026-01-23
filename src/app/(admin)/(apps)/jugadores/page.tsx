@@ -24,6 +24,7 @@ import {
   Table as TableType,
   useReactTable,
   RowSelectionState,
+  VisibilityState,
 } from '@tanstack/react-table'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -33,6 +34,7 @@ import { TbEdit, TbPlus, TbTrash, TbCamera, TbPrinter, TbX, TbHelp } from 'react
 import ExcelJS from 'exceljs'
 import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, buscarJugadorPorCedula, detectarJugadoresMultiplesCategoriasEquipos } from './actions'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
+import { calcularEdad, esMenorALaEdadMinima } from '@/lib/age-helpers'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
 import { getTempPlayerImage } from '@/components/TempPlayerImages'
@@ -241,9 +243,14 @@ const Page = () => {
           </div>
           <div>
             <h5 className="text-nowrap mb-0 lh-base fs-base">
-              <Link href={`/jugadores/${row.original.id}`} className="link-reset">
+              <span 
+                className="link-reset" 
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleVerPerfilClick(row.original)}
+                title="Ver historial del jugador"
+              >
                 {row.original.apellido_nombre}
-              </Link>
+              </span>
             </h5>
             <p className="text-muted fs-xs mb-0">Cédula: {row.original.cedula}</p>
           </div>
@@ -257,6 +264,7 @@ const Page = () => {
           {row.original.sexo || 'No especificado'}
         </span>
       ),
+      enableHiding: true,
     }),
     {
       id: 'numero_jugador',
@@ -293,6 +301,7 @@ const Page = () => {
     columnHelper.accessor('telefono', {
       header: 'Teléfono',
       cell: ({ row }) => row.original.telefono || 'Sin teléfono',
+      enableHiding: true,
     }),
     columnHelper.accessor('foraneo', {
       header: 'Foráneo',
@@ -335,11 +344,64 @@ const Page = () => {
       header: 'Estado',
       filterFn: estadoFilterFn,
       enableColumnFilter: true,
+      enableHiding: true,
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
         <span className={`badge ${row.original.estado ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} badge-label`}>
           {row.original.estado ? 'Activo' : 'Inactivo'}
         </span>
       ),
+    },
+    {
+      id: 'fecha_nacimiento',
+      header: 'Fecha de Nacimiento',
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        const fechaNacimiento = row.original.fecha_nacimiento
+        if (!fechaNacimiento) return <span className="text-muted">-</span>
+        return new Date(fechaNacimiento).toLocaleDateString('es-ES')
+      },
+    },
+    {
+      id: 'edad',
+      header: 'Edad',
+      cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
+        const fechaNacimiento = row.original.fecha_nacimiento
+        const categoria = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
+        if (!fechaNacimiento) return <span className="text-muted">-</span>
+        try {
+          const edad = calcularEdad(new Date(fechaNacimiento))
+          const edadTexto = `${edad.anos} años${edad.meses > 0 ? ` ${edad.meses} meses` : ''}`
+          
+          // Verificar si es menor a la edad mínima de la categoría
+          let esMenor = false
+          if (categoria && categoria.edad_minima_anos !== null && categoria.edad_minima_meses !== null) {
+            const rango = {
+              edadMinimaAnos: categoria.edad_minima_anos,
+              edadMinimaMeses: categoria.edad_minima_meses || 0,
+              edadMaximaAnos: categoria.edad_maxima_anos || 0,
+              edadMaximaMeses: categoria.edad_maxima_meses || 0
+            }
+            esMenor = esMenorALaEdadMinima(new Date(fechaNacimiento), rango)
+          }
+          
+          return (
+            <div className="d-flex align-items-center gap-2">
+              <span className="badge bg-info-subtle text-info badge-label">
+                {edadTexto}
+              </span>
+              {esMenor && (
+                <span 
+                  className="badge bg-warning-subtle text-warning badge-label" 
+                  title="Jugador menor a la edad mínima de la categoría"
+                >
+                  JUVENIL
+                </span>
+              )}
+            </div>
+          )
+        } catch {
+          return <span className="text-muted">-</span>
+        }
+      },
     },
     columnHelper.accessor('createdAt', { 
       header: 'Fecha Creación',
@@ -407,18 +469,24 @@ const Page = () => {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
+    sexo: false,
+    telefono: false,
+    estado: false,
+  })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [jugadorToDelete, setJugadorToDelete] = useState<JugadorWithEquipo | null>(null)
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter, columnFilters, pagination, rowSelection },
+    state: { sorting, globalFilter, columnFilters, pagination, rowSelection, columnVisibility },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     onPaginationChange: setPagination,
     onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -606,7 +674,35 @@ const Page = () => {
       const relacionJugador = editingJugador.jugadoresEquipoCategoria?.[0] as any
       const relacionId = relacionJugador?.id
       
-      await updateJugador(editingJugador.id, formData, relacionId)
+      const result = await updateJugador(editingJugador.id, formData, relacionId)
+      
+      if (!result.success) {
+        // Si hay un error, verificar si es de límite de jugadores
+        const isLimitError = result.error?.includes('No se puede agregar más jugadores') || 
+            result.error?.includes('límite máximo permitido') ||
+            result.error?.includes('límite') ||
+            result.error?.includes('jugadores permitidos')
+        
+        if (isLimitError) {
+          // Mostrar como toast
+          setTimeout(() => {
+            if (toast.current) {
+              toast.current.show({ 
+                severity: 'warn', 
+                summary: 'Límite de Jugadores', 
+                detail: result.error || 'No se puede agregar más jugadores', 
+                life: 6000 
+              })
+            } else {
+              setEditFormError(result.error || 'Error al actualizar jugador')
+            }
+          }, 100)
+        } else {
+          setEditFormError(result.error || 'Error al actualizar jugador')
+        }
+        return
+      }
+      
       setEditFormSuccess('Jugador actualizado exitosamente')
       
       // Limpiar foto capturada
@@ -621,51 +717,9 @@ const Page = () => {
         setEditingJugador(null)
       }, 1000)
     } catch (error) {
-      // En producción, Next.js oculta los mensajes de error, así que intentamos extraer el mensaje de varias formas
-      let errorMessage = 'Error al actualizar jugador'
-      
-      // Intentar extraer el mensaje del error
-      if (error instanceof Error) {
-        errorMessage = error.message || error.toString()
-        // Si el mensaje está vacío o es genérico, intentar obtenerlo del stack
-        if (!errorMessage || errorMessage === 'Error al actualizar jugador' || errorMessage.includes('digest')) {
-          // En producción, el error puede tener información en el stack
-          const stack = error.stack || ''
-          if (stack.includes('límite') || stack.includes('jugadores permitidos')) {
-            errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
-          }
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error
-      } else if (error && typeof error === 'object') {
-        // Intentar obtener el mensaje de varias propiedades
-        errorMessage = (error as any).message || (error as any).error || JSON.stringify(error)
-      }
-      
-      // Si el mensaje está vacío o es genérico, intentar obtener más información
-      if (!errorMessage || errorMessage === 'Error al actualizar jugador' || errorMessage.includes('digest')) {
-        // En producción, el error puede tener un digest que identifica el tipo
-        // Intentamos mostrar un mensaje genérico pero útil
-        const errorStr = error?.toString() || JSON.stringify(error)
-        if (errorStr.includes('límite') || errorStr.includes('jugadores permitidos') || errorStr.includes('No se puede agregar')) {
-          errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
-        }
-      }
-      
-      // Si el error es sobre jugadores permitidos, mostrarlo como toast
-      if (errorMessage.includes('No se puede agregar más jugadores') || 
-          errorMessage.includes('límite máximo permitido') ||
-          errorMessage.includes('límite') ||
-          errorMessage.includes('jugadores permitidos')) {
-        toast.current?.show({ 
-          severity: 'warn', 
-          summary: 'Límite de Jugadores', 
-          detail: errorMessage, 
-          life: 6000 
-        })
-      } else {
-        setEditFormError(errorMessage)
-      }
+      // Error inesperado (no debería pasar si las Server Actions retornan correctamente)
+      console.error('Error inesperado:', error)
+      setEditFormError('Error inesperado al actualizar jugador')
     } finally {
       setLoading(false)
     }
@@ -805,6 +859,7 @@ const Page = () => {
         'Equipo',
         'Estado',
         'Fecha de Nacimiento',
+        'Edad',
         'Observaciones'
       ]
       worksheet.addRow(headers)
@@ -816,6 +871,16 @@ const Page = () => {
         const fechaNacimiento = jugador.fecha_nacimiento 
           ? new Date(jugador.fecha_nacimiento).toLocaleDateString('es-ES') 
           : ''
+        const edad = jugador.fecha_nacimiento
+          ? (() => {
+              try {
+                const edadCalculada = calcularEdad(new Date(jugador.fecha_nacimiento))
+                return `${edadCalculada.anos} años${edadCalculada.meses > 0 ? ` ${edadCalculada.meses} meses` : ''}`
+              } catch {
+                return '-'
+              }
+            })()
+          : '-'
 
         worksheet.addRow([
           jugador.cedula || '',
@@ -832,6 +897,7 @@ const Page = () => {
           equipo,
           jugador.estado ? 'Activo' : 'Inactivo',
           fechaNacimiento,
+          edad,
           jugador.observacion || ''
         ])
       })
@@ -897,7 +963,8 @@ const Page = () => {
       worksheet.getColumn(12).width = 25 // Equipo
       worksheet.getColumn(13).width = 12 // Estado
       worksheet.getColumn(14).width = 15 // Fecha de Nacimiento
-      worksheet.getColumn(15).width = 40 // Observaciones
+      worksheet.getColumn(15).width = 15 // Edad
+      worksheet.getColumn(16).width = 40 // Observaciones
 
       // Congelar la fila de encabezados
       worksheet.views = [{ state: 'frozen', ySplit: headerRow }]
@@ -1069,6 +1136,11 @@ const Page = () => {
       setFormError(null)
       setFormSuccess(null)
       
+      // Agregar equipo_categoria_id del select (react-select no está en el FormData automáticamente)
+      if (selectedEquipoCategoria?.value) {
+        formData.append('equipo_categoria_id', selectedEquipoCategoria.value.toString())
+      }
+      
       // Agregar la foto si existe
       if (capturedPhoto) {
         formData.append('foto', capturedPhoto, 'jugador-foto.jpg')
@@ -1079,10 +1151,40 @@ const Page = () => {
         formData.append('jugador_existente_id', jugadorExistente.id)
       }
       
-      await createJugador(formData)
+      const result = await createJugador(formData)
+      
+      if (!result.success) {
+        // Si hay un error, verificar si es de límite de jugadores
+        const isLimitError = result.error?.includes('No se puede agregar más jugadores') || 
+            result.error?.includes('límite máximo permitido') ||
+            result.error?.includes('límite') ||
+            result.error?.includes('jugadores permitidos')
+        
+        if (isLimitError) {
+          // Mostrar como toast
+          setTimeout(() => {
+            if (toast.current) {
+              toast.current.show({ 
+                severity: 'warn', 
+                summary: 'Límite de Jugadores', 
+                detail: result.error || 'No se puede agregar más jugadores', 
+                life: 6000 
+              })
+            } else {
+              setFormError(result.error || 'Error al crear jugador')
+            }
+          }, 100)
+        } else {
+          setFormError(result.error || 'Error al crear jugador')
+        }
+        // NO limpiar el formulario ni recargar datos cuando hay error
+        // Mantener los valores seleccionados para que el usuario pueda corregir
+        return
+      }
+      
       setFormSuccess('Jugador creado exitosamente')
       
-      // Limpiar foto capturada y datos del formulario
+      // Solo limpiar cuando la operación fue exitosa
       setCapturedPhoto(null)
       setCapturedPhotoUrl(null)
       setJugadorExistente(null)
@@ -1108,51 +1210,10 @@ const Page = () => {
         toggleCreateModal()
       }, 1000)
     } catch (error) {
-      // En producción, Next.js oculta los mensajes de error, así que intentamos extraer el mensaje de varias formas
-      let errorMessage = 'Error al crear jugador'
-      
-      // Intentar extraer el mensaje del error
-      if (error instanceof Error) {
-        errorMessage = error.message || error.toString()
-        // Si el mensaje está vacío o es genérico, intentar obtenerlo del stack
-        if (!errorMessage || errorMessage === 'Error al crear jugador' || errorMessage.includes('digest')) {
-          // En producción, el error puede tener información en el stack
-          const stack = error.stack || ''
-          if (stack.includes('límite') || stack.includes('jugadores permitidos')) {
-            errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
-          }
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error
-      } else if (error && typeof error === 'object') {
-        // Intentar obtener el mensaje de varias propiedades
-        errorMessage = (error as any).message || (error as any).error || JSON.stringify(error)
-      }
-      
-      // Si el mensaje está vacío o es genérico, intentar obtener más información
-      if (!errorMessage || errorMessage === 'Error al crear jugador' || errorMessage.includes('digest')) {
-        // En producción, el error puede tener un digest que identifica el tipo
-        // Intentamos mostrar un mensaje genérico pero útil
-        const errorStr = error?.toString() || JSON.stringify(error)
-        if (errorStr.includes('límite') || errorStr.includes('jugadores permitidos') || errorStr.includes('No se puede agregar')) {
-          errorMessage = 'No se puede agregar más jugadores. El equipo ha alcanzado el límite máximo permitido.'
-        }
-      }
-      
-      // Si el error es sobre jugadores permitidos, mostrarlo como toast
-      if (errorMessage.includes('No se puede agregar más jugadores') || 
-          errorMessage.includes('límite máximo permitido') ||
-          errorMessage.includes('límite') ||
-          errorMessage.includes('jugadores permitidos')) {
-        toast.current?.show({ 
-          severity: 'warn', 
-          summary: 'Límite de Jugadores', 
-          detail: errorMessage, 
-          life: 6000 
-        })
-      } else {
-        setFormError(errorMessage)
-      }
+      // Error inesperado (no debería pasar si las Server Actions retornan correctamente)
+      console.error('Error inesperado:', error)
+      setFormError('Error inesperado al crear jugador')
+      // NO limpiar el formulario cuando hay error inesperado
     } finally {
       setLoading(false)
     }
@@ -1761,7 +1822,11 @@ const Page = () => {
             </Alert>
           )}
           
-          <Form action={handleCreateJugador}>
+          <Form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            handleCreateJugador(formData)
+          }}>
             <Row className="g-2">
               <Col lg={4}>
                 <FloatingLabel label="Cédula" className="position-relative">
@@ -1830,6 +1895,29 @@ const Page = () => {
                     placeholder="Seleccione la fecha de nacimiento"
                     value={createFormData.fecha_nacimiento}
                     onChange={(e) => setCreateFormData({ ...createFormData, fecha_nacimiento: e.target.value })}
+                    required
+                  />
+                </FloatingLabel>
+              </Col>
+
+              <Col lg={4}>
+                <FloatingLabel label="Edad">
+                  <FormControl 
+                    type="text" 
+                    readOnly
+                    value={
+                      createFormData.fecha_nacimiento 
+                        ? (() => {
+                            try {
+                              const edad = calcularEdad(new Date(createFormData.fecha_nacimiento))
+                              return `${edad.anos} años${edad.meses > 0 ? ` ${edad.meses} meses` : ''}`
+                            } catch {
+                              return '-'
+                            }
+                          })()
+                        : '-'
+                    }
+                    className="bg-light"
                   />
                 </FloatingLabel>
               </Col>
@@ -1865,7 +1953,7 @@ const Page = () => {
 
               <Col lg={4}>
                 <FloatingLabel label="Situación Jugador">
-                  <FormSelect name="situacion_jugador">
+                  <FormSelect name="situacion_jugador" required>
                     <option value="">Seleccionar...</option>
                     <option value="PASE">PASE</option>
                     <option value="PRÉSTAMO">PRÉSTAMO</option>
@@ -1921,11 +2009,13 @@ const Page = () => {
                   className="react-select-container"
                   classNamePrefix="react-select"
                   name="equipo_categoria_id"
+                  required
                 />
                 <input
                   type="hidden"
                   name="equipo_categoria_id"
                   value={selectedEquipoCategoria?.value || ''}
+                  required
                 />
               </Col>
 
@@ -1942,7 +2032,7 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={9}>
+              <Col lg={6}>
                 <FloatingLabel label="Observaciones">
                   <FormControl 
                     as="textarea" 
@@ -1955,7 +2045,7 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={3} className="d-flex align-items-end">
+              <Col lg={2} className="d-flex align-items-end">
                 <div className="form-check w-100">
                   <FormCheck
                     type="checkbox"
@@ -1964,7 +2054,7 @@ const Page = () => {
                     id="foraneo"
                     checked={createFormData.foraneo}
                     onChange={(e) => setCreateFormData({ ...createFormData, foraneo: e.target.checked })}
-                    label="Jugador Foráneo"
+                    label="Foráneo"
                   />
                 </div>
               </Col>
@@ -2113,6 +2203,45 @@ const Page = () => {
                       name="fecha_nacimiento" 
                       placeholder="Seleccione la fecha de nacimiento"
                       defaultValue={editingJugador.fecha_nacimiento ? new Date(editingJugador.fecha_nacimiento).toISOString().split('T')[0] : ''}
+                      onChange={(e) => {
+                        // Actualizar la edad cuando cambie la fecha
+                        const fechaNacimiento = e.target.value
+                        const edadInput = document.querySelector('input[name="edad_display"]') as HTMLInputElement
+                        if (edadInput && fechaNacimiento) {
+                          try {
+                            const edad = calcularEdad(new Date(fechaNacimiento))
+                            edadInput.value = `${edad.anos} años${edad.meses > 0 ? ` ${edad.meses} meses` : ''}`
+                          } catch {
+                            if (edadInput) edadInput.value = '-'
+                          }
+                        } else if (edadInput) {
+                          edadInput.value = '-'
+                        }
+                      }}
+                      required
+                    />
+                  </FloatingLabel>
+                </Col>
+
+                <Col lg={4}>
+                  <FloatingLabel label="Edad">
+                    <FormControl 
+                      type="text" 
+                      name="edad_display"
+                      readOnly
+                      defaultValue={
+                        editingJugador.fecha_nacimiento 
+                          ? (() => {
+                              try {
+                                const edad = calcularEdad(new Date(editingJugador.fecha_nacimiento))
+                                return `${edad.anos} años${edad.meses > 0 ? ` ${edad.meses} meses` : ''}`
+                              } catch {
+                                return '-'
+                              }
+                            })()
+                          : '-'
+                      }
+                      className="bg-light"
                     />
                   </FloatingLabel>
                 </Col>
@@ -2147,6 +2276,7 @@ const Page = () => {
                   <FloatingLabel label="Situación Jugador">
                     <FormSelect 
                       name="situacion_jugador"
+                      required
                       defaultValue={(() => {
                         const situacion = (editingJugador.jugadoresEquipoCategoria?.[0] as any)?.situacion_jugador
                         if (!situacion) return ''
@@ -2206,11 +2336,13 @@ const Page = () => {
                     className="react-select-container"
                     classNamePrefix="react-select"
                     name="equipo_categoria_id"
+                    required
                   />
                   <input
                     type="hidden"
                     name="equipo_categoria_id"
                     value={selectedEditEquipoCategoria?.value || ''}
+                    required
                   />
                 </Col>
 
@@ -2223,7 +2355,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={9}>
+                <Col lg={6}>
                   <FloatingLabel label="Observaciones">
                     <FormControl 
                       as="textarea" 
@@ -2235,14 +2367,14 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={3} className="d-flex align-items-end">
+                <Col lg={2} className="d-flex align-items-end">
                   <div className="form-check w-100">
                     <FormCheck
                       type="checkbox"
                       name="foraneo"
                       value="true"
                       id="foraneo_edit"
-                      label="Jugador Foráneo"
+                      label="Foráneo"
                       defaultChecked={editingJugador.foraneo || false}
                     />
                   </div>
