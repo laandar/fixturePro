@@ -17,7 +17,7 @@ export const revalidate = 0
 
 export default async function EstadisticasPage() {
   try {
-    // Obtener todos los torneos activos o finalizados
+    // Obtener todos los torneos activos o planificados (excluyendo finalizados)
     const torneos = await estadisticasQueries.getTorneosPublicos()
     
     if (!torneos || torneos.length === 0) {
@@ -41,7 +41,7 @@ export default async function EstadisticasPage() {
         <Container className="py-5" style={{ position: 'relative', zIndex: 1 }}>
           <div className="text-center">
             <h2 className="text-white">No hay torneos disponibles</h2>
-            <p className="text-white-75">Los torneos aparecerán aquí una vez que estén activos o finalizados.</p>
+            <p className="text-white-75">Los torneos aparecerán aquí una vez que estén activos o planificados.</p>
           </div>
         </Container>
       </div>

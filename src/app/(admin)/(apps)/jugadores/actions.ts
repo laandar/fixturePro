@@ -9,7 +9,7 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { db } from '@/db'
 import { verificarRangoEdad, obtenerMensajeErrorEdad, esMenorALaEdadMinima, esMayorALaEdadMaxima, calcularEdad, edadAMeses } from '@/lib/age-helpers'
-import { historialJugadores, jugadorEquipoCategoria, jugadores, equipoCategoria, categorias, equipos } from '@/db/schema'
+import { historialJugadores, jugadorEquipoCategoria, jugadores, equipoCategoria, categorias, equipos, temporadas } from '@/db/schema'
 import { desc } from 'drizzle-orm'
 import { eq, and, or, inArray, count, ne } from 'drizzle-orm'
 import { requirePermiso } from '@/lib/auth-helpers'
@@ -20,6 +20,15 @@ export type JugadorActionResult = {
   success: boolean
   error?: string
   data?: any
+  requiereConfirmacionNumero?: boolean // Indica si se requiere confirmación para cambiar número
+  jugadorConNumero?: { // Información del jugador que tiene el número
+    id: number
+    jugador_id: string
+    relacion_id: number
+  }
+  numeroJugador?: number
+  equipoNombre?: string
+  categoriaNombre?: string
 }
 
 // ===== FUNCIONES AUXILIARES =====
@@ -428,13 +437,34 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
           .limit(1)
         
         if (numeroJugadorExistente.length > 0) {
-          const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
-          const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+          // Verificar si se confirma el cambio de número
+          const confirmarCambioNumero = formData.get('confirmar_cambio_numero') === 'true'
           
-          return { 
-            success: false, 
-            error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". Por favor, seleccione otro número.` 
+          if (!confirmarCambioNumero) {
+            // Retornar información del conflicto para mostrar confirmación
+            const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+            const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+            
+            return { 
+              success: false,
+              requiereConfirmacionNumero: true,
+              jugadorConNumero: {
+                id: numeroJugadorExistente[0].id,
+                jugador_id: numeroJugadorExistente[0].jugador_id,
+                relacion_id: numeroJugadorExistente[0].id
+              },
+              numeroJugador: numeroJugadorValue,
+              equipoNombre,
+              categoriaNombre,
+              error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". ¿Desea mantener este número? El jugador anterior quedará sin número.`
+            }
           }
+          
+          // Si se confirma, quitar el número al jugador anterior
+          await db
+            .update(jugadorEquipoCategoria)
+            .set({ numero_jugador: null })
+            .where(eq(jugadorEquipoCategoria.id, numeroJugadorExistente[0].id))
         }
       }
       
@@ -458,8 +488,39 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
         }
       }
       
+      // Registrar en historial cuando se crea una nueva relación para jugador existente
+      try {
+        const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+          where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+          with: {
+            equipo: true,
+            categoria: true
+          }
+        })
+        
+        if (equipoCategoriaInfo && equipoCategoriaInfo.equipo && equipoCategoriaInfo.categoria) {
+          const historialData: NewHistorialJugador = {
+            jugador_id: jugador_existente_id,
+            liga: jugadorExistente.liga,
+            equipo: `${equipoCategoriaInfo.equipo.nombre} - ${equipoCategoriaInfo.categoria.nombre}`,
+            categoria: equipoCategoriaInfo.categoria.nombre,
+            equipo_anterior: null, // Nueva relación, no tiene equipo anterior
+            situacion_jugador_anterior: undefined,
+            numero: numeroJugadorValue || null,
+            nombre_calificacion: null,
+            disciplina: null,
+            fecha_calificacion: new Date().toISOString().split('T')[0]
+          }
+          
+          await createHistorialJugador(historialData)
+        }
+      } catch (error) {
+        console.error('Error al registrar nueva relación en historial:', error)
+        // No lanzar error aquí para no impedir la creación de la relación
+      }
+      
       revalidatePath('/jugadores')
-      return { success: true }
+      return { success: true, data: { jugadorId: jugador_existente_id } }
     }
 
     // Si no hay jugador existente, crear uno nuevo (código original)
@@ -654,13 +715,34 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
         .limit(1)
       
       if (numeroJugadorExistente.length > 0) {
-        const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
-        const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+        // Verificar si se confirma el cambio de número
+        const confirmarCambioNumero = formData.get('confirmar_cambio_numero') === 'true'
         
-        return { 
-          success: false, 
-          error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". Por favor, seleccione otro número.` 
+        if (!confirmarCambioNumero) {
+          // Retornar información del conflicto para mostrar confirmación
+          const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+          const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+          
+          return { 
+            success: false,
+            requiereConfirmacionNumero: true,
+            jugadorConNumero: {
+              id: numeroJugadorExistente[0].id,
+              jugador_id: numeroJugadorExistente[0].jugador_id,
+              relacion_id: numeroJugadorExistente[0].id
+            },
+            numeroJugador: numeroJugadorValue,
+            equipoNombre,
+            categoriaNombre,
+            error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". ¿Desea mantener este número? El jugador anterior quedará sin número.`
+          }
         }
+        
+        // Si se confirma, quitar el número al jugador anterior
+        await db
+          .update(jugadorEquipoCategoria)
+          .set({ numero_jugador: null })
+          .where(eq(jugadorEquipoCategoria.id, numeroJugadorExistente[0].id))
       }
     }
     
@@ -684,8 +766,39 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
       }
     }
 
+    // Registrar en historial después de crear el jugador nuevo
+    try {
+      const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+        where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+        with: {
+          equipo: true,
+          categoria: true
+        }
+      })
+      
+      if (equipoCategoriaInfo && equipoCategoriaInfo.equipo && equipoCategoriaInfo.categoria) {
+        const historialData: NewHistorialJugador = {
+          jugador_id: nuevoJugador.id,
+          liga: ligaValue,
+          equipo: `${equipoCategoriaInfo.equipo.nombre} - ${equipoCategoriaInfo.categoria.nombre}`,
+          categoria: equipoCategoriaInfo.categoria.nombre,
+          equipo_anterior: null, // Es nuevo, no tiene equipo anterior
+          situacion_jugador_anterior: undefined,
+          numero: numeroJugadorValue || null,
+          nombre_calificacion: null,
+          disciplina: null,
+          fecha_calificacion: new Date().toISOString().split('T')[0]
+        }
+        
+        await createHistorialJugador(historialData)
+      }
+    } catch (error) {
+      console.error('Error al registrar jugador nuevo en historial:', error)
+      // No lanzar error aquí para no impedir la creación del jugador
+    }
+
     revalidatePath('/jugadores')
-    return { success: true }
+    return { success: true, data: { jugadorId: nuevoJugador.id } }
   } catch (error) {
     console.error('Error al crear jugador:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Error al crear jugador' }
@@ -1026,27 +1139,48 @@ export async function updateJugador(id: number | string, formData: FormData, rel
         .limit(1)
       
       if (numeroJugadorExistente.length > 0) {
-        // Obtener información del equipo-categoría para el mensaje de error
-        const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
-          where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
-          with: {
-            equipo: true,
-            categoria: true
+        // Verificar si se confirma el cambio de número
+        const confirmarCambioNumero = formData.get('confirmar_cambio_numero') === 'true'
+        
+        if (!confirmarCambioNumero) {
+          // Obtener información del equipo-categoría para el mensaje
+          const equipoCategoriaInfo = await db.query.equipoCategoria.findFirst({
+            where: (ec, { eq }) => eq(ec.id, equipo_categoria_id),
+            with: {
+              equipo: true,
+              categoria: true
+            }
+          })
+          
+          const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
+          const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
+          
+          return { 
+            success: false,
+            requiereConfirmacionNumero: true,
+            jugadorConNumero: {
+              id: numeroJugadorExistente[0].id,
+              jugador_id: numeroJugadorExistente[0].jugador_id,
+              relacion_id: numeroJugadorExistente[0].id
+            },
+            numeroJugador: numeroJugadorValue,
+            equipoNombre,
+            categoriaNombre,
+            error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". ¿Desea mantener este número? El jugador anterior quedará sin número.`
           }
-        })
-        
-        const equipoNombre = equipoCategoriaInfo?.equipo?.nombre || 'el equipo'
-        const categoriaNombre = equipoCategoriaInfo?.categoria?.nombre || 'la categoría'
-        
-        return { 
-          success: false, 
-          error: `El número de jugador ${numeroJugadorValue} ya está asignado a otro jugador en el equipo "${equipoNombre}" de la categoría "${categoriaNombre}". Por favor, seleccione otro número.` 
         }
+        
+        // Si se confirma, quitar el número al jugador anterior
+        await db
+          .update(jugadorEquipoCategoria)
+          .set({ numero_jugador: null })
+          .where(eq(jugadorEquipoCategoria.id, numeroJugadorExistente[0].id))
       }
     }
     
-    // Actualizar la relación
+    // Actualizar o crear la relación
     if (idRelacionAActualizar) {
+      // Si existe una relación, actualizarla
       await db
         .update(jugadorEquipoCategoria)
         .set({
@@ -1056,6 +1190,44 @@ export async function updateJugador(id: number | string, formData: FormData, rel
           jugador_id: cedula // Usar la cédula actualizada
         })
         .where(eq(jugadorEquipoCategoria.id, idRelacionAActualizar))
+    } else {
+      // Si no existe relación, crear una nueva
+      // Verificar que no exista ya una relación con este equipo-categoría
+      const relacionExistente = await db
+        .select({
+          id: jugadorEquipoCategoria.id,
+        })
+        .from(jugadorEquipoCategoria)
+        .where(
+          and(
+            or(
+              eq(jugadorEquipoCategoria.jugador_id, jugadorIdStr),
+              eq(jugadorEquipoCategoria.jugador_id, cedula)
+            ),
+            eq(jugadorEquipoCategoria.equipo_categoria_id, equipo_categoria_id)
+          )
+        )
+        .limit(1)
+      
+      if (relacionExistente.length === 0) {
+        // Crear nueva relación
+        await db.insert(jugadorEquipoCategoria).values({
+          jugador_id: cedula,
+          equipo_categoria_id: equipo_categoria_id,
+          numero_jugador: numeroJugadorValue,
+          situacion_jugador: situacionJugadorValue
+        })
+      } else {
+        // Si ya existe, actualizarla
+        await db
+          .update(jugadorEquipoCategoria)
+          .set({
+            numero_jugador: numeroJugadorValue,
+            situacion_jugador: situacionJugadorValue,
+            jugador_id: cedula
+          })
+          .where(eq(jugadorEquipoCategoria.id, relacionExistente[0].id))
+      }
     }
     
     // Si cambió el número de jugador (sin cambiar equipo), actualizar el registro más reciente del historial
@@ -1085,8 +1257,9 @@ export async function updateJugador(id: number | string, formData: FormData, rel
       }
     }
     
-    // Si cambió el equipo, registrar en historial_jugadores DESPUÉS de actualizar
-    if (equipoCambio) {
+    // Si cambió el equipo o se creó una nueva relación, registrar en historial_jugadores DESPUÉS de actualizar
+    const nuevaRelacion = !idRelacionAActualizar && relacionAnterior === null
+    if (equipoCambio || nuevaRelacion) {
       try {
         // Obtener información del nuevo equipo-categoría
         const nuevoEquipoCategoria = await db.query.equipoCategoria.findFirst({
@@ -1109,13 +1282,14 @@ export async function updateJugador(id: number | string, formData: FormData, rel
           equipoAnteriorNombre = equipoAnteriorCategoria?.equipo?.nombre || null
         }
         
-        if (nuevoEquipoCategoria && nuevoEquipoCategoria.equipo) {
+        if (nuevoEquipoCategoria && nuevoEquipoCategoria.equipo && nuevoEquipoCategoria.categoria) {
           // Obtener la situación ACTUAL del jugador (la más reciente) para guardarla en situacion_jugador_anterior
           // La función createHistorialJugador ya se encarga de obtener la situación actual si no se proporciona
           const historialData: NewHistorialJugador = {
             jugador_id: jugadorIdStr,
             liga: liga,
-            equipo: nuevoEquipoCategoria.equipo.nombre,
+            equipo: `${nuevoEquipoCategoria.equipo.nombre} - ${nuevoEquipoCategoria.categoria.nombre}`,
+            categoria: nuevoEquipoCategoria.categoria.nombre,
             equipo_anterior: equipoAnteriorNombre,
             // No proporcionar situacion_jugador_anterior para que createHistorialJugador obtenga la situación actual
             situacion_jugador_anterior: undefined,
@@ -1323,6 +1497,9 @@ export async function getHistorialJugador(jugadorId: number | string): Promise<H
     const historial = await db.query.historialJugadores.findMany({
       where: eq(historialJugadores.jugador_id, jugadorIdString),
       orderBy: (historialJugadores, { desc }) => [desc(historialJugadores.createdAt)],
+      with: {
+        temporada: true,
+      },
     })
     
     // Obtener la situación actual del jugador (la más reciente)
@@ -1572,5 +1749,165 @@ export async function detectarJugadoresMultiplesCategoriasEquipos(cedulas: strin
   } catch (error) {
     console.error('Error al detectar jugadores con múltiples categorías/equipos:', error)
     throw new Error('Error al detectar jugadores con múltiples categorías/equipos')
+  }
+}
+
+// ===== CALIFICACIÓN DE JUGADORES =====
+
+export async function calificarJugador(jugadorId: number | string, temporadaId: number): Promise<JugadorActionResult> {
+  await requirePermiso('jugadores', 'editar')
+  try {
+    const jugadorIdStr = typeof jugadorId === 'string' ? jugadorId : jugadorId.toString()
+    
+    // Validar que se proporcione temporada_id
+    if (!temporadaId || isNaN(temporadaId)) {
+      return { success: false, error: 'La temporada es obligatoria para calificar un jugador' }
+    }
+    
+    // Verificar que la temporada existe
+    const temporada = await db.query.temporadas.findFirst({
+      where: eq(temporadas.id, temporadaId)
+    })
+    
+    if (!temporada) {
+      return { success: false, error: 'La temporada seleccionada no existe' }
+    }
+    
+    // Obtener el jugador con sus relaciones primero para obtener la categoría
+    // getByIdWithRelations espera number pero internamente convierte a string
+    // Intentar convertir a número si es posible, sino usar directamente
+    let jugador
+    const jugadorIdNum = typeof jugadorId === 'number' ? jugadorId : parseInt(jugadorIdStr)
+    if (!isNaN(jugadorIdNum)) {
+      jugador = await jugadorQueries.getByIdWithRelations(jugadorIdNum)
+    } else {
+      // Si no es un número válido, usar el string directamente (UUID)
+      // getByIdWithRelations internamente convierte a string, así que pasamos un número dummy
+      // pero mejor usar getById directamente
+      const jugadorData = await db.query.jugadores.findFirst({
+        where: eq(jugadores.id, jugadorIdStr),
+        with: {
+          jugadoresEquipoCategoria: {
+            with: {
+              equipoCategoria: {
+                with: {
+                  equipo: true,
+                  categoria: true
+                }
+              }
+            }
+          }
+        }
+      })
+      jugador = jugadorData as any
+    }
+    if (!jugador) {
+      return { success: false, error: 'Jugador no encontrado' }
+    }
+    
+    // Obtener la relación más reciente del jugador
+    const relacionJugador = jugador.jugadoresEquipoCategoria?.[0]
+    if (!relacionJugador) {
+      return { success: false, error: 'El jugador no tiene equipo-categoría asignado' }
+    }
+    
+    const equipoCategoria = relacionJugador.equipoCategoria
+    if (!equipoCategoria || !equipoCategoria.equipo || !equipoCategoria.categoria) {
+      return { success: false, error: 'No se pudo obtener la información del equipo o categoría' }
+    }
+    
+    const categoriaNombre = equipoCategoria.categoria.nombre
+    
+    // Verificar si el jugador ya está calificado en esta temporada Y en esta categoría
+    const calificacionExistente = await db
+      .select()
+      .from(historialJugadores)
+      .where(
+        and(
+          eq(historialJugadores.jugador_id, jugadorIdStr),
+          eq(historialJugadores.temporada_id, temporadaId),
+          eq(historialJugadores.categoria, categoriaNombre)
+        )
+      )
+      .limit(1)
+    
+    if (calificacionExistente.length > 0) {
+      return { 
+        success: false, 
+        error: `El jugador ya está calificado en la temporada "${temporada.nombre}" y en la categoría "${categoriaNombre}". No se puede calificar dos veces en la misma temporada y categoría.` 
+      }
+    }
+    
+    // Obtener el equipo anterior (si existe) del historial más reciente
+    const historialReciente = await db
+      .select()
+      .from(historialJugadores)
+      .where(eq(historialJugadores.jugador_id, jugadorIdStr))
+      .orderBy(desc(historialJugadores.createdAt))
+      .limit(1)
+    
+    const equipoAnterior = historialReciente.length > 0 
+      ? historialReciente[0].equipo 
+      : null
+    
+    // Crear registro en historial con temporada_id y categoria
+    const historialData: NewHistorialJugador = {
+      jugador_id: jugadorIdStr,
+      liga: jugador.liga,
+      equipo: `${equipoCategoria.equipo.nombre} - ${categoriaNombre}`,
+      categoria: categoriaNombre,
+      equipo_anterior: equipoAnterior,
+      situacion_jugador_anterior: undefined,
+      numero: relacionJugador.numero_jugador || null,
+      nombre_calificacion: null,
+      disciplina: null,
+      fecha_calificacion: new Date().toISOString().split('T')[0],
+      temporada_id: temporadaId
+    }
+    
+    await createHistorialJugador(historialData)
+    
+    revalidatePath('/jugadores')
+    return { success: true }
+  } catch (error) {
+    console.error('Error al calificar jugador:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Error al calificar jugador' }
+  }
+}
+
+// Función para calificar múltiples jugadores
+export async function calificarJugadores(jugadorIds: (number | string)[], temporadaId: number): Promise<JugadorActionResult> {
+  await requirePermiso('jugadores', 'editar')
+  try {
+    // Validar que se proporcione temporada_id
+    if (!temporadaId || isNaN(temporadaId)) {
+      return { success: false, error: 'La temporada es obligatoria para calificar jugadores' }
+    }
+    
+    const resultados = []
+    const errores = []
+    
+    for (const jugadorId of jugadorIds) {
+      const resultado = await calificarJugador(jugadorId, temporadaId)
+      if (resultado.success) {
+        resultados.push(jugadorId)
+      } else {
+        errores.push({ jugadorId, error: resultado.error })
+      }
+    }
+    
+    if (errores.length > 0) {
+      return { 
+        success: errores.length < jugadorIds.length, 
+        error: `${errores.length} de ${jugadorIds.length} jugadores no pudieron ser calificados`,
+        data: { resultados, errores }
+      }
+    }
+    
+    revalidatePath('/jugadores')
+    return { success: true, data: { calificados: resultados.length } }
+  } catch (error) {
+    console.error('Error al calificar jugadores:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Error al calificar jugadores' }
   }
 }

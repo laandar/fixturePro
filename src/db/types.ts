@@ -1,5 +1,5 @@
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, horarios, goles, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, historialJugadores, configuraciones } from './schema';
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, horarios, goles, tarjetas, jugadoresParticipantes, cambiosJugadores, firmasEncuentros, historialJugadores, configuraciones, temporadas } from './schema';
 
 // Tipos para selección (lectura)
 export type Equipo = InferSelectModel<typeof equipos>;
@@ -7,6 +7,7 @@ export type Categoria = InferSelectModel<typeof categorias>;
 export type Entrenador = InferSelectModel<typeof entrenadores>;
 export type Jugador = InferSelectModel<typeof jugadores>;
 export type Torneo = InferSelectModel<typeof torneos>;
+export type Temporada = InferSelectModel<typeof temporadas>;
 export type EquipoTorneo = InferSelectModel<typeof equiposTorneo>;
 export type Encuentro = InferSelectModel<typeof encuentros>;
 export type Cancha = InferSelectModel<typeof canchas>;
@@ -26,6 +27,7 @@ export type NewCategoria = InferInsertModel<typeof categorias>;
 export type NewEntrenador = InferInsertModel<typeof entrenadores>;
 export type NewJugador = InferInsertModel<typeof jugadores>;
 export type NewTorneo = InferInsertModel<typeof torneos>;
+export type NewTemporada = InferInsertModel<typeof temporadas>;
 export type NewEquipoTorneo = InferInsertModel<typeof equiposTorneo>;
 export type NewEncuentro = InferInsertModel<typeof encuentros>;
 export type NewCancha = InferInsertModel<typeof canchas>;
@@ -71,9 +73,15 @@ export interface JugadorWithEquipo extends Jugador {
   goles?: number;
 }
 
+// Tipos para temporadas con relaciones
+export interface TemporadaWithRelations extends Temporada {
+  torneos?: TorneoWithRelations[];
+}
+
 // Tipos para torneos con relaciones
 export interface TorneoWithRelations extends Torneo {
   categoria: Categoria | null;
+  temporada: Temporada | null;
   equiposTorneo?: EquipoTorneoWithRelations[];
   encuentros?: EncuentroWithRelations[];
 }
@@ -180,6 +188,7 @@ export interface CategoriaWithCanchas extends Categoria {
 // Tipos para historial de jugadores con relaciones
 export interface HistorialJugadorWithRelations extends HistorialJugador {
   jugador?: Jugador;
+  temporada?: Temporada | null;
   situacion_jugador?: 'PASE' | 'PRÉSTAMO' | 'PRESTAMO' | null;
   // equipo_anterior y situacion_jugador_anterior ya están definidos en HistorialJugador
   // No es necesario redefinirlos aquí

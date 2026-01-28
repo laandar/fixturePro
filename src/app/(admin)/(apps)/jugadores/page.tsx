@@ -30,9 +30,12 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Nav, Badge, Pagination, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle, Spinner } from 'react-bootstrap'
 import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock, LuDownload, LuRefreshCw } from 'react-icons/lu'
-import { TbEdit, TbPlus, TbTrash, TbCamera, TbPrinter, TbX, TbHelp } from 'react-icons/tb'
+import { TbEdit, TbPlus, TbTrash, TbCamera, TbPrinter, TbX, TbHelp, TbCertificate } from 'react-icons/tb'
 import ExcelJS from 'exceljs'
-import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, buscarJugadorPorCedula, detectarJugadoresMultiplesCategoriasEquipos } from './actions'
+import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, buscarJugadorPorCedula, detectarJugadoresMultiplesCategoriasEquipos, calificarJugador, calificarJugadores } from './actions'
+import type { JugadorActionResult } from './actions'
+import { getTemporadas } from '../torneos/temporadas-actions'
+import type { Temporada } from '@/db/types'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import { calcularEdad, esMenorALaEdadMinima } from '@/lib/age-helpers'
 import CameraCapture from '@/components/CameraCapture'
@@ -129,6 +132,16 @@ const Page = () => {
   const [equipoAnteriorInfo, setEquipoAnteriorInfo] = useState<{ nombre: string; categoria: string } | null>(null)
   const [equipoNuevoInfo, setEquipoNuevoInfo] = useState<{ nombre: string; categoria: string } | null>(null)
   
+  // Estados para el modal de confirmación de cambio de número
+  const [showConfirmacionCambioNumero, setShowConfirmacionCambioNumero] = useState(false)
+  const [pendingFormDataNumero, setPendingFormDataNumero] = useState<FormData | null>(null)
+  const [infoNumeroConflicto, setInfoNumeroConflicto] = useState<{
+    numeroJugador: number
+    equipoNombre: string
+    categoriaNombre: string
+    esCreacion: boolean
+  } | null>(null)
+  
   // Estados para el modal de confirmación de impresión
   const [showConfirmacionImprimir, setShowConfirmacionImprimir] = useState(false)
   const [jugadoresMultiplesCategorias, setJugadoresMultiplesCategorias] = useState<Array<{cedula: string, nombre: string, categorias: string[]}>>([])
@@ -137,6 +150,20 @@ const Page = () => {
   
   // Estado para el modal del manual de usuario
   const [showManualUsuario, setShowManualUsuario] = useState(false)
+  
+  // Estados para el modal de selección de temporada para calificar
+  const [showTemporadaModal, setShowTemporadaModal] = useState(false)
+  const [temporadas, setTemporadas] = useState<Temporada[]>([])
+  const [selectedTemporadaId, setSelectedTemporadaId] = useState<number | null>(null)
+  const [jugadorParaCalificar, setJugadorParaCalificar] = useState<JugadorWithEquipo | null>(null)
+  const [jugadoresParaCalificar, setJugadoresParaCalificar] = useState<JugadorWithEquipo[]>([])
+  const [isCalificacionMultiple, setIsCalificacionMultiple] = useState(false)
+  
+  // Estados para calificar desde el formulario de edición
+  const [calificarEnEdicion, setCalificarEnEdicion] = useState(false)
+  const [temporadaIdEdicion, setTemporadaIdEdicion] = useState<number | null>(null)
+  const [calificarEnCreacion, setCalificarEnCreacion] = useState(false)
+  const [temporadaIdCreacion, setTemporadaIdCreacion] = useState<number | null>(null)
   
   // Estados para la vista (cards o tabla)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -269,6 +296,19 @@ const Page = () => {
     {
       id: 'numero_jugador',
       header: 'Número',
+      enableSorting: true,
+      accessorFn: (row: JugadorWithEquipo) => {
+        const relacion = row.jugadoresEquipoCategoria?.[0] as any
+        return relacion?.numero_jugador ?? null
+      },
+      sortingFn: (rowA: any, rowB: any) => {
+        const numA = rowA.getValue('numero_jugador') ?? null
+        const numB = rowB.getValue('numero_jugador') ?? null
+        if (numA === null && numB === null) return 0
+        if (numA === null) return 1
+        if (numB === null) return -1
+        return numA - numB
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         // Obtener el número de jugador de la relación jugador_equipo_categoria
         const relacionJugador = row.original.jugadoresEquipoCategoria?.[0] as any
@@ -283,6 +323,18 @@ const Page = () => {
     {
       id: 'situacion_jugador',
       header: 'Situación',
+      enableSorting: true,
+      accessorFn: (row: JugadorWithEquipo) => {
+        const relacion = row.jugadoresEquipoCategoria?.[0] as any
+        const situacion = relacion?.situacion_jugador || ''
+        // Normalizar PRESTAMO a PRÉSTAMO para ordenamiento consistente
+        return situacion === 'PRESTAMO' ? 'PRÉSTAMO' : situacion
+      },
+      sortingFn: (rowA: any, rowB: any) => {
+        const sitA = rowA.getValue('situacion_jugador') || ''
+        const sitB = rowB.getValue('situacion_jugador') || ''
+        return sitA.localeCompare(sitB)
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         // Obtener la situación del jugador de la relación jugador_equipo_categoria
         const relacionJugador = row.original.jugadoresEquipoCategoria?.[0] as any
@@ -316,6 +368,12 @@ const Page = () => {
       header: 'Categoría',
       filterFn: categoriaFilterFn,
       enableColumnFilter: true,
+      enableSorting: true,
+      sortingFn: (rowA: any, rowB: any) => {
+        const catA = rowA.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre || ''
+        const catB = rowB.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria?.nombre || ''
+        return catA.localeCompare(catB)
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         const categoria = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
         return (
@@ -330,6 +388,12 @@ const Page = () => {
       header: 'Equipo',
       filterFn: equipoFilterFn,
       enableColumnFilter: true,
+      enableSorting: true,
+      sortingFn: (rowA: any, rowB: any) => {
+        const eqA = rowA.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || ''
+        const eqB = rowB.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo?.nombre || ''
+        return eqA.localeCompare(eqB)
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         const equipo = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.equipo
         return (
@@ -345,6 +409,12 @@ const Page = () => {
       filterFn: estadoFilterFn,
       enableColumnFilter: true,
       enableHiding: true,
+      enableSorting: true,
+      sortingFn: (rowA: any, rowB: any) => {
+        const estA = rowA.original.estado ? 1 : 0
+        const estB = rowB.original.estado ? 1 : 0
+        return estA - estB
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => (
         <span className={`badge ${row.original.estado ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} badge-label`}>
           {row.original.estado ? 'Activo' : 'Inactivo'}
@@ -354,6 +424,12 @@ const Page = () => {
     {
       id: 'fecha_nacimiento',
       header: 'Fecha de Nacimiento',
+      enableSorting: true,
+      sortingFn: (rowA: any, rowB: any) => {
+        const fechaA = rowA.original.fecha_nacimiento ? new Date(rowA.original.fecha_nacimiento).getTime() : 0
+        const fechaB = rowB.original.fecha_nacimiento ? new Date(rowB.original.fecha_nacimiento).getTime() : 0
+        return fechaA - fechaB
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         const fechaNacimiento = row.original.fecha_nacimiento
         if (!fechaNacimiento) return <span className="text-muted">-</span>
@@ -363,6 +439,13 @@ const Page = () => {
     {
       id: 'edad',
       header: 'Edad',
+      enableSorting: true,
+      sortingFn: (rowA: any, rowB: any) => {
+        const fechaA = rowA.original.fecha_nacimiento ? new Date(rowA.original.fecha_nacimiento).getTime() : 0
+        const fechaB = rowB.original.fecha_nacimiento ? new Date(rowB.original.fecha_nacimiento).getTime() : 0
+        // Ordenar por fecha de nacimiento (más joven = fecha más reciente)
+        return fechaB - fechaA
+      },
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         const fechaNacimiento = row.original.fecha_nacimiento
         const categoria = row.original.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.categoria
@@ -403,12 +486,9 @@ const Page = () => {
         }
       },
     },
-    columnHelper.accessor('createdAt', { 
-      header: 'Fecha Creación',
-      cell: ({ row }) => row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString('es-ES') : 'N/A'
-    }),
     {
       header: 'Acciones',
+      enableSorting: false,
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         const jugador = row.original
         const tieneRelacion = jugador.jugadoresEquipoCategoria && jugador.jugadoresEquipoCategoria.length > 0
@@ -424,15 +504,25 @@ const Page = () => {
               <TbPrinter className="fs-lg" />
             </Button>
             {puedeEditar && (
-              <Button 
-                variant="light" 
-                size="sm" 
-                className="btn-icon rounded-circle"
-                onClick={() => handleEditClick(row.original)}
-                disabled={!tieneRelacion}
-                title={tieneRelacion ? "Editar jugador" : "El jugador no tiene categoría ni equipo asignado"}>
-                <TbEdit className="fs-lg" />
-              </Button>
+              <>
+                <Button 
+                  variant="light" 
+                  size="sm" 
+                  className="btn-icon rounded-circle"
+                  onClick={() => handleCalificarJugador(row.original)}
+                  disabled={!tieneRelacion}
+                  title={tieneRelacion ? "Calificar jugador" : "El jugador no tiene categoría ni equipo asignado"}>
+                  <TbCertificate className="fs-lg" />
+                </Button>
+                <Button 
+                  variant="light" 
+                  size="sm" 
+                  className="btn-icon rounded-circle"
+                  onClick={() => handleEditClick(row.original)}
+                  title={tieneRelacion ? "Editar jugador" : "Editar jugador y asignar equipo-categoría"}>
+                  <TbEdit className="fs-lg" />
+                </Button>
+              </>
             )}
             {puedeEliminar && (
               <Button
@@ -575,6 +665,10 @@ const Page = () => {
     setEditCapturedPhoto(null)
     setEditCapturedPhotoUrl(null)
     
+    // Limpiar estados de calificación
+    setCalificarEnEdicion(false)
+    // No limpiar temporadaIdEdicion aquí, se establecerá cuando se marque el checkbox
+    
     // Establecer el valor inicial del react-select para edición
     const equipoCategoriaId = jugador.jugadoresEquipoCategoria?.[0]?.equipoCategoria?.id
     if (equipoCategoriaId) {
@@ -590,6 +684,153 @@ const Page = () => {
   const handleVerPerfilClick = (jugador: JugadorWithEquipo) => {
     setSelectedJugadorForHistorial(jugador)
     setShowHistorialModal(true)
+  }
+
+  const handleCalificarJugador = async (jugador: JugadorWithEquipo) => {
+    if (!puedeEditar) {
+      setError('No tienes permiso para calificar jugadores')
+      return
+    }
+    
+    if (!jugador.jugadoresEquipoCategoria || jugador.jugadoresEquipoCategoria.length === 0) {
+      setError('El jugador debe tener un equipo-categoría asignado para ser calificado')
+      return
+    }
+    
+    // Cargar temporadas si no están cargadas
+    let temporadasParaUsar = temporadas
+    if (temporadasParaUsar.length === 0) {
+      try {
+        const temporadasData = await getTemporadas()
+        temporadasParaUsar = temporadasData.filter(t => t.activa)
+        // Ordenar por fecha de creación descendente (más reciente primero)
+        temporadasParaUsar.sort((a, b) => {
+          const fechaA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+          const fechaB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+          return fechaB - fechaA
+        })
+        setTemporadas(temporadasParaUsar)
+      } catch (error) {
+        setError('Error al cargar temporadas')
+        return
+      }
+    }
+    
+    // Seleccionar la última temporada creada por defecto
+    const ultimaTemporadaId = temporadasParaUsar.length > 0 ? temporadasParaUsar[0].id : null
+    
+    // Mostrar modal para seleccionar temporada
+    setJugadorParaCalificar(jugador)
+    setJugadoresParaCalificar([])
+    setIsCalificacionMultiple(false)
+    setSelectedTemporadaId(ultimaTemporadaId)
+    setShowTemporadaModal(true)
+  }
+  
+  const handleConfirmarCalificacion = async () => {
+    if (!selectedTemporadaId) {
+      setError('Debes seleccionar una temporada')
+      return
+    }
+    
+    try {
+      setLoading(true)
+      setError(null)
+      
+      let result: JugadorActionResult | undefined
+      if (isCalificacionMultiple && jugadoresParaCalificar.length > 0) {
+        const jugadorIds = jugadoresParaCalificar.map(j => j.id)
+        result = await calificarJugadores(jugadorIds, selectedTemporadaId!)
+        
+        if (result.success) {
+          const calificados = result.data?.calificados || jugadoresParaCalificar.length
+          if (toast.current) {
+            toast.current.show({ 
+              severity: 'success', 
+              summary: 'Jugadores Calificados', 
+              detail: `${calificados} jugador(es) calificado(s) exitosamente`, 
+              life: 3000 
+            })
+          }
+          table.resetRowSelection()
+        }
+      } else if (jugadorParaCalificar) {
+        result = await calificarJugador(jugadorParaCalificar.id, selectedTemporadaId!)
+        
+        if (result.success) {
+          if (toast.current) {
+            toast.current.show({ 
+              severity: 'success', 
+              summary: 'Jugador Calificado', 
+              detail: `El jugador "${jugadorParaCalificar.apellido_nombre}" ha sido calificado exitosamente`, 
+              life: 3000 
+            })
+          }
+        }
+      }
+      
+      if (!result || !result.success) {
+        setError(result?.error || 'Error al calificar jugador(es)')
+        return
+      }
+      
+      // Cerrar modal y recargar datos
+      setShowTemporadaModal(false)
+      setJugadorParaCalificar(null)
+      setJugadoresParaCalificar([])
+      setSelectedTemporadaId(null)
+      await loadData()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Error al calificar jugador(es)')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCalificarJugadores = async (jugadores: JugadorWithEquipo[]) => {
+    if (!puedeEditar) {
+      setError('No tienes permiso para calificar jugadores')
+      return
+    }
+    
+    // Filtrar solo jugadores que tienen relación
+    const jugadoresConRelacion = jugadores.filter(
+      j => j.jugadoresEquipoCategoria && j.jugadoresEquipoCategoria.length > 0
+    )
+    
+    if (jugadoresConRelacion.length === 0) {
+      setError('Ninguno de los jugadores seleccionados tiene equipo-categoría asignado')
+      return
+    }
+    
+    // Cargar temporadas si no están cargadas
+    let temporadasParaUsar = temporadas
+    if (temporadasParaUsar.length === 0) {
+      try {
+        const temporadasData = await getTemporadas()
+        temporadasParaUsar = temporadasData.filter(t => t.activa)
+        // Ordenar por fecha de creación descendente (más reciente primero)
+        temporadasParaUsar.sort((a, b) => {
+          const fechaA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+          const fechaB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+          return fechaB - fechaA
+        })
+        setTemporadas(temporadasParaUsar)
+      } catch (error) {
+        setError('Error al cargar temporadas')
+        return
+      }
+    }
+    
+    // Seleccionar la última temporada creada por defecto
+    const ultimaTemporadaId = temporadasParaUsar.length > 0 ? temporadasParaUsar[0].id : null
+    
+    // Mostrar modal para seleccionar temporada
+    setJugadorParaCalificar(null)
+    setJugadoresParaCalificar(jugadoresConRelacion)
+    setIsCalificacionMultiple(true)
+    setSelectedTemporadaId(ultimaTemporadaId)
+    setShowTemporadaModal(true)
   }
 
   // Funciones para manejar la captura de fotos
@@ -626,6 +867,12 @@ const Page = () => {
     
     if (!puedeEditar) {
       setEditFormError('No tienes permiso para editar jugadores')
+      return
+    }
+    
+    // Validar que si el checkbox de calificar está marcado, se haya seleccionado una temporada
+    if (calificarEnEdicion && !temporadaIdEdicion) {
+      setEditFormError('Debes seleccionar una temporada para calificar al jugador')
       return
     }
     
@@ -677,6 +924,20 @@ const Page = () => {
       const result = await updateJugador(editingJugador.id, formData, relacionId)
       
       if (!result.success) {
+        // Verificar si requiere confirmación de número
+        if (result.requiereConfirmacionNumero) {
+          setPendingFormDataNumero(formData)
+          setInfoNumeroConflicto({
+            numeroJugador: result.numeroJugador || 0,
+            equipoNombre: result.equipoNombre || '',
+            categoriaNombre: result.categoriaNombre || '',
+            esCreacion: false
+          })
+          setShowConfirmacionCambioNumero(true)
+          setLoading(false)
+          return
+        }
+        
         // Si hay un error, verificar si es de límite de jugadores
         const isLimitError = result.error?.includes('No se puede agregar más jugadores') || 
             result.error?.includes('límite máximo permitido') ||
@@ -703,11 +964,29 @@ const Page = () => {
         return
       }
       
-      setEditFormSuccess('Jugador actualizado exitosamente')
+      // Si el checkbox de calificar está marcado, calificar al jugador
+      if (calificarEnEdicion && temporadaIdEdicion) {
+        try {
+          const calificacionResult = await calificarJugador(editingJugador.id, temporadaIdEdicion)
+          if (calificacionResult.success) {
+            setEditFormSuccess('Jugador actualizado y calificado exitosamente')
+          } else {
+            setEditFormSuccess('Jugador actualizado exitosamente')
+            setEditFormError(`Actualizado correctamente, pero no se pudo calificar: ${calificacionResult.error}`)
+          }
+        } catch (error) {
+          setEditFormSuccess('Jugador actualizado exitosamente')
+          setEditFormError('Actualizado correctamente, pero hubo un error al calificar')
+        }
+      } else {
+        setEditFormSuccess('Jugador actualizado exitosamente')
+      }
       
-      // Limpiar foto capturada
+      // Limpiar foto capturada y estados de calificación
       setEditCapturedPhoto(null)
       setEditCapturedPhotoUrl(null)
+      setCalificarEnEdicion(false)
+      setTemporadaIdEdicion(null)
       
       // Recargar datos después de un breve delay
       setTimeout(async () => {
@@ -741,20 +1020,64 @@ const Page = () => {
     setEquipoAnteriorInfo(null)
     setEquipoNuevoInfo(null)
   }
+  
+  const handleConfirmarCambioNumero = async () => {
+    if (!pendingFormDataNumero) return
+    
+    // Agregar el flag de confirmación
+    pendingFormDataNumero.append('confirmar_cambio_numero', 'true')
+    
+    setShowConfirmacionCambioNumero(false)
+    setLoading(true)
+    
+    try {
+      if (infoNumeroConflicto?.esCreacion) {
+        // Es creación de jugador
+        await handleCreateJugador(pendingFormDataNumero)
+      } else {
+        // Es actualización de jugador
+        await procederConActualizacion(pendingFormDataNumero)
+      }
+    } finally {
+      setPendingFormDataNumero(null)
+      setInfoNumeroConflicto(null)
+    }
+  }
+  
+  const handleCancelarCambioNumero = () => {
+    setShowConfirmacionCambioNumero(false)
+    setPendingFormDataNumero(null)
+    setInfoNumeroConflicto(null)
+    setLoading(false)
+  }
 
   const loadData = async () => {
     try {
       setLoading(true)
       setError(null)
-      const [jugadoresData, equiposCategoriasData] = await Promise.all([
+      const [jugadoresData, equiposCategoriasData, temporadasData] = await Promise.all([
         getJugadores(),
-        getEquiposCategorias()
+        getEquiposCategorias(),
+        getTemporadas().catch(() => []) // Cargar temporadas, si falla retornar array vacío
       ])
       // Guardar todos los jugadores
       setAllData(jugadoresData)
       // Inicialmente mostrar solo los primeros 5 jugadores
       setData(jugadoresData.slice(0, 5))
       setEquiposCategorias(equiposCategoriasData)
+      const temporadasActivas = temporadasData.filter(t => t.activa)
+      // Ordenar por fecha de creación descendente (más reciente primero)
+      temporadasActivas.sort((a, b) => {
+        const fechaA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const fechaB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return fechaB - fechaA
+      })
+      setTemporadas(temporadasActivas)
+      
+      // Si no hay temporada seleccionada y hay temporadas disponibles, seleccionar la más reciente
+      if (temporadasActivas.length > 0 && !temporadaIdEdicion) {
+        setTemporadaIdEdicion(temporadasActivas[0].id)
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar jugadores')
     } finally {
@@ -1154,6 +1477,20 @@ const Page = () => {
       const result = await createJugador(formData)
       
       if (!result.success) {
+        // Verificar si requiere confirmación de número
+        if (result.requiereConfirmacionNumero) {
+          setPendingFormDataNumero(formData)
+          setInfoNumeroConflicto({
+            numeroJugador: result.numeroJugador || 0,
+            equipoNombre: result.equipoNombre || '',
+            categoriaNombre: result.categoriaNombre || '',
+            esCreacion: true
+          })
+          setShowConfirmacionCambioNumero(true)
+          setLoading(false)
+          return
+        }
+        
         // Si hay un error, verificar si es de límite de jugadores
         const isLimitError = result.error?.includes('No se puede agregar más jugadores') || 
             result.error?.includes('límite máximo permitido') ||
@@ -1184,10 +1521,52 @@ const Page = () => {
       
       setFormSuccess('Jugador creado exitosamente')
       
+      // Si se marcó calificar, calificar al jugador en la temporada seleccionada
+      if (calificarEnCreacion && temporadaIdCreacion && result.data?.jugadorId) {
+        try {
+          const calificacionResult = await calificarJugador(result.data.jugadorId, temporadaIdCreacion)
+          if (!calificacionResult.success) {
+            // Mostrar error de calificación pero no fallar la creación
+            if (toast.current) {
+              toast.current.show({
+                severity: 'warn',
+                summary: 'Jugador creado',
+                detail: `Jugador creado exitosamente, pero no se pudo calificar: ${calificacionResult.error}`,
+                life: 5000
+              })
+            } else {
+              setFormSuccess(`Jugador creado exitosamente, pero no se pudo calificar: ${calificacionResult.error}`)
+            }
+          } else {
+            if (toast.current) {
+              toast.current.show({
+                severity: 'success',
+                summary: 'Jugador creado y calificado',
+                detail: 'El jugador ha sido creado y calificado exitosamente',
+                life: 3000
+              })
+            }
+          }
+        } catch (error) {
+          console.error('Error al calificar jugador:', error)
+          // No fallar la creación si la calificación falla
+          if (toast.current) {
+            toast.current.show({
+              severity: 'warn',
+              summary: 'Jugador creado',
+              detail: 'Jugador creado exitosamente, pero hubo un error al calificarlo',
+              life: 5000
+            })
+          }
+        }
+      }
+      
       // Solo limpiar cuando la operación fue exitosa
       setCapturedPhoto(null)
       setCapturedPhotoUrl(null)
       setJugadorExistente(null)
+      setCalificarEnCreacion(false)
+      setTemporadaIdCreacion(null)
       setCreateFormData({
         cedula: '',
         apellido_nombre: '',
@@ -1331,19 +1710,36 @@ const Page = () => {
                   <LuList className="fs-lg" />
                 </Button>
                 {Object.keys(rowSelection).length > 0 && (
-                  <Button 
-                    variant="warning" 
-                    className="ms-1" 
-                    onClick={async () => {
-                      const selectedJugadores = table.getSelectedRowModel().rows.map(row => row.original)
-                      await handleVerificarYImprimir(selectedJugadores)
-                    }}
-                    title="Imprimir carnets de jugadores seleccionados"
-                  >
-                    <TbPrinter className="fs-sm me-2" /> 
-                    <span className="d-none d-sm-inline">Imprimir ({Object.keys(rowSelection).length})</span>
-                    <span className="d-sm-none">Imprimir</span>
-                  </Button>
+                  <>
+                    <Button 
+                      variant="warning" 
+                      className="ms-1" 
+                      onClick={async () => {
+                        const selectedJugadores = table.getSelectedRowModel().rows.map(row => row.original)
+                        await handleVerificarYImprimir(selectedJugadores)
+                      }}
+                      title="Imprimir carnets de jugadores seleccionados"
+                    >
+                      <TbPrinter className="fs-sm me-2" /> 
+                      <span className="d-none d-sm-inline">Imprimir ({Object.keys(rowSelection).length})</span>
+                      <span className="d-sm-none">Imprimir</span>
+                    </Button>
+                    {puedeEditar && (
+                      <Button 
+                        variant="info" 
+                        className="ms-1" 
+                        onClick={async () => {
+                          const selectedJugadores = table.getSelectedRowModel().rows.map(row => row.original)
+                          await handleCalificarJugadores(selectedJugadores)
+                        }}
+                        title="Calificar jugadores seleccionados"
+                      >
+                        <TbCertificate className="fs-sm me-2" /> 
+                        <span className="d-none d-sm-inline">Calificar ({Object.keys(rowSelection).length})</span>
+                        <span className="d-sm-none">Calificar</span>
+                      </Button>
+                    )}
+                  </>
                 )}
                 <Button 
                   variant="success" 
@@ -1803,6 +2199,8 @@ const Page = () => {
           setCapturedPhoto(null)
           setCapturedPhotoUrl(null)
           setSelectedEquipoCategoria(null)
+          setCalificarEnCreacion(false)
+          setTemporadaIdCreacion(null)
         }} 
         size="lg" 
         centered
@@ -1944,7 +2342,7 @@ const Page = () => {
                     name="numero_jugador" 
                     placeholder="Número de camiseta" 
                     min="1" 
-                    max="99"
+                    max="999"
                     className="border-primary border-2"
                     style={{ fontSize: '1.1rem', fontWeight: '600' }}
                   />
@@ -2060,6 +2458,59 @@ const Page = () => {
               </Col>
 
               <Col lg={12}>
+                <FormCheck
+                  type="checkbox"
+                  id="calificarEnCreacion"
+                  checked={calificarEnCreacion}
+                  onChange={(e) => {
+                    setCalificarEnCreacion(e.target.checked)
+                    if (e.target.checked) {
+                      // Si se marca el checkbox y hay temporadas, seleccionar la más reciente
+                      if (temporadas.length > 0) {
+                        // Si no hay temporada seleccionada o la seleccionada ya no existe, usar la más reciente
+                        const temporadaSeleccionadaExiste = temporadaIdCreacion && temporadas.some(t => t.id === temporadaIdCreacion)
+                        if (!temporadaIdCreacion || !temporadaSeleccionadaExiste) {
+                          setTemporadaIdCreacion(temporadas[0].id)
+                        }
+                      }
+                    } else {
+                      setTemporadaIdCreacion(null)
+                    }
+                  }}
+                  label={
+                    <span>
+                      <TbCertificate className="me-1" />
+                      Calificar jugador en temporada
+                    </span>
+                  }
+                />
+              </Col>
+
+              {calificarEnCreacion && (
+                <Col lg={12}>
+                  <FloatingLabel label="Temporada para Calificación *">
+                    <FormSelect
+                      value={temporadaIdCreacion || ''}
+                      onChange={(e) => setTemporadaIdCreacion(e.target.value ? parseInt(e.target.value) : null)}
+                      required={calificarEnCreacion}
+                    >
+                      <option value="">Seleccionar temporada...</option>
+                      {temporadas.map((temporada) => (
+                        <option key={temporada.id} value={temporada.id}>
+                          {temporada.nombre}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </FloatingLabel>
+                  {temporadas.length === 0 && (
+                    <Alert variant="warning" className="mt-2 mb-0">
+                      <small>No hay temporadas activas disponibles. Por favor, crea una temporada en la sección de Torneos.</small>
+                    </Alert>
+                  )}
+                </Col>
+              )}
+
+              <Col lg={12}>
                 <div className="border rounded p-3">
                   <h6 className="mb-3">Foto del Jugador</h6>
                   
@@ -2119,6 +2570,8 @@ const Page = () => {
                       setCapturedPhoto(null)
                       setCapturedPhotoUrl(null)
                       setSelectedEquipoCategoria(null)
+                      setCalificarEnCreacion(false)
+                      setTemporadaIdCreacion(null)
                     }}
                   >
                     Cancelar
@@ -2264,7 +2717,7 @@ const Page = () => {
                       name="numero_jugador" 
                       placeholder="Número de camiseta" 
                       min="1" 
-                      max="99"
+                      max="999"
                       defaultValue={(editingJugador.jugadoresEquipoCategoria?.[0] as any)?.numero_jugador || ''}
                       className="border-primary border-2"
                       style={{ fontSize: '1.1rem', fontWeight: '600' }}
@@ -2377,6 +2830,62 @@ const Page = () => {
                       label="Foráneo"
                       defaultChecked={editingJugador.foraneo || false}
                     />
+                  </div>
+                </Col>
+
+                <Col lg={12}>
+                  <div className="border rounded p-3 mb-3 bg-light">
+                    <Row className="g-2">
+                      <Col lg={12}>
+                        <div className="form-check mb-3">
+                          <FormCheck
+                            type="checkbox"
+                            id="calificar_edit"
+                            checked={calificarEnEdicion}
+                            onChange={(e) => {
+                              setCalificarEnEdicion(e.target.checked)
+                              if (e.target.checked) {
+                                // Si se marca el checkbox y hay temporadas, seleccionar la más reciente
+                                if (temporadas.length > 0 && !temporadaIdEdicion) {
+                                  setTemporadaIdEdicion(temporadas[0].id)
+                                }
+                              } else {
+                                setTemporadaIdEdicion(null)
+                              }
+                            }}
+                            label={
+                              <span className="fw-semibold">
+                                <TbCertificate className="me-2" />
+                                Calificar jugador en temporada
+                              </span>
+                            }
+                          />
+                        </div>
+                      </Col>
+                      {calificarEnEdicion && (
+                        <Col lg={12}>
+                          <FloatingLabel label="Temporada para Calificación *">
+                            <FormSelect
+                              value={temporadaIdEdicion || ''}
+                              onChange={(e) => setTemporadaIdEdicion(e.target.value ? parseInt(e.target.value) : null)}
+                              required={calificarEnEdicion}
+                            >
+                              <option value="">Seleccionar temporada...</option>
+                              {temporadas.map((temporada) => (
+                                <option key={temporada.id} value={temporada.id}>
+                                  {temporada.nombre}
+                                </option>
+                              ))}
+                            </FormSelect>
+                          </FloatingLabel>
+                          {temporadas.length === 0 && (
+                            <Alert variant="warning" className="mt-2 mb-0">
+                              <small>No hay temporadas activas disponibles. Por favor, crea una temporada en la sección de Torneos.</small>
+                            </Alert>
+                          )}
+                        </Col>
+                      )}
+                    </Row>
                   </div>
                 </Col>
 
@@ -2499,7 +3008,8 @@ const Page = () => {
                   <thead className="table-light">
                     <tr>
                       <th>Cédula</th>
-                      <th>Nombre</th>
+                      <th>Nommulario
+                      bre</th>
                       <th>Categorías</th>
                     </tr>
                   </thead>
@@ -2974,6 +3484,112 @@ const Page = () => {
           </Button>
           <Button variant="primary" onClick={handleConfirmarCambioEquipo}>
             Confirmar Cambio
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal de confirmación de cambio de número */}
+      <Modal 
+        show={showConfirmacionCambioNumero} 
+        onHide={handleCancelarCambioNumero} 
+        centered
+      >
+        <ModalHeader closeButton>
+          <ModalTitle>Confirmar Cambio de Número</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          <Alert variant="warning" className="mb-3">
+            <strong>Número de jugador en uso</strong>
+          </Alert>
+          {infoNumeroConflicto && (
+            <div>
+              <p>
+                El número <strong>{infoNumeroConflicto.numeroJugador}</strong> ya está asignado a otro jugador en el equipo <strong>"{infoNumeroConflicto.equipoNombre}"</strong> de la categoría <strong>"{infoNumeroConflicto.categoriaNombre}"</strong>.
+              </p>
+              <Alert variant="info" className="mt-3 mb-0">
+                <small>
+                  <strong>¿Desea mantener este número?</strong>
+                  <br />
+                  Si confirma, el jugador anterior quedará sin número asignado y este jugador tomará el número {infoNumeroConflicto.numeroJugador}.
+                </small>
+              </Alert>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={handleCancelarCambioNumero}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleConfirmarCambioNumero}>
+            Confirmar y Continuar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal de Selección de Temporada para Calificar */}
+      <Modal show={showTemporadaModal} onHide={() => {
+        setShowTemporadaModal(false)
+        setSelectedTemporadaId(null)
+        setJugadorParaCalificar(null)
+        setJugadoresParaCalificar([])
+      }} centered>
+        <ModalHeader closeButton>
+          <ModalTitle>Seleccionar Temporada para Calificar</ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          {isCalificacionMultiple ? (
+            <p className="mb-3">
+              <strong>Calificar {jugadoresParaCalificar.length} jugador(es)</strong>
+            </p>
+          ) : jugadorParaCalificar && (
+            <p className="mb-3">
+              <strong>Jugador:</strong> {jugadorParaCalificar.apellido_nombre}
+            </p>
+          )}
+          
+          <FloatingLabel controlId="temporada_select" label="Temporada *" className="mb-3">
+            <FormSelect
+              value={selectedTemporadaId || ''}
+              onChange={(e) => setSelectedTemporadaId(e.target.value ? parseInt(e.target.value) : null)}
+              required
+            >
+              <option value="">Seleccionar temporada...</option>
+              {temporadas.map((temporada) => (
+                <option key={temporada.id} value={temporada.id}>
+                  {temporada.nombre}
+                </option>
+              ))}
+            </FormSelect>
+          </FloatingLabel>
+          
+          {temporadas.length === 0 && (
+            <Alert variant="warning" className="mb-0">
+              <small>No hay temporadas activas disponibles. Por favor, crea una temporada en la sección de Torneos.</small>
+            </Alert>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => {
+            setShowTemporadaModal(false)
+            setSelectedTemporadaId(null)
+            setJugadorParaCalificar(null)
+            setJugadoresParaCalificar([])
+          }}>
+            Cancelar
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleConfirmarCalificacion}
+            disabled={!selectedTemporadaId || temporadas.length === 0 || loading}
+          >
+            {loading ? (
+              <>
+                <Spinner size="sm" className="me-2" />
+                Calificando...
+              </>
+            ) : (
+              'Calificar'
+            )}
           </Button>
         </ModalFooter>
       </Modal>

@@ -87,12 +87,25 @@ export const jugadorEquipoCategoria = pgTable('jugador_equipo_categoria', {
   uniqueJugadorEquipoCategoria: uniqueIndex('unique_jugador_equipo_categoria').on(table.jugador_id, table.equipo_categoria_id),
 }));
 
+// Tabla de temporadas/campeonatos
+export const temporadas = pgTable('temporadas', {
+  id: serial('id').primaryKey(),
+  nombre: text('nombre').notNull().unique(), // Ej: "2025-2026", "2026-2027"
+  descripcion: text('descripcion'),
+  fecha_inicio: date('fecha_inicio'),
+  fecha_fin: date('fecha_fin'),
+  activa: boolean('activa').default(true), // Si está activa o no
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Tabla de torneos
 export const torneos = pgTable('torneos', {
   id: serial('id').primaryKey(),
   nombre: text('nombre').notNull(),
   descripcion: text('descripcion'),
   categoria_id: integer('categoria_id').references(() => categorias.id),
+  temporada_id: integer('temporada_id').references(() => temporadas.id), // Referencia a la temporada
   fecha_inicio: date('fecha_inicio').notNull(),
   fecha_fin: date('fecha_fin').notNull(),
   estado: text('estado').default('planificado'), // planificado, en_curso, finalizado, cancelado
@@ -205,11 +218,20 @@ export const jugadoresRelations = relations(jugadores, ({ many }) => ({
   jugadoresEquipoCategoria: many(jugadorEquipoCategoria),
 }));
 
+// Relaciones para temporadas
+export const temporadasRelations = relations(temporadas, ({ many }) => ({
+  torneos: many(torneos),
+}));
+
 // Relaciones para torneos
 export const torneosRelations = relations(torneos, ({ one, many }) => ({
   categoria: one(categorias, {
     fields: [torneos.categoria_id],
     references: [categorias.id],
+  }),
+  temporada: one(temporadas, {
+    fields: [torneos.temporada_id],
+    references: [temporadas.id],
   }),
   equiposTorneo: many(equiposTorneo),
   encuentros: many(encuentros),
@@ -524,12 +546,14 @@ export const historialJugadores = pgTable('historial_jugadores', {
   jugador_id: varchar('jugador_id', { length: 255 }).references(() => jugadores.id).notNull(),
   liga: text('liga').notNull(),
   equipo: text('equipo'), // Nombre del equipo como texto
+  categoria: text('categoria'), // Nombre de la categoría como texto
   equipo_anterior: text('equipo_anterior'), // Nombre del equipo anterior desde donde se cambió
   situacion_jugador_anterior: text('situacion_jugador_anterior'), // Situación del jugador anterior (PASE o PRÉSTAMO) desde donde se cambió
   numero: integer('numero'), // Número de camiseta
   nombre_calificacion: text('nombre_calificacion'),
   disciplina: text('disciplina'),
   fecha_calificacion: date('fecha_calificacion'),
+  temporada_id: integer('temporada_id').references(() => temporadas.id), // Referencia a la temporada de calificación
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -539,6 +563,10 @@ export const historialJugadoresRelations = relations(historialJugadores, ({ one 
   jugador: one(jugadores, {
     fields: [historialJugadores.jugador_id],
     references: [jugadores.id],
+  }),
+  temporada: one(temporadas, {
+    fields: [historialJugadores.temporada_id],
+    references: [temporadas.id],
   }),
 }));
 

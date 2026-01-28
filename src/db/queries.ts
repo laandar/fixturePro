@@ -1,7 +1,7 @@
 import { db } from './index'
 import { eq, asc, count, and, desc, inArray, or } from 'drizzle-orm'
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles, equipoCategoria, jugadorEquipoCategoria } from './schema'
-import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha } from './types'
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles, equipoCategoria, jugadorEquipoCategoria, temporadas } from './schema'
+import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha, NewTemporada } from './types'
 
 // ===== EQUIPOS =====
 export const equipoQueries = {
@@ -1132,6 +1132,69 @@ export const jugadorEquipoCategoriaQueries = {
   }
 };
 
+// ===== TEMPORADAS =====
+export const temporadaQueries = {
+  // Obtener todas las temporadas
+  getAll: async () => {
+    return await db.select().from(temporadas).orderBy(desc(temporadas.nombre));
+  },
+
+  // Obtener temporadas con relaciones
+  getAllWithRelations: async () => {
+    return await db.query.temporadas.findMany({
+      with: {
+        torneos: {
+          with: {
+            categoria: true,
+          },
+        },
+      },
+      orderBy: [desc(temporadas.nombre)],
+    });
+  },
+
+  // Obtener temporada por ID
+  getById: async (id: number) => {
+    const result = await db.select().from(temporadas).where(eq(temporadas.id, id));
+    return result[0];
+  },
+
+  // Obtener temporada por ID con relaciones
+  getByIdWithRelations: async (id: number) => {
+    return await db.query.temporadas.findFirst({
+      where: eq(temporadas.id, id),
+      with: {
+        torneos: {
+          with: {
+            categoria: true,
+          },
+        },
+      },
+    });
+  },
+
+  // Crear temporada
+  create: async (temporadaData: NewTemporada) => {
+    const result = await db.insert(temporadas).values(temporadaData).returning();
+    return result[0];
+  },
+
+  // Actualizar temporada
+  update: async (id: number, temporadaData: Partial<NewTemporada>) => {
+    const result = await db
+      .update(temporadas)
+      .set({ ...temporadaData, updatedAt: new Date() })
+      .where(eq(temporadas.id, id))
+      .returning();
+    return result[0];
+  },
+
+  // Eliminar temporada
+  delete: async (id: number) => {
+    return await db.delete(temporadas).where(eq(temporadas.id, id));
+  },
+};
+
 // ===== TORNEOS =====
 export const torneoQueries = {
   // Obtener todos los torneos
@@ -1144,6 +1207,7 @@ export const torneoQueries = {
     return await db.query.torneos.findMany({
       with: {
         categoria: true,
+        temporada: true,
         equiposTorneo: {
           with: {
             equipo: {
@@ -1199,6 +1263,7 @@ export const torneoQueries = {
       where: eq(torneos.id, id),
       with: {
         categoria: true,
+        temporada: true,
         equiposTorneo: {
           with: {
             equipo: {
@@ -2001,12 +2066,11 @@ export const estadisticasQueries = {
     });
   },
 
-  // Obtener todos los torneos públicos (activos, finalizados o planificados)
+  // Obtener todos los torneos públicos (activos o planificados, excluyendo finalizados)
   getTorneosPublicos: async () => {
     const torneosData = await db.query.torneos.findMany({
-      where: (torneos, { or, eq }) => or(
+      where: (torneos, { or, eq, ne }) => or(
         eq(torneos.estado, 'en_curso'),
-        eq(torneos.estado, 'finalizado'),
         eq(torneos.estado, 'planificado')
       ),
       with: {

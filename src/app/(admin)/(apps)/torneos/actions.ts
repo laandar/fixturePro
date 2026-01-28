@@ -404,6 +404,8 @@ export async function createTorneo(formData: FormData) {
     const nombre = formData.get('nombre') as string
     const descripcion = formData.get('descripcion') as string
     const categoria_id = parseInt(formData.get('categoria_id') as string)
+    const temporada_id_str = formData.get('temporada_id') as string | null
+    const temporada_id = temporada_id_str && temporada_id_str !== '' ? parseInt(temporada_id_str) : null
     const fecha_inicio_str = formData.get('fecha_inicio') as string
     const fecha_fin_str = formData.get('fecha_fin') as string
     const tipo_torneo = formData.get('tipo_torneo') as string
@@ -425,6 +427,7 @@ export async function createTorneo(formData: FormData) {
       nombre,
       descripcion: descripcion || null,
       categoria_id,
+      temporada_id,
       fecha_inicio: fecha_inicio_str,
       fecha_fin: fecha_fin_str,
       estado,
@@ -446,6 +449,8 @@ export async function updateTorneo(id: number, formData: FormData) {
     const nombre = formData.get('nombre') as string
     const descripcion = formData.get('descripcion') as string
     const categoria_id = parseInt(formData.get('categoria_id') as string)
+    const temporada_id_str = formData.get('temporada_id') as string | null
+    const temporada_id = temporada_id_str && temporada_id_str !== '' ? parseInt(temporada_id_str) : null
     const fecha_inicio_str = formData.get('fecha_inicio') as string
     const fecha_fin_str = formData.get('fecha_fin') as string
     const tipo_torneo = formData.get('tipo_torneo') as string
@@ -466,6 +471,7 @@ export async function updateTorneo(id: number, formData: FormData) {
       nombre,
       descripcion: descripcion || null,
       categoria_id,
+      temporada_id,
       fecha_inicio: fecha_inicio_str,
       fecha_fin: fecha_fin_str,
       tipo_torneo,

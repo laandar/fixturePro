@@ -311,6 +311,7 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                 <th>Equipo</th>
                 <th>Número</th>
                 <th>Situación / Equipo Anterior</th>
+                <th>Temporada</th>
                 <th>Fecha Calificación</th>
                 <th style={{ width: '120px' }}>Acciones</th>
               </tr>
@@ -318,14 +319,14 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
             <tbody>
               {loading && historial.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-4">
+                  <td colSpan={7} className="text-center py-4">
                     <Spinner animation="border" size="sm" className="me-2" />
                     Cargando...
                   </td>
                 </tr>
               ) : historial.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-4 text-muted">
+                  <td colSpan={7} className="text-center py-4 text-muted">
                     No hay registros en el historial
                   </td>
                 </tr>
@@ -395,6 +396,14 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                           </div>
                         </td>
                         <td>
+                          <div className="text-muted small">
+                            {(() => {
+                              const registroEditando = historial.find(r => r.id === editingId)
+                              return registroEditando?.temporada?.nombre || '-'
+                            })()}
+                          </div>
+                        </td>
+                        <td>
                           <FormControl
                             type="date"
                             size="sm"
@@ -455,6 +464,9 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                               </div>
                             )
                           })()}
+                        </td>
+                        <td>
+                          {registro.temporada?.nombre || <span className="text-muted">-</span>}
                         </td>
                         <td>
                           {registro.fecha_calificacion

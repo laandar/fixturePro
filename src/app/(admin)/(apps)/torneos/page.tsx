@@ -22,11 +22,12 @@ import {
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Badge, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
-import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuMapPin } from 'react-icons/lu'
+import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuMapPin, LuChevronDown, LuChevronUp, LuCircleCheck, LuX } from 'react-icons/lu'
 import { TbEdit, TbEye, TbPlus, TbTrash, TbSettings } from 'react-icons/tb'
 import { getTorneos, deleteTorneo, createTorneo, updateTorneo, getAllEncuentrosTodosTorneos, getAllHorariosTodosTorneos } from './actions'
+import { getTemporadas, createTemporada, updateTemporada, deleteTemporada, toggleTemporadaActiva } from './temporadas-actions'
 import { getCategorias } from '../categorias/actions'
-import type { TorneoWithRelations, Categoria, EncuentroWithRelations, Horario } from '@/db/types'
+import type { TorneoWithRelations, Categoria, EncuentroWithRelations, Horario, Temporada } from '@/db/types'
 import TablaHorariosCanchas from '@/components/TablaHorariosCanchas'
 
 
@@ -40,7 +41,10 @@ const Page = () => {
   
   const [data, setData] = useState<TorneoWithRelations[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [temporadas, setTemporadas] = useState<Temporada[]>([])
   const [loading, setLoading] = useState(true)
+  const [showTemporadasModal, setShowTemporadasModal] = useState(false)
+  const [temporadasExpandidas, setTemporadasExpandidas] = useState<Set<number | null>>(new Set())
   const [showTablaGlobal, setShowTablaGlobal] = useState(false)
   const [encuentrosGlobales, setEncuentrosGlobales] = useState<EncuentroWithRelations[]>([])
   const [horariosGlobales, setHorariosGlobales] = useState<Horario[]>([])
@@ -339,12 +343,30 @@ const Page = () => {
     try {
       setLoading(true)
       setError(null)
-      const [torneosData, categoriasData] = await Promise.all([
+      const [torneosData, categoriasData, temporadasData] = await Promise.all([
         getTorneos(),
-        getCategorias()
+        getCategorias(),
+        getTemporadas()
       ])
       setData(torneosData as any)
       setCategorias(categoriasData)
+      setTemporadas(temporadasData)
+      
+      // Expandir todas las temporadas activas que tienen torneos por defecto
+      const temporadasConTorneos = new Set<number | null>()
+      temporadasConTorneos.add(null) // Expandir "Sin Temporada" también
+      ;(torneosData as any[]).forEach(torneo => {
+        if (torneo.temporada_id) {
+          // Solo expandir si la temporada está activa
+          const temporada = temporadasData.find(t => t.id === torneo.temporada_id)
+          if (temporada && temporada.activa) {
+            temporadasConTorneos.add(torneo.temporada_id)
+          }
+        } else {
+          temporadasConTorneos.add(null)
+        }
+      })
+      setTemporadasExpandidas(temporadasConTorneos)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar datos')
     } finally {
@@ -422,7 +444,15 @@ const Page = () => {
 
       <Row className="justify-content-center mb-4">
         <Col xxl={10}>
-          <div className="d-flex justify-content-end">
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <Button 
+              variant="outline-primary" 
+              size="sm"
+              onClick={() => setShowTemporadasModal(true)}
+            >
+              <LuCalendar className="me-1" />
+              Gestionar Temporadas
+            </Button>
             <Button 
               variant="primary" 
               size="sm"
@@ -520,26 +550,191 @@ const Page = () => {
               </div>
             </CardHeader>
 
-            <DataTable<TorneoWithRelations> table={table} emptyMessage="No se encontraron torneos" />
+            {/* Vista agrupada por temporada */}
+            {(() => {
+              // Agrupar torneos por temporada
+              const torneosFiltrados = table.getFilteredRowModel().rows.map(row => row.original)
+              const torneosPorTemporada = new Map<number | null, TorneoWithRelations[]>()
+              
+              // Agregar torneos sin temporada
+              torneosPorTemporada.set(null, [])
+              
+              torneosFiltrados.forEach(torneo => {
+                const temporadaId = torneo.temporada_id || null
+                // Solo incluir torneos de temporadas activas o sin temporada
+                if (temporadaId === null) {
+                  // Torneos sin temporada siempre se incluyen
+                  if (!torneosPorTemporada.has(null)) {
+                    torneosPorTemporada.set(null, [])
+                  }
+                  torneosPorTemporada.get(null)!.push(torneo)
+                } else {
+                  // Solo incluir si la temporada está activa
+                  const temporada = temporadas.find(t => t.id === temporadaId)
+                  if (temporada && temporada.activa) {
+                    if (!torneosPorTemporada.has(temporadaId)) {
+                      torneosPorTemporada.set(temporadaId, [])
+                    }
+                    torneosPorTemporada.get(temporadaId)!.push(torneo)
+                  }
+                }
+              })
 
-            {table.getRowModel().rows.length > 0 && (
-              <CardFooter className="border-0">
-                <TablePagination
-                  totalItems={totalItems}
-                  start={start}
-                  end={end}
-                  itemsName="torneos"
-                  showInfo
-                  previousPage={table.previousPage}
-                  canPreviousPage={table.getCanPreviousPage()}
-                  pageCount={table.getPageCount()}
-                  pageIndex={table.getState().pagination.pageIndex}
-                  setPageIndex={table.setPageIndex}
-                  nextPage={table.nextPage}
-                  canNextPage={table.getCanNextPage()}
-                />
-              </CardFooter>
-            )}
+              const temporadasOrdenadas = Array.from(torneosPorTemporada.keys())
+                .map(id => {
+                  const temporada = id ? temporadas.find(t => t.id === id) : null
+                  return { id, temporada, torneos: torneosPorTemporada.get(id) || [] }
+                })
+                .filter(item => item.torneos.length > 0)
+                .sort((a, b) => {
+                  if (!a.temporada && !b.temporada) return 0
+                  if (!a.temporada) return 1
+                  if (!b.temporada) return -1
+                  return (b.temporada.nombre || '').localeCompare(a.temporada.nombre || '')
+                })
+
+              if (temporadasOrdenadas.length === 0) {
+                return (
+                  <div className="text-center py-5">
+                    <p className="text-muted">No se encontraron torneos</p>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="p-3">
+                  {temporadasOrdenadas.map(({ id, temporada, torneos }) => {
+                    const estaExpandida = temporadasExpandidas.has(id)
+                    const toggleExpandir = () => {
+                      const nuevasExpandidas = new Set(temporadasExpandidas)
+                      if (estaExpandida) {
+                        nuevasExpandidas.delete(id)
+                      } else {
+                        nuevasExpandidas.add(id)
+                      }
+                      setTemporadasExpandidas(nuevasExpandidas)
+                    }
+
+                    return (
+                      <div key={id || 'sin-temporada'} className="mb-4">
+                        <div 
+                          className="mb-3 pb-2 border-bottom cursor-pointer"
+                          onClick={toggleExpandir}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="d-flex align-items-center gap-2 mb-1">
+                            <Button
+                              variant="link"
+                              className="p-0 text-decoration-none"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleExpandir()
+                              }}
+                            >
+                              {estaExpandida ? (
+                                <LuChevronUp className="text-primary" size={20} />
+                              ) : (
+                                <LuChevronDown className="text-primary" size={20} />
+                              )}
+                            </Button>
+                            <LuCalendar className="text-primary" />
+                            <h5 className="mb-0 fw-semibold flex-grow-1">
+                              {temporada ? temporada.nombre : 'Sin Temporada'}
+                            </h5>
+                            {temporada && (
+                              <Badge bg={temporada.activa ? 'success' : 'secondary'} className="me-2">
+                                {temporada.activa ? 'Activa' : 'Inactiva'}
+                              </Badge>
+                            )}
+                            <Badge bg="secondary" className="ms-2">
+                              {torneos.length} torneo{torneos.length !== 1 ? 's' : ''}
+                            </Badge>
+                          </div>
+                          {temporada?.descripcion && (
+                            <p className="text-muted mb-0 ms-4 fs-sm">
+                              {temporada.descripcion}
+                            </p>
+                          )}
+                        </div>
+                        {estaExpandida && (
+                          <div className="row g-3">
+                        {torneos.map(torneo => {
+                          const estadoConfig: Record<string, { bg: string; text: string; label: string; icon: string }> = {
+                            planificado: { bg: 'warning', text: 'dark', label: 'Planificado', icon: '⏳' },
+                            en_curso: { bg: 'info', text: 'white', label: 'En Curso', icon: '▶️' },
+                            finalizado: { bg: 'primary', text: 'white', label: 'Finalizado', icon: '✅' },
+                            cancelado: { bg: 'danger', text: 'white', label: 'Cancelado', icon: '❌' }
+                          }
+                          const config = torneo.estado ? estadoConfig[torneo.estado] || { bg: 'secondary', text: 'white', label: torneo.estado, icon: '❓' } : { bg: 'secondary', text: 'white', label: 'Sin estado', icon: '❓' }
+                          
+                          return (
+                            <Col md={6} lg={4} key={torneo.id}>
+                              <Card className="h-100">
+                                <CardBody>
+                                  <div className="d-flex justify-content-between align-items-start mb-2">
+                                    <div className="d-flex align-items-center gap-2">
+                                      <div className="avatar avatar-sm">
+                                        <div className="avatar-title bg-primary-subtle text-primary rounded-circle">
+                                          <LuTrophy className="fs-lg" />
+                                        </div>
+                                      </div>
+                                      <div className="flex-grow-1">
+                                        <h6 className="mb-0">
+                                          <Link href={`/torneos/${torneo.id}`} className="link-reset">
+                                            {torneo.nombre}
+                                          </Link>
+                                        </h6>
+                                        <small className="text-muted">{torneo.descripcion || 'Sin descripción'}</small>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3">
+                                    <div className="d-flex flex-wrap gap-2 mb-2">
+                                      <Badge bg="light" text="dark" className="fs-xs">
+                                        <LuTrophy className="me-1" /> {torneo.categoria?.nombre || 'Sin categoría'}
+                                      </Badge>
+                                      <Badge bg={config.bg} className={`px-2 py-1 fw-semibold text-${config.text} border-0`}>
+                                        <span className="me-1">{config.icon}</span>
+                                        {config.label}
+                                      </Badge>
+                                    </div>
+                                    <div className="d-flex justify-content-between align-items-center mt-2">
+                                      <div className="d-flex gap-3 text-muted small">
+                                        <span><LuUsers className="me-1" /> {torneo.equiposTorneo?.length || 0}</span>
+                                        <span><LuGamepad2 className="me-1" /> {torneo.encuentros?.length || 0}</span>
+                                      </div>
+                                      <div className="d-flex gap-1">
+                                        <Link href={`/torneos/${torneo.id}`}>
+                                          <Button variant="light" size="sm" className="btn-icon rounded-circle" title="Ver detalles">
+                                            <TbEye className="fs-sm" />
+                                          </Button>
+                                        </Link>
+                                        {puedeEditar && (
+                                          <Button variant="light" size="sm" className="btn-icon rounded-circle" onClick={() => handleEditClick(torneo)} title="Editar">
+                                            <TbEdit className="fs-sm" />
+                                          </Button>
+                                        )}
+                                        {puedeEliminar && (
+                                          <Button variant="light" size="sm" className="btn-icon rounded-circle" onClick={() => handleDeleteSingle(torneo)} title="Eliminar">
+                                            <TbTrash className="fs-sm" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </CardBody>
+                              </Card>
+                            </Col>
+                          )
+                        })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
 
             <ConfirmationModal
               show={showDeleteModal}
@@ -617,6 +812,21 @@ const Page = () => {
                   </FormSelect>
                 </FloatingLabel>
               </Col>
+              <Col md={6}>
+                <FloatingLabel controlId="temporada_id" label="Temporada/Campeonato" className="mb-3">
+                  <FormSelect name="temporada_id">
+                    <option value="">Sin temporada</option>
+                    {temporadas.filter(t => t.activa).map((temporada) => (
+                      <option key={temporada.id} value={temporada.id}>
+                        {temporada.nombre}
+                      </option>
+                    ))}
+                  </FormSelect>
+                </FloatingLabel>
+              </Col>
+            </Row>
+
+            <Row>
               <Col md={6}>
                 <FloatingLabel controlId="tipo_torneo" label="Tipo de Torneo" className="mb-3">
                   <FormSelect name="tipo_torneo" required>
@@ -752,6 +962,21 @@ const Page = () => {
                     </FormSelect>
                   </FloatingLabel>
                 </Col>
+                <Col md={6}>
+                  <FloatingLabel controlId="edit_temporada_id" label="Temporada/Campeonato" className="mb-3">
+                    <FormSelect name="temporada_id" defaultValue={editingTorneo.temporada_id?.toString() || ''}>
+                      <option value="">Sin temporada</option>
+                      {temporadas.filter(t => t.activa).map((temporada) => (
+                        <option key={temporada.id} value={temporada.id}>
+                          {temporada.nombre}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </FloatingLabel>
+                </Col>
+              </Row>
+
+              <Row>
                 <Col md={6}>
                   <FloatingLabel controlId="edit_tipo_torneo" label="Tipo de Torneo" className="mb-3">
                     <FormSelect name="tipo_torneo" defaultValue={editingTorneo.tipo_torneo || ''} required>
@@ -942,7 +1167,404 @@ const Page = () => {
           </div>
         </ModalFooter>
       </Modal>
+
+      {/* Modal: Gestión de Temporadas */}
+      <Modal 
+        show={showTemporadasModal} 
+        onHide={() => setShowTemporadasModal(false)}
+        size="lg"
+        centered
+      >
+        <ModalHeader closeButton className="border-bottom">
+          <ModalTitle className="d-flex align-items-center">
+            <LuCalendar className="me-2" />
+            Gestionar Temporadas
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody>
+          <TemporadasManager 
+            temporadas={temporadas}
+            onRefresh={loadData}
+            puedeCrear={puedeCrear}
+            puedeEditar={puedeEditar}
+            puedeEliminar={puedeEliminar}
+          />
+        </ModalBody>
+        <ModalFooter className="border-top">
+          <Button variant="secondary" onClick={() => setShowTemporadasModal(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
     </Container>
+  )
+}
+
+// Componente para gestionar temporadas
+const TemporadasManager = ({ 
+  temporadas, 
+  onRefresh, 
+  puedeCrear, 
+  puedeEditar, 
+  puedeEliminar 
+}: { 
+  temporadas: Temporada[]
+  onRefresh: () => void
+  puedeCrear: boolean
+  puedeEditar: boolean
+  puedeEliminar: boolean
+}) => {
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [editingTemporada, setEditingTemporada] = useState<Temporada | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [formSuccess, setFormSuccess] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [temporadaToDelete, setTemporadaToDelete] = useState<Temporada | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  const handleCreate = async (formData: FormData) => {
+    if (!puedeCrear) {
+      setFormError('No tienes permiso para crear temporadas')
+      return
+    }
+    
+    try {
+      setLoading(true)
+      setFormError(null)
+      await createTemporada(formData)
+      setFormSuccess('Temporada creada exitosamente')
+      setTimeout(() => {
+        onRefresh()
+        setShowCreateForm(false)
+        setFormSuccess(null)
+      }, 1000)
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Error al crear temporada')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdate = async (formData: FormData) => {
+    if (!editingTemporada || !puedeEditar) {
+      setFormError('No tienes permiso para editar temporadas')
+      return
+    }
+    
+    try {
+      setLoading(true)
+      setFormError(null)
+      await updateTemporada(editingTemporada.id, formData)
+      setFormSuccess('Temporada actualizada exitosamente')
+      setTimeout(() => {
+        onRefresh()
+        setEditingTemporada(null)
+        setFormSuccess(null)
+      }, 1000)
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Error al actualizar temporada')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!temporadaToDelete || !puedeEliminar) {
+      setFormError('No tienes permiso para eliminar temporadas')
+      return
+    }
+    
+    try {
+      setLoading(true)
+      await deleteTemporada(temporadaToDelete.id)
+      setShowDeleteModal(false)
+      setTemporadaToDelete(null)
+      onRefresh()
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Error al eliminar temporada')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleActiva = async (temporada: Temporada) => {
+    if (!puedeEditar) {
+      setFormError('No tienes permiso para editar temporadas')
+      return
+    }
+    
+    try {
+      setLoading(true)
+      setFormError(null)
+      await toggleTemporadaActiva(temporada.id, !temporada.activa)
+      setFormSuccess(`Temporada ${!temporada.activa ? 'activada' : 'desactivada'} exitosamente`)
+      setTimeout(() => {
+        onRefresh()
+        setFormSuccess(null)
+      }, 1000)
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Error al cambiar estado de temporada')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      {formError && (
+        <Alert variant="danger" dismissible onClose={() => setFormError(null)}>
+          {formError}
+        </Alert>
+      )}
+      {formSuccess && (
+        <Alert variant="success" dismissible onClose={() => setFormSuccess(null)}>
+          {formSuccess}
+        </Alert>
+      )}
+
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h6 className="mb-0">Temporadas ({temporadas.length})</h6>
+        {puedeCrear && (
+          <Button 
+            variant="primary" 
+            size="sm"
+            onClick={() => {
+              setShowCreateForm(true)
+              setEditingTemporada(null)
+              setFormError(null)
+            }}
+          >
+            <TbPlus className="me-1" />
+            Nueva Temporada
+          </Button>
+        )}
+      </div>
+
+      {showCreateForm && (
+        <Card className="mb-3">
+          <CardHeader>
+            <h5 className="mb-0">Crear Nueva Temporada</h5>
+          </CardHeader>
+          <CardBody>
+            <Form action={handleCreate}>
+              <Row>
+                <Col md={6}>
+                  <FloatingLabel controlId="temp_nombre" label="Nombre (ej: 2025-2026)" className="mb-3">
+                    <FormControl type="text" name="nombre" placeholder="2025-2026" required />
+                  </FloatingLabel>
+                </Col>
+                <Col md={6}>
+                  <FloatingLabel controlId="temp_activa" label="Estado" className="mb-3">
+                    <FormSelect name="activa" defaultValue="true">
+                      <option value="true">Activa</option>
+                      <option value="false">Inactiva</option>
+                    </FormSelect>
+                  </FloatingLabel>
+                </Col>
+              </Row>
+              <Row>
+                <Col md={6}>
+                  <FloatingLabel controlId="temp_fecha_inicio" label="Fecha Inicio" className="mb-3">
+                    <FormControl type="date" name="fecha_inicio" />
+                  </FloatingLabel>
+                </Col>
+                <Col md={6}>
+                  <FloatingLabel controlId="temp_fecha_fin" label="Fecha Fin" className="mb-3">
+                    <FormControl type="date" name="fecha_fin" />
+                  </FloatingLabel>
+                </Col>
+              </Row>
+              <FloatingLabel controlId="temp_descripcion" label="Descripción" className="mb-3">
+                <FormControl as="textarea" name="descripcion" style={{ height: '80px' }} />
+              </FloatingLabel>
+              <div className="d-flex gap-2">
+                <Button type="submit" variant="primary" disabled={loading}>
+                  {loading ? 'Creando...' : 'Crear'}
+                </Button>
+                <Button type="button" variant="light" onClick={() => setShowCreateForm(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </Form>
+          </CardBody>
+        </Card>
+      )}
+
+      {editingTemporada && (
+        <Card className="mb-3">
+          <CardHeader>
+            <h5 className="mb-0">Editar Temporada</h5>
+          </CardHeader>
+          <CardBody>
+            <Form action={handleUpdate}>
+              <Row>
+                <Col md={6}>
+                  <FloatingLabel controlId="edit_temp_nombre" label="Nombre" className="mb-3">
+                    <FormControl 
+                      type="text" 
+                      name="nombre" 
+                      defaultValue={editingTemporada.nombre} 
+                      required 
+                    />
+                  </FloatingLabel>
+                </Col>
+                <Col md={6}>
+                  <FloatingLabel controlId="edit_temp_activa" label="Estado" className="mb-3">
+                    <FormSelect name="activa" defaultValue={editingTemporada.activa ? 'true' : 'false'}>
+                      <option value="true">Activa</option>
+                      <option value="false">Inactiva</option>
+                    </FormSelect>
+                  </FloatingLabel>
+                </Col>
+              </Row>
+              <Row>
+                <Col md={6}>
+                  <FloatingLabel controlId="edit_temp_fecha_inicio" label="Fecha Inicio" className="mb-3">
+                    <FormControl 
+                      type="date" 
+                      name="fecha_inicio" 
+                      defaultValue={editingTemporada.fecha_inicio ? new Date(editingTemporada.fecha_inicio).toISOString().split('T')[0] : ''} 
+                    />
+                  </FloatingLabel>
+                </Col>
+                <Col md={6}>
+                  <FloatingLabel controlId="edit_temp_fecha_fin" label="Fecha Fin" className="mb-3">
+                    <FormControl 
+                      type="date" 
+                      name="fecha_fin" 
+                      defaultValue={editingTemporada.fecha_fin ? new Date(editingTemporada.fecha_fin).toISOString().split('T')[0] : ''} 
+                    />
+                  </FloatingLabel>
+                </Col>
+              </Row>
+              <FloatingLabel controlId="edit_temp_descripcion" label="Descripción" className="mb-3">
+                <FormControl 
+                  as="textarea" 
+                  name="descripcion" 
+                  defaultValue={editingTemporada.descripcion || ''} 
+                  style={{ height: '80px' }} 
+                />
+              </FloatingLabel>
+              <div className="d-flex gap-2">
+                <Button type="submit" variant="primary" disabled={loading}>
+                  {loading ? 'Actualizando...' : 'Actualizar'}
+                </Button>
+                <Button type="button" variant="light" onClick={() => setEditingTemporada(null)}>
+                  Cancelar
+                </Button>
+              </div>
+            </Form>
+          </CardBody>
+        </Card>
+      )}
+
+      <div className="list-group">
+        {temporadas.length === 0 ? (
+          <div className="text-center py-4 text-muted">
+            No hay temporadas creadas
+          </div>
+        ) : (
+          temporadas.map(temporada => (
+            <div 
+              key={temporada.id} 
+              className={`list-group-item d-flex justify-content-between align-items-center ${!temporada.activa ? 'opacity-75' : ''}`}
+            >
+              <div className="flex-grow-1">
+                <div className="d-flex align-items-center gap-2 mb-1">
+                  <h6 className="mb-0">{temporada.nombre}</h6>
+                  <Badge bg={temporada.activa ? 'success' : 'secondary'}>
+                    {temporada.activa ? (
+                      <>
+                        <LuCircleCheck className="me-1" size={14} />
+                        Activa
+                      </>
+                    ) : (
+                      <>
+                        <LuX className="me-1" size={14} />
+                        Inactiva
+                      </>
+                    )}
+                  </Badge>
+                </div>
+                {temporada.descripcion && (
+                  <small className="text-muted d-block mb-1">{temporada.descripcion}</small>
+                )}
+                {temporada.fecha_inicio && temporada.fecha_fin && (
+                  <small className="text-muted">
+                    {new Date(temporada.fecha_inicio).toLocaleDateString('es-ES')} - {new Date(temporada.fecha_fin).toLocaleDateString('es-ES')}
+                  </small>
+                )}
+              </div>
+              <div className="d-flex gap-1">
+                {puedeEditar && (
+                  <>
+                    <Button 
+                      variant={temporada.activa ? "outline-warning" : "outline-success"} 
+                      size="sm"
+                      onClick={() => handleToggleActiva(temporada)}
+                      title={temporada.activa ? "Desactivar temporada" : "Activar temporada"}
+                      disabled={loading}
+                    >
+                      {temporada.activa ? (
+                        <>
+                          <LuX className="me-1" />
+                          Cerrar
+                        </>
+                      ) : (
+                        <>
+                          <LuCircleCheck className="me-1" />
+                          Activar
+                        </>
+                      )}
+                    </Button>
+                    <Button 
+                      variant="light" 
+                      size="sm"
+                      onClick={() => {
+                        setEditingTemporada(temporada)
+                        setShowCreateForm(false)
+                        setFormError(null)
+                      }}
+                      title="Editar temporada"
+                    >
+                      <TbEdit />
+                    </Button>
+                  </>
+                )}
+                {puedeEliminar && (
+                  <Button 
+                    variant="light" 
+                    size="sm"
+                    onClick={() => {
+                      setTemporadaToDelete(temporada)
+                      setShowDeleteModal(true)
+                    }}
+                    title="Eliminar temporada"
+                  >
+                    <TbTrash />
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <ConfirmationModal
+        show={showDeleteModal}
+        onHide={() => {
+          setShowDeleteModal(false)
+          setTemporadaToDelete(null)
+        }}
+        onConfirm={handleDelete}
+        selectedCount={1}
+        itemName="temporada"
+        variant="danger"
+        isLoading={loading}
+        showBadgeDesign={false}
+        itemToDelete={temporadaToDelete?.nombre}
+      />
+    </div>
   )
 }
 
