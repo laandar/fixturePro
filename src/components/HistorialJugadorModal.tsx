@@ -6,6 +6,7 @@ import { TbPlus, TbEdit, TbTrash, TbCheck, TbX } from 'react-icons/tb'
 import type { HistorialJugadorWithRelations } from '@/db/types'
 import { getHistorialJugador, createHistorialJugador, updateHistorialJugador, deleteHistorialJugador } from '@/app/(admin)/(apps)/jugadores/actions'
 import ConfirmationModal from '@/components/table/DeleteConfirmationModal'
+import { formatDateFromString } from '@/helpers/date'
 
 interface HistorialJugadorModalProps {
   show: boolean
@@ -469,9 +470,7 @@ const HistorialJugadorModal = ({ show, onHide, jugadorId, jugadorNombre }: Histo
                           {registro.temporada?.nombre || <span className="text-muted">-</span>}
                         </td>
                         <td>
-                          {registro.fecha_calificacion
-                            ? new Date(registro.fecha_calificacion).toLocaleDateString('es-ES')
-                            : '-'}
+                          {formatDateFromString(registro.fecha_calificacion) || '-'}
                         </td>
                         <td>
                           <div className="d-flex gap-1">

@@ -14,3 +14,5 @@ export const authorWebsite: string = 'https://webapplayers.com/'
 export const authorContact: string = ''
 
 export const basePath: string = ''
+
+export { formatDateFromString, formatDateFromStringWithOptions } from './date'
