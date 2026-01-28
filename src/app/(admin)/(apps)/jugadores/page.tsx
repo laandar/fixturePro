@@ -32,7 +32,7 @@ import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, Floatin
 import { LuSearch, LuUser, LuTrophy, LuLayoutGrid, LuList, LuMenu, LuChevronLeft, LuChevronRight, LuClock, LuDownload, LuRefreshCw } from 'react-icons/lu'
 import { TbEdit, TbPlus, TbTrash, TbCamera, TbPrinter, TbX, TbHelp, TbCertificate } from 'react-icons/tb'
 import ExcelJS from 'exceljs'
-import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, buscarJugadorPorCedula, detectarJugadoresMultiplesCategoriasEquipos, calificarJugador, calificarJugadores } from './actions'
+import { getJugadores, createJugador, updateJugador, deleteJugador, deleteMultipleJugadores, getEquiposCategorias, buscarJugadorPorCedula, detectarJugadoresMultiplesCategoriasEquipos, calificarJugador, calificarJugadores, getJugadorIdsCalificadosPorTemporada } from './actions'
 import type { JugadorActionResult } from './actions'
 import { getTemporadas } from '../torneos/temporadas-actions'
 import type { Temporada } from '@/db/types'
@@ -164,6 +164,10 @@ const Page = () => {
   const [temporadaIdEdicion, setTemporadaIdEdicion] = useState<number | null>(null)
   const [calificarEnCreacion, setCalificarEnCreacion] = useState(false)
   const [temporadaIdCreacion, setTemporadaIdCreacion] = useState<number | null>(null)
+
+  // Jugadores calificados en la última temporada activa (por createdAt desc)
+  const [calificadosUltimaTemporada, setCalificadosUltimaTemporada] = useState<Set<string>>(new Set())
+  const [ultimaTemporadaNombre, setUltimaTemporadaNombre] = useState<string | null>(null)
   
   // Estados para la vista (cards o tabla)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -279,6 +283,17 @@ const Page = () => {
                 {row.original.apellido_nombre}
               </span>
             </h5>
+            {calificadosUltimaTemporada.has(String(row.original.id)) && (
+              <div className="mt-1">
+                <span
+                  className="badge bg-success-subtle text-success badge-label"
+                  title={ultimaTemporadaNombre ? `Calificado en la última temporada: ${ultimaTemporadaNombre}` : 'Calificado en la última temporada'}
+                >
+                  <TbCertificate className="me-1" />
+                  {ultimaTemporadaNombre ? `Calificado: ${ultimaTemporadaNombre}` : 'Calificado'}
+                </span>
+              </div>
+            )}
             <p className="text-muted fs-xs mb-0">Cédula: {row.original.cedula}</p>
           </div>
         </div>
@@ -1073,6 +1088,17 @@ const Page = () => {
         return fechaB - fechaA
       })
       setTemporadas(temporadasActivas)
+
+      // Calificados en la última temporada activa
+      if (temporadasActivas.length > 0) {
+        const ultima = temporadasActivas[0]
+        setUltimaTemporadaNombre(ultima.nombre)
+        const ids = await getJugadorIdsCalificadosPorTemporada(ultima.id)
+        setCalificadosUltimaTemporada(new Set(ids.map(String)))
+      } else {
+        setUltimaTemporadaNombre(null)
+        setCalificadosUltimaTemporada(new Set())
+      }
       
       // Si no hay temporada seleccionada y hay temporadas disponibles, seleccionar la más reciente
       if (temporadasActivas.length > 0 && !temporadaIdEdicion) {

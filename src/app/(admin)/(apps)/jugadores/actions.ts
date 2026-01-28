@@ -1536,6 +1536,30 @@ export async function getHistorialJugador(jugadorId: number | string): Promise<H
   }
 }
 
+// ===== CALIFICACIÓN / CONSULTAS =====
+
+/**
+ * Retorna los IDs de jugadores que tienen al menos un registro en historial_jugadores
+ * con temporada_id = temporadaId (es decir, fueron "calificados" en esa temporada).
+ */
+export async function getJugadorIdsCalificadosPorTemporada(temporadaId: number): Promise<string[]> {
+  await requirePermiso('jugadores', 'ver')
+  try {
+    if (!temporadaId || isNaN(temporadaId)) return []
+
+    const rows = await db
+      .select({ jugador_id: historialJugadores.jugador_id })
+      .from(historialJugadores)
+      .where(eq(historialJugadores.temporada_id, temporadaId))
+
+    // dedupe
+    return Array.from(new Set(rows.map((r) => r.jugador_id)))
+  } catch (error) {
+    console.error('Error al obtener jugadores calificados por temporada:', error)
+    return []
+  }
+}
+
 export async function createHistorialJugador(data: NewHistorialJugador) {
   try {
     if (!data.jugador_id || !data.liga) {
