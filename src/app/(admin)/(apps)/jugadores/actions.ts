@@ -520,7 +520,8 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
       }
       
       revalidatePath('/jugadores')
-      return { success: true, data: { jugadorId: jugador_existente_id } }
+      const jugadorCreado = await jugadorQueries.getByCedulaWithRelations(cedula)
+      return { success: true, data: { jugadorId: jugador_existente_id, jugador: jugadorCreado } }
     }
 
     // Si no hay jugador existente, crear uno nuevo (código original)
@@ -612,20 +613,17 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
       return value.trim();
     };
 
-    // Convertir fecha_nacimiento a string en formato YYYY-MM-DD para PostgreSQL
+    // Normalizar fecha_nacimiento a string en formato YYYY-MM-DD (sin afectar zona horaria)
     const formatFechaNacimiento = (fecha: string | null): string | null => {
-      if (!fecha) return null;
-      try {
-        const fechaObj = new Date(fecha);
-        if (isNaN(fechaObj.getTime())) return null;
-        // Convertir a formato YYYY-MM-DD
-        const year = fechaObj.getFullYear();
-        const month = String(fechaObj.getMonth() + 1).padStart(2, '0');
-        const day = String(fechaObj.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      } catch {
-        return null;
-      }
+      if (!fecha) return null
+      // Si viene con tiempo (YYYY-MM-DDTHH:MM:SS), tomar solo la parte de fecha
+      const soloFecha = fecha.split('T')[0]
+      // Validar formato básico YYYY-MM-DD
+      const partes = soloFecha.split('-')
+      if (partes.length !== 3) return null
+      const [year, month, day] = partes
+      if (!year || !month || !day) return null
+      return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
     };
 
     // Generar ID único para el jugador
@@ -798,7 +796,8 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
     }
 
     revalidatePath('/jugadores')
-    return { success: true, data: { jugadorId: nuevoJugador.id } }
+    const jugadorCreado = await jugadorQueries.getByCedulaWithRelations(cedula)
+    return { success: true, data: { jugadorId: nuevoJugador.id, jugador: jugadorCreado } }
   } catch (error) {
     console.error('Error al crear jugador:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Error al crear jugador' }
@@ -970,20 +969,15 @@ export async function updateJugador(id: number | string, formData: FormData, rel
       return value.trim();
     };
 
-    // Convertir fecha_nacimiento a string en formato YYYY-MM-DD para PostgreSQL
+    // Normalizar fecha_nacimiento a string en formato YYYY-MM-DD (sin afectar zona horaria)
     const formatFechaNacimiento = (fecha: string | null): string | null => {
-      if (!fecha) return null;
-      try {
-        const fechaObj = new Date(fecha);
-        if (isNaN(fechaObj.getTime())) return null;
-        // Convertir a formato YYYY-MM-DD
-        const year = fechaObj.getFullYear();
-        const month = String(fechaObj.getMonth() + 1).padStart(2, '0');
-        const day = String(fechaObj.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      } catch {
-        return null;
-      }
+      if (!fecha) return null
+      const soloFecha = fecha.split('T')[0]
+      const partes = soloFecha.split('-')
+      if (partes.length !== 3) return null
+      const [year, month, day] = partes
+      if (!year || !month || !day) return null
+      return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
     };
 
     // Ya tenemos jugadorActual desde arriba, solo obtener foto anterior
@@ -1307,8 +1301,20 @@ export async function updateJugador(id: number | string, formData: FormData, rel
       }
     }
     
+    // Obtener el jugador actualizado con todas sus relaciones
+    let jugadorActualizado = null
+    try {
+      // Usar la cédula actual (puede haber cambiado) para traer el jugador completo
+      jugadorActualizado = await jugadorQueries.getByCedulaWithRelations(cedula)
+    } catch (e) {
+      console.error('Error al obtener jugador actualizado con relaciones:', e)
+    }
+
     revalidatePath('/jugadores')
-    return { success: true }
+    return { 
+      success: true,
+      data: jugadorActualizado ? { jugador: jugadorActualizado } : undefined
+    }
   } catch (error) {
     console.error('Error al actualizar jugador:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Error al actualizar jugador' }
@@ -1778,7 +1784,11 @@ export async function detectarJugadoresMultiplesCategoriasEquipos(cedulas: strin
 
 // ===== CALIFICACIÓN DE JUGADORES =====
 
-export async function calificarJugador(jugadorId: number | string, temporadaId: number): Promise<JugadorActionResult> {
+export async function calificarJugador(
+  jugadorId: number | string,
+  temporadaId: number,
+  situacionJugador?: 'PASE' | 'PRÉSTAMO'
+): Promise<JugadorActionResult> {
   await requirePermiso('jugadores', 'editar')
   try {
     const jugadorIdStr = typeof jugadorId === 'string' ? jugadorId : jugadorId.toString()
@@ -1797,17 +1807,13 @@ export async function calificarJugador(jugadorId: number | string, temporadaId: 
       return { success: false, error: 'La temporada seleccionada no existe' }
     }
     
-    // Obtener el jugador con sus relaciones primero para obtener la categoría
-    // getByIdWithRelations espera number pero internamente convierte a string
-    // Intentar convertir a número si es posible, sino usar directamente
+    // Obtener el jugador con sus relaciones primero para obtener la categoría.
+    // IMPORTANTE: NO convertir strings a number (parseInt) porque IDs tipo cédula pueden iniciar con 0
+    // y se perdería ese 0, causando "Jugador no encontrado".
     let jugador
-    const jugadorIdNum = typeof jugadorId === 'number' ? jugadorId : parseInt(jugadorIdStr)
-    if (!isNaN(jugadorIdNum)) {
-      jugador = await jugadorQueries.getByIdWithRelations(jugadorIdNum)
+    if (typeof jugadorId === 'number') {
+      jugador = await jugadorQueries.getByIdWithRelations(jugadorId)
     } else {
-      // Si no es un número válido, usar el string directamente (UUID)
-      // getByIdWithRelations internamente convierte a string, así que pasamos un número dummy
-      // pero mejor usar getById directamente
       const jugadorData = await db.query.jugadores.findFirst({
         where: eq(jugadores.id, jugadorIdStr),
         with: {
@@ -1816,12 +1822,12 @@ export async function calificarJugador(jugadorId: number | string, temporadaId: 
               equipoCategoria: {
                 with: {
                   equipo: true,
-                  categoria: true
-                }
-              }
-            }
-          }
-        }
+                  categoria: true,
+                },
+              },
+            },
+          },
+        },
       })
       jugador = jugadorData as any
     }
@@ -1833,6 +1839,17 @@ export async function calificarJugador(jugadorId: number | string, temporadaId: 
     const relacionJugador = jugador.jugadoresEquipoCategoria?.[0]
     if (!relacionJugador) {
       return { success: false, error: 'El jugador no tiene equipo-categoría asignado' }
+    }
+
+    // Si se envía la situación desde UI, actualizar la relación actual antes de registrar historial
+    if (situacionJugador && (situacionJugador === 'PASE' || situacionJugador === 'PRÉSTAMO')) {
+      const relacionId = (relacionJugador as any)?.id
+      if (relacionId) {
+        await db
+          .update(jugadorEquipoCategoria)
+          .set({ situacion_jugador: situacionJugador, updatedAt: new Date() })
+          .where(eq(jugadorEquipoCategoria.id, relacionId))
+      }
     }
     
     const equipoCategoria = relacionJugador.equipoCategoria

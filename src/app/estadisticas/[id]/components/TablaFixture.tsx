@@ -19,6 +19,10 @@ interface Encuentro {
 	jornada?: number | null
 	fecha_programada?: string | null
 	estado?: string | null
+	goles_local?: number | null
+	goles_visitante?: number | null
+	penales_local?: number | null
+	penales_visitante?: number | null
 	equipoLocal?: Equipo | null
 	equipoVisitante?: Equipo | null
 	horario?: { nombre?: string | null, hora_inicio?: string | null } | null
@@ -147,7 +151,29 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			})
 		}
 		
-		return jornadasFiltradas.sort((a, b) => a[0] - b[0])
+		// Ordenar jornadas por fecha más reciente primero
+		return jornadasFiltradas.sort((a, b) => {
+			// Obtener la fecha más reciente de cada jornada
+			const getFechaMasReciente = (lista: Encuentro[]) => {
+				const fechas = lista
+					.map(e => e.fecha_programada ? new Date(e.fecha_programada).getTime() : 0)
+					.filter(t => t > 0)
+				return fechas.length > 0 ? Math.max(...fechas) : 0
+			}
+			
+			const fechaA = getFechaMasReciente(a[1])
+			const fechaB = getFechaMasReciente(b[1])
+			
+			// Si ambas tienen fechas, ordenar descendente (más reciente primero)
+			if (fechaA > 0 && fechaB > 0) {
+				return fechaB - fechaA
+			}
+			// Si solo una tiene fecha, ponerla primero
+			if (fechaA > 0) return -1
+			if (fechaB > 0) return 1
+			// Si ninguna tiene fecha, mantener orden por número de jornada descendente
+			return b[0] - a[0]
+		})
 	}, [encuentros, filtrarPorFechaActual])
 
 	// Obtener equipos que descansan en una jornada
@@ -189,7 +215,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 	}
 
 	const sortEncuentros = (a: Encuentro, b: Encuentro) => {
-		// 1) Primero ordenar por fecha (solo día, sin hora)
+		// 1) Primero ordenar por fecha (solo día, sin hora) - DESCENDENTE (más reciente primero)
 		const fechaA = a.fecha_programada ? new Date(a.fecha_programada) : null
 		const fechaB = b.fecha_programada ? new Date(b.fecha_programada) : null
 		
@@ -198,7 +224,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			fechaA.setHours(0, 0, 0, 0)
 			fechaB.setHours(0, 0, 0, 0)
 			
-			const diffFecha = fechaA.getTime() - fechaB.getTime()
+			const diffFecha = fechaB.getTime() - fechaA.getTime() // Invertido para descendente
 			if (diffFecha !== 0) {
 				return diffFecha
 			}
@@ -208,7 +234,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			return 1
 		}
 		
-		// 2) Si las fechas son iguales, ordenar por hora
+		// 2) Si las fechas son iguales, ordenar por hora - DESCENDENTE (más tarde primero)
 		// PRIORIZAR horario.hora_inicio (siempre usar la hora del horario asignado)
 		let horaA = 0
 		let horaB = 0
@@ -223,7 +249,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			horaB = hh * 60 + mm
 		}
 		
-		return horaA - horaB
+		return horaB - horaA // Invertido para descendente
 	}
 
 	if (encuentros.length === 0) {
@@ -358,7 +384,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 											<tr style={theadStyle}>
 												<th className="fw-bold py-2" style={{ width: '220px', fontSize: '1rem', color: '#ffffff' }}>Fecha</th>
 												<th className="fw-bold py-2 text-end" style={{ width: '280px', fontSize: '1rem', color: '#ffffff' }}>Local</th>
-												<th className="text-center fw-bold py-2" style={{ width: '80px', fontSize: '1rem', color: '#ffffff' }}>vs</th>
+												<th className="text-center fw-bold py-2" style={{ width: '100px', fontSize: '1rem', color: '#ffffff' }}>Resultado</th>
 												<th className="fw-bold py-2" style={{ width: '280px', fontSize: '1rem', color: '#ffffff' }}>Visitante</th>
 												<th className="fw-bold py-2" style={{ width: '220px', fontSize: '1rem', color: '#ffffff' }}>Cancha</th>
 												<th className="fw-bold py-2" style={{ width: '160px', fontSize: '1rem', color: '#ffffff' }}>Estado</th>
@@ -413,22 +439,30 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 														<td className="align-middle py-2 text-end pe-3">
 															<span className="fw-bold text-white">{encuentro.equipoLocal?.nombre || '-'}</span>
 														</td>
-														<td className="align-middle py-2 px-0" style={{ width: 80 }}>
-															<div className="d-flex justify-content-center">
+														<td className="align-middle py-2 px-0" style={{ width: 100 }}>
+															<div className="d-flex flex-column align-items-center justify-content-center">
 																<span 
 																	className="fw-bold"
 																	style={{ 
 																		background: '#ffc107',
 																		color: '#1a1a1a',
 																		borderRadius: '9999px',
-																		padding: '4px 10px',
+																		padding: '4px 12px',
 																		display: 'inline-block',
-																		minWidth: '44px',
-																		textAlign: 'center'
+																		minWidth: '60px',
+																		textAlign: 'center',
+																		fontSize: '0.95rem',
 																	}}
 																>
-																	vs
+																	{(encuentro.goles_local ?? null) !== null && (encuentro.goles_visitante ?? null) !== null
+																		? `${encuentro.goles_local} - ${encuentro.goles_visitante}`
+																		: 'vs'}
 																</span>
+																{(encuentro.penales_local ?? null) !== null && (encuentro.penales_visitante ?? null) !== null && (
+																	<small className="text-white-50 mt-1" style={{ fontSize: '0.75rem' }}>
+																		({encuentro.penales_local} - {encuentro.penales_visitante} pen)
+																	</small>
+																)}
 															</div>
 														</td>
 														<td className="align-middle py-2 text-start ps-3">
@@ -528,14 +562,16 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 																background: '#ffc107',
 																color: '#1a1a1a',
 																borderRadius: '9999px',
-																padding: '4px 8px',
-																fontSize: '0.75rem',
-																minWidth: '36px',
+																padding: '4px 10px',
+																fontSize: '0.8rem',
+																minWidth: '52px',
 																textAlign: 'center',
 																flexShrink: 0
 															}}
 														>
-															vs
+															{(encuentro.goles_local ?? null) !== null && (encuentro.goles_visitante ?? null) !== null
+																? `${encuentro.goles_local} - ${encuentro.goles_visitante}`
+																: 'vs'}
 														</span>
 														<div className="flex-grow-1 text-start ps-2">
 															<span className="fw-bold text-white" style={{ fontSize: '0.95rem' }}>
@@ -546,11 +582,18 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 													
 													{/* Cancha y Estado */}
 													<div className="d-flex align-items-center justify-content-between">
-														<div className="d-flex align-items-center gap-2">
-															<LuMapPin className="text-white-50" style={{ fontSize: '0.9rem' }} />
-															<span className="fw-semibold" style={{ color: canchaColor, fontSize: '0.85rem' }}>
-																{canchaNombre}
-															</span>
+														<div className="d-flex flex-column">
+															<div className="d-flex align-items-center gap-2">
+																<LuMapPin className="text-white-50" style={{ fontSize: '0.9rem' }} />
+																<span className="fw-semibold" style={{ color: canchaColor, fontSize: '0.85rem' }}>
+																	{canchaNombre}
+																</span>
+															</div>
+															{(encuentro.penales_local ?? null) !== null && (encuentro.penales_visitante ?? null) !== null && (
+																<small className="text-white-50 mt-1" style={{ fontSize: '0.75rem' }}>
+																	Penales: {encuentro.penales_local} - {encuentro.penales_visitante}
+																</small>
+															)}
 														</div>
 														<Badge 
 															className="px-2 py-1 fw-semibold"

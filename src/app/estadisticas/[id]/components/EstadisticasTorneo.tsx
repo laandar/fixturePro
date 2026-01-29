@@ -531,7 +531,12 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.02)'
                 }}>
-                  <TablaFixture encuentros={encuentros} equiposDescansan={equiposDescansan} equiposMap={equiposMap} />
+                  <TablaFixture 
+                    encuentros={encuentros} 
+                    equiposDescansan={equiposDescansan} 
+                    equiposMap={equiposMap}
+                    filtrarPorFechaActual={false}
+                  />
                 </div>
               </TabPane>
             </TabContent>

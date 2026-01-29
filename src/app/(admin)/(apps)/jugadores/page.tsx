@@ -38,6 +38,7 @@ import { getTemporadas } from '../torneos/temporadas-actions'
 import type { Temporada } from '@/db/types'
 import type { JugadorWithEquipo, Equipo, Categoria } from '@/db/types'
 import { calcularEdad, esMenorALaEdadMinima } from '@/lib/age-helpers'
+import { formatDateFromString } from '@/helpers/date'
 import CameraCapture from '@/components/CameraCapture'
 import ProfileCard from '@/components/ProfileCard'
 import { getTempPlayerImage } from '@/components/TempPlayerImages'
@@ -158,6 +159,7 @@ const Page = () => {
   const [jugadorParaCalificar, setJugadorParaCalificar] = useState<JugadorWithEquipo | null>(null)
   const [jugadoresParaCalificar, setJugadoresParaCalificar] = useState<JugadorWithEquipo[]>([])
   const [isCalificacionMultiple, setIsCalificacionMultiple] = useState(false)
+  const [situacionCalificar, setSituacionCalificar] = useState<'PASE' | 'PRÉSTAMO'>('PASE')
   
   // Estados para calificar desde el formulario de edición
   const [calificarEnEdicion, setCalificarEnEdicion] = useState(false)
@@ -448,7 +450,7 @@ const Page = () => {
       cell: ({ row }: { row: TableRow<JugadorWithEquipo> }) => {
         const fechaNacimiento = row.original.fecha_nacimiento
         if (!fechaNacimiento) return <span className="text-muted">-</span>
-        return new Date(fechaNacimiento).toLocaleDateString('es-ES')
+        return formatDateFromString(fechaNacimiento) || '-'
       },
     },
     {
@@ -645,15 +647,22 @@ const Page = () => {
       
       if (jugadorToDelete) {
         const jugadorNombre = jugadorToDelete.apellido_nombre
-        // Obtener el ID de la relación jugador_equipo_categoria
         const relacionJugador = jugadorToDelete.jugadoresEquipoCategoria?.[0] as any
         const relacionId = relacionJugador?.id
         await deleteJugador(jugadorToDelete.id, relacionId)
         setJugadorToDelete(null)
         setDeleteSuccess(`La relación del jugador "${jugadorNombre}" ha sido eliminada exitosamente`)
+        // Quitar la fila eliminada del estado local (sin recargar toda la tabla desde la BD)
+        setAllData(prev => prev.filter(row => {
+          const rel = row.jugadoresEquipoCategoria?.[0] as any
+          return !(row.id === jugadorToDelete.id && rel?.id === relacionId)
+        }))
+        setData(prev => prev.filter(row => {
+          const rel = row.jugadoresEquipoCategoria?.[0] as any
+          return !(row.id === jugadorToDelete.id && rel?.id === relacionId)
+        }))
+        await refreshCalificadosUltimaTemporada()
       }
-      
-      await loadData()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al eliminar relación del jugador')
     } finally {
@@ -738,6 +747,12 @@ const Page = () => {
     setJugadorParaCalificar(jugador)
     setJugadoresParaCalificar([])
     setIsCalificacionMultiple(false)
+    // Cargar situación actual del jugador; por defecto PASE
+    {
+      const situacion = (jugador.jugadoresEquipoCategoria?.[0] as any)?.situacion_jugador as string | undefined
+      const normalizada = situacion === 'PRESTAMO' || situacion === 'PRÉSTAMO' ? 'PRÉSTAMO' : situacion
+      setSituacionCalificar(normalizada === 'PRÉSTAMO' ? 'PRÉSTAMO' : 'PASE')
+    }
     setSelectedTemporadaId(ultimaTemporadaId)
     setShowTemporadaModal(true)
   }
@@ -768,9 +783,11 @@ const Page = () => {
             })
           }
           table.resetRowSelection()
+          // Refrescar badge de calificados en última temporada sin recargar toda la tabla
+          await refreshCalificadosUltimaTemporada()
         }
       } else if (jugadorParaCalificar) {
-        result = await calificarJugador(jugadorParaCalificar.id, selectedTemporadaId!)
+        result = await calificarJugador(jugadorParaCalificar.id, selectedTemporadaId!, situacionCalificar)
         
         if (result.success) {
           if (toast.current) {
@@ -781,20 +798,33 @@ const Page = () => {
               life: 3000 
             })
           }
+          // Refrescar badge de calificados en última temporada sin recargar toda la tabla
+          await refreshCalificadosUltimaTemporada()
         }
       }
       
       if (!result || !result.success) {
-        setError(result?.error || 'Error al calificar jugador(es)')
+        const errorMsg = result?.error || 'Error al calificar jugador(es)'
+        const toastDetail = result?.data?.errores?.[0]?.error || errorMsg
+        const esYaCalificado = toastDetail.includes('ya está calificado')
+        if (!esYaCalificado) setError(errorMsg)
+        const summary = esYaCalificado ? 'Jugador ya calificado' : 'No se pudo calificar'
+        setTimeout(() => {
+          toast.current?.show({
+            severity: 'warn',
+            summary,
+            detail: toastDetail,
+            life: 6000
+          })
+        }, 150)
         return
       }
       
-      // Cerrar modal y recargar datos
+      // Cerrar modal (sin recargar todos los jugadores desde la BD)
       setShowTemporadaModal(false)
       setJugadorParaCalificar(null)
       setJugadoresParaCalificar([])
       setSelectedTemporadaId(null)
-      await loadData()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al calificar jugador(es)')
     } finally {
@@ -928,7 +958,6 @@ const Page = () => {
     if (!editingJugador) return
     
     try {
-      setLoading(true)
       setEditFormError(null)
       setEditFormSuccess(null)
       
@@ -978,6 +1007,17 @@ const Page = () => {
         }
         return
       }
+
+      // Si el backend devolvió el jugador actualizado, reflejarlo en el estado local
+      const jugadorActualizado = result.data?.jugador as JugadorWithEquipo | undefined
+      if (jugadorActualizado) {
+        setAllData(prev =>
+          prev.map(j => j.id === jugadorActualizado.id ? { ...j, ...jugadorActualizado } : j)
+        )
+        setData(prev =>
+          prev.map(j => j.id === jugadorActualizado.id ? { ...j, ...jugadorActualizado } : j)
+        )
+      }
       
       // Si el checkbox de calificar está marcado, calificar al jugador
       if (calificarEnEdicion && temporadaIdEdicion) {
@@ -985,9 +1025,20 @@ const Page = () => {
           const calificacionResult = await calificarJugador(editingJugador.id, temporadaIdEdicion)
           if (calificacionResult.success) {
             setEditFormSuccess('Jugador actualizado y calificado exitosamente')
+            // Refrescar badge de calificados en última temporada
+            refreshCalificadosUltimaTemporada()
           } else {
             setEditFormSuccess('Jugador actualizado exitosamente')
-            setEditFormError(`Actualizado correctamente, pero no se pudo calificar: ${calificacionResult.error}`)
+            const califError = calificacionResult.error || 'No se pudo calificar'
+            setEditFormError(`Actualizado correctamente, pero no se pudo calificar: ${califError}`)
+            setTimeout(() => {
+              toast.current?.show({
+                severity: 'warn',
+                summary: 'Jugador ya calificado',
+                detail: califError,
+                life: 6000
+              })
+            }, 150)
           }
         } catch (error) {
           setEditFormSuccess('Jugador actualizado exitosamente')
@@ -1003,9 +1054,8 @@ const Page = () => {
       setCalificarEnEdicion(false)
       setTemporadaIdEdicion(null)
       
-      // Recargar datos después de un breve delay
-      setTimeout(async () => {
-        await loadData()
+      // Cerrar modal después de un breve delay (sin recargar todos los datos desde la BD)
+      setTimeout(() => {
         setSelectedEditEquipoCategoria(null) // Limpiar react-select
         toggleEditModal()
         setEditingJugador(null)
@@ -1066,9 +1116,10 @@ const Page = () => {
     setLoading(false)
   }
 
-  const loadData = async () => {
+  // Refrescar jugadores y datos auxiliares (uso general)
+  const loadData = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       setError(null)
       const [jugadoresData, equiposCategoriasData, temporadasData] = await Promise.all([
         getJugadores(),
@@ -1107,7 +1158,33 @@ const Page = () => {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar jugadores')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
+    }
+  }
+
+  // Refrescar solo los calificados en la última temporada (para el badge)
+  const refreshCalificadosUltimaTemporada = async () => {
+    try {
+      const temporadasData = await getTemporadas().catch(() => [])
+      const temporadasActivas = temporadasData.filter(t => t.activa)
+      temporadasActivas.sort((a, b) => {
+        const fechaA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const fechaB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return fechaB - fechaA
+      })
+      setTemporadas(temporadasActivas)
+
+      if (temporadasActivas.length > 0) {
+        const ultima = temporadasActivas[0]
+        setUltimaTemporadaNombre(ultima.nombre)
+        const ids = await getJugadorIdsCalificadosPorTemporada(ultima.id)
+        setCalificadosUltimaTemporada(new Set(ids.map(String)))
+      } else {
+        setUltimaTemporadaNombre(null)
+        setCalificadosUltimaTemporada(new Set())
+      }
+    } catch (error) {
+      console.error('Error al refrescar jugadores calificados por temporada:', error)
     }
   }
 
@@ -1128,6 +1205,10 @@ const Page = () => {
         setData(jugadoresData.slice(0, 5))
       }
       setEquiposCategorias(equiposCategoriasData)
+
+      // Refrescar también los calificados en la última temporada (badge)
+      await refreshCalificadosUltimaTemporada()
+
       setFormSuccess('Tabla actualizada exitosamente')
       setTimeout(() => setFormSuccess(null), 3000)
     } catch (error) {
@@ -1552,17 +1633,17 @@ const Page = () => {
         try {
           const calificacionResult = await calificarJugador(result.data.jugadorId, temporadaIdCreacion)
           if (!calificacionResult.success) {
-            // Mostrar error de calificación pero no fallar la creación
-            if (toast.current) {
-              toast.current.show({
+            // Mostrar error de calificación pero no fallar la creación (toast tipo Límite de Jugadores)
+            const califError = calificacionResult.error || 'No se pudo calificar'
+            setTimeout(() => {
+              toast.current?.show({
                 severity: 'warn',
-                summary: 'Jugador creado',
-                detail: `Jugador creado exitosamente, pero no se pudo calificar: ${calificacionResult.error}`,
-                life: 5000
+                summary: 'Jugador ya calificado',
+                detail: califError,
+                life: 6000
               })
-            } else {
-              setFormSuccess(`Jugador creado exitosamente, pero no se pudo calificar: ${calificacionResult.error}`)
-            }
+              if (!toast.current) setFormSuccess(`Jugador creado exitosamente, pero no se pudo calificar: ${califError}`)
+            }, 150)
           } else {
             if (toast.current) {
               toast.current.show({
@@ -1572,6 +1653,7 @@ const Page = () => {
                 life: 3000
               })
             }
+            await refreshCalificadosUltimaTemporada()
           }
         } catch (error) {
           console.error('Error al calificar jugador:', error)
@@ -1585,6 +1667,17 @@ const Page = () => {
             })
           }
         }
+      }
+      
+      // Añadir el jugador creado al estado local (mismo formato que getAllWithRelations: una fila por relación)
+      const jugadorCreado = result.data?.jugador as (JugadorWithEquipo & { jugadoresEquipoCategoria?: any[] }) | undefined
+      if (jugadorCreado?.jugadoresEquipoCategoria?.length) {
+        const filasNuevas = jugadorCreado.jugadoresEquipoCategoria.map((rel: any) => ({
+          ...jugadorCreado,
+          jugadoresEquipoCategoria: [rel],
+        }))
+        setAllData(prev => [...prev, ...filasNuevas])
+        setData(prev => [...prev, ...filasNuevas])
       }
       
       // Solo limpiar cuando la operación fue exitosa
@@ -1608,9 +1701,8 @@ const Page = () => {
         foraneo: false,
       })
       
-      // Recargar datos después de un breve delay
-      setTimeout(async () => {
-        await loadData()
+      // Cerrar modal después de un breve delay (sin recargar todos los jugadores desde la BD)
+      setTimeout(() => {
         setSelectedEquipoCategoria(null) // Limpiar react-select
         toggleCreateModal()
       }, 1000)
@@ -3558,6 +3650,7 @@ const Page = () => {
         setSelectedTemporadaId(null)
         setJugadorParaCalificar(null)
         setJugadoresParaCalificar([])
+        setSituacionCalificar('PASE')
       }} centered>
         <ModalHeader closeButton>
           <ModalTitle>Seleccionar Temporada para Calificar</ModalTitle>
@@ -3571,6 +3664,19 @@ const Page = () => {
             <p className="mb-3">
               <strong>Jugador:</strong> {jugadorParaCalificar.apellido_nombre}
             </p>
+          )}
+
+          {!isCalificacionMultiple && (
+            <FloatingLabel controlId="situacion_select" label="Situación (PASE/PRÉSTAMO) *" className="mb-3">
+              <FormSelect
+                value={situacionCalificar}
+                onChange={(e) => setSituacionCalificar(e.target.value === 'PRÉSTAMO' ? 'PRÉSTAMO' : 'PASE')}
+                required
+              >
+                <option value="PASE">PASE</option>
+                <option value="PRÉSTAMO">PRÉSTAMO</option>
+              </FormSelect>
+            </FloatingLabel>
           )}
           
           <FloatingLabel controlId="temporada_select" label="Temporada *" className="mb-3">
@@ -3622,8 +3728,8 @@ const Page = () => {
 
     </Container>
     
-    {/* Toast de PrimeReact - Fuera del Container para mejor visibilidad */}
-    <Toast ref={toast} position="top-right" style={{ zIndex: 1100 }} />
+    {/* Toast flotante - appendTo body para que se vea sobre modales */}
+    <Toast ref={toast} position="top-right" appendTo={typeof document !== 'undefined' ? document.body : undefined} style={{ zIndex: 9999 }} />
   </>
   )
 }

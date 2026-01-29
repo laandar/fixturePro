@@ -1378,7 +1378,7 @@ export const equipoTorneoQueries = {
 export const encuentroQueries = {
   // Obtener encuentros de un torneo
   getByTorneoId: async (torneoId: number) => {
-    return await db.query.encuentros.findMany({
+    const encuentrosData = await db.query.encuentros.findMany({
       where: eq(encuentros.torneo_id, torneoId),
       with: {
         equipoLocal: {
@@ -1402,8 +1402,37 @@ export const encuentroQueries = {
           },
         },
         horario: true,
+        goles: true,
       },
       orderBy: [asc(encuentros.jornada), asc(encuentros.fecha_programada)],
+    });
+
+    // Asegurar que siempre tengamos los goles en el objeto de encuentro,
+    // incluso si no se guardaron en los campos goles_local/goles_visitante
+    return encuentrosData.map((e) => {
+      // Si ya hay goles_local / goles_visitante, respetarlos
+      if (
+        (e.goles_local !== null && e.goles_local !== undefined) &&
+        (e.goles_visitante !== null && e.goles_visitante !== undefined)
+      ) {
+        return e;
+      }
+
+      // Si no hay goles cargados en el encuentro pero sí en la tabla goles,
+      // los calculamos a partir de los registros de goles
+      const listaGoles = (e as any).goles as { equipo_id: number }[] | undefined;
+      if (!listaGoles || listaGoles.length === 0) {
+        return e;
+      }
+
+      const golesLocal = listaGoles.filter((g) => g.equipo_id === e.equipo_local_id).length;
+      const golesVisitante = listaGoles.filter((g) => g.equipo_id === e.equipo_visitante_id).length;
+
+      return {
+        ...e,
+        goles_local: golesLocal,
+        goles_visitante: golesVisitante,
+      };
     });
   },
 
