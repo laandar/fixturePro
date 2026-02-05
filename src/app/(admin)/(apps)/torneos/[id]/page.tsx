@@ -743,12 +743,17 @@ const TorneoDetailPage = () => {
           const resultadoTabla = await generarTablaDistribucionHorariosParaTorneos(ids)
           if (resultadoTabla.success) {
             setTablaDistribucion(resultadoTabla.tabla)
-            const equiposEquitativos = resultadoTabla.tabla.estadisticas.equiposConDistribucionEquitativa
-            const totalEquipos = resultadoTabla.tabla.estadisticas.totalEquipos
-            const porcentaje = Math.round((equiposEquitativos / totalEquipos) * 100)
-            const mensaje = `Redistribución completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros. ${equiposEquitativos}/${totalEquipos} equipos con distribución equitativa (${porcentaje}%)`
-            setSuccess(mensaje)
-            toast.current?.show({ severity: 'success', summary: 'Redistribución completada', detail: mensaje, life: 6000 })
+            if (resultadoTabla.tabla) {
+              const equiposEquitativos = resultadoTabla.tabla.estadisticas.equiposConDistribucionEquitativa
+              const totalEquipos = resultadoTabla.tabla.estadisticas.totalEquipos
+              const porcentaje = Math.round((equiposEquitativos / totalEquipos) * 100)
+              const mensaje = `Redistribución completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros. ${equiposEquitativos}/${totalEquipos} equipos con distribución equitativa (${porcentaje}%)`
+              setSuccess(mensaje)
+              toast.current?.show({ severity: 'success', summary: 'Redistribución completada', detail: mensaje, life: 6000 })
+            } else {
+              setSuccess(resultadoAsignacion.mensaje)
+              toast.current?.show({ severity: 'success', summary: 'Éxito', detail: resultadoAsignacion.mensaje, life: 5000 })
+            }
           } else {
             setSuccess(resultadoAsignacion.mensaje)
             toast.current?.show({ severity: 'success', summary: 'Éxito', detail: resultadoAsignacion.mensaje, life: 5000 })

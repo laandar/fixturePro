@@ -184,6 +184,7 @@ export async function getMapaGeneralHorarios() {
     }
 
     const categoriaIds = [...new Set(torneosActivos.map(t => t.categoria_id).filter((id): id is number => id != null))]
+    const torneoIds = torneosActivos.map(t => t.id)
 
     const horariosData = await db
       .select({
@@ -294,6 +295,7 @@ export async function getMapaHorariosCanchasGeneral() {
     if (torneosActivos.length === 0) return []
 
     const categoriaIds = [...new Set(torneosActivos.map(t => t.categoriaId).filter((id): id is number => id != null))]
+    const torneoIds = torneosActivos.map(t => t.id)
 
     // Horarios por categoría (compartidos por torneos de la misma categoría)
     const horariosData = await db
@@ -743,7 +745,7 @@ export async function updateEncuentro(id: number, formData: FormData) {
       encuentroData.estado = estado
     }
 
-    if (formData.has('fecha_programada') && fecha_programada !== undefined) {
+    if (formData.has('fecha_programada') && fecha_programada != null) {
       encuentroData.fecha_programada = getDateOnlyString(toMidnightUTC(fecha_programada))
     }
 
@@ -784,6 +786,11 @@ export async function moverEncuentroGlobal(
     if (!targetDiaSemana || !targetHoraInicio?.trim() || !targetCancha) {
       throw new Error('Día, hora o cancha destino inválidos')
     }
+    const diasSemanaValidos = ['viernes', 'sabado', 'domingo'] as const
+    if (!diasSemanaValidos.includes(targetDiaSemana as (typeof diasSemanaValidos)[number])) {
+      throw new Error('Día de la semana inválido; debe ser viernes, sabado o domingo')
+    }
+    const diaSemana = targetDiaSemana as (typeof diasSemanaValidos)[number]
 
     const horaNorm = (h: string | null | undefined) => (h ?? '').trim().slice(0, 5)
     const targetHoraNorm = horaNorm(targetHoraInicio)
@@ -812,7 +819,7 @@ export async function moverEncuentroGlobal(
     const horariosCategoria = await db
       .select({ id: horarios.id, hora_inicio: horarios.hora_inicio })
       .from(horarios)
-      .where(and(eq(horarios.categoria_id, categoriaId), eq(horarios.dia_semana, targetDiaSemana)))
+      .where(and(eq(horarios.categoria_id, categoriaId), eq(horarios.dia_semana, diaSemana)))
     const horarioDestino = horariosCategoria.find(h => horaNorm(h.hora_inicio) === targetHoraNorm)
     const targetHorarioId = horarioDestino?.id ?? null
 

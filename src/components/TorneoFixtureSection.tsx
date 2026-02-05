@@ -88,7 +88,7 @@ export default function TorneoFixtureSection({
     const encuentrosJornada = jornadas[jornada] || []
     if (encuentrosJornada.length > 0 && encuentrosJornada[0].fecha_programada) {
       const raw = encuentrosJornada[0].fecha_programada
-      const s = typeof raw === 'string' ? raw : raw instanceof Date ? raw.toISOString() : ''
+      const s = typeof raw === 'string' ? raw : raw != null ? new Date(raw as string | Date).toISOString() : ''
       return s ? s.slice(0, 10) : ''
     }
     return ''

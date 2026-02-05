@@ -564,7 +564,7 @@ export async function getEstadoCuentaEquipo(
 
   for (const t of tarjetasRows) {
     movimientos.push({
-      fecha: t.fecha_jugada || t.fecha_programada || t.createdAt || new Date(),
+      fecha: new Date(t.fecha_jugada || t.fecha_programada || t.createdAt || Date.now()),
       tipo: t.tipo === 'amarilla' ? 'tarjeta_amarilla' : 'tarjeta_roja',
       descripcion: `Tarjeta ${t.tipo === 'amarilla' ? 'amarilla' : 'roja'}`,
       monto_cents: Math.round((t.tipo === 'amarilla' ? valorAmarilla : valorRoja) * 100),

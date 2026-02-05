@@ -229,7 +229,7 @@ export class FixtureGenerator {
         torneo_id: this.torneoId,
         equipo_local_id: equipoLocal.id,
         equipo_visitante_id: equipoVisitante.id,
-        fecha_programada: fechaEncuentro,
+        fecha_programada: fechaEncuentro.toISOString().split('T')[0],
         cancha: this.options.canchas![canchaIndex],
         arbitro: this.options.arbitros![arbitroIndex],
         estado: 'programado',
@@ -581,7 +581,10 @@ export class FixtureGenerator {
     fechaFin: Date;
   } {
     const jornadas = new Set(encuentros.map(e => e.jornada));
-    const fechas = encuentros.map(e => e.fecha_programada).filter(f => f !== null) as Date[];
+    const fechas: Date[] = encuentros
+      .map(e => e.fecha_programada)
+      .filter((f): f is string => f != null && f !== '')
+      .map(f => new Date(f));
     
     return {
       totalEncuentros: encuentros.length,
