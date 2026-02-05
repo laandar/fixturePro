@@ -636,15 +636,9 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
       return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
     };
 
-    // Generar ID único para el jugador
-    const generateJugadorId = (): string => {
-      // Usar crypto de Node.js para generar UUID
-      const { randomUUID } = require('crypto');
-      return randomUUID();
-    };
-
+    // Los jugadores nuevos usan la cédula como id (igual que en cedula) para consistencia con el resto del sistema
     const jugadorData = {
-      id: generateJugadorId(),
+      id: cedula,
       cedula,
       apellido_nombre,
       nacionalidad,
