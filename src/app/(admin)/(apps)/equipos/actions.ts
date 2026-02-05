@@ -279,16 +279,23 @@ export async function updateEquipo(id: number, formData: FormData) {
     console.log('Categorías procesadas (sin duplicados):', categoriaIds)
 
     // Actualizar equipo con múltiples categorías
-    // Esta función ahora lanzará un error especial si hay jugadores afectados
+    // Esta función lanzará un error especial si hay jugadores afectados
     await equipoQueries.updateWithCategorias(id, equipoData, categoriaIds)
     revalidatePath('/equipos')
+    return { success: true as const }
   } catch (error) {
     console.error('Error al actualizar equipo:', error)
     const errorMessage = error instanceof Error ? error.message : 'Error al actualizar equipo'
     
-    // Si el error contiene información de jugadores afectados, propagarlo tal cual
-    if (errorMessage.startsWith('JUGADORES_AFECTADOS:')) {
-      throw error
+    // Si hay jugadores afectados, RETORNAR en vez de lanzar (Next.js no envía el mensaje completo al cliente en prod)
+    if (errorMessage.includes('JUGADORES_AFECTADOS:')) {
+      try {
+        const jsonStart = errorMessage.indexOf('JUGADORES_AFECTADOS:') + 'JUGADORES_AFECTADOS:'.length
+        const data = JSON.parse(errorMessage.substring(jsonStart))
+        return { success: false as const, code: 'JUGADORES_AFECTADOS' as const, data }
+      } catch (parseErr) {
+        console.error('Error al parsear JUGADORES_AFECTADOS:', parseErr)
+      }
     }
     
     throw new Error(errorMessage)

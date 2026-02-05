@@ -15,4 +15,4 @@ export const authorContact: string = ''
 
 export const basePath: string = ''
 
-export { formatDateFromString, formatDateFromStringWithOptions } from './date'
+export { formatDateFromString, formatDateFromStringWithOptions, formatFechaProgramada, getDateOnlyString, parseDateOnlyToLocal } from './date'

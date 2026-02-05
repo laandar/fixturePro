@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatFechaProgramada } from '@/helpers/date'
 
 interface JugadorParticipante {
   id: number
@@ -270,7 +271,7 @@ export async function generarPDFHojaVocalia(
 
   // Fecha, hora y cancha
   const fechaTexto = encuentro.fecha_programada
-    ? new Date(encuentro.fecha_programada).toLocaleDateString('es-ES')
+    ? formatFechaProgramada(encuentro.fecha_programada)
     : ''
   
   // Formatear hora

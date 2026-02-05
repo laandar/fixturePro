@@ -3,6 +3,7 @@
 import { Table, Badge, Card, CardHeader, CardBody, Row, Col } from 'react-bootstrap'
 import { LuClock, LuMapPin, LuCalendar, LuUsers, LuMove } from 'react-icons/lu'
 import type { EncuentroWithRelations, Horario } from '@/db/types'
+import { getDateOnlyString } from '@/helpers/date'
 import { useState, useEffect, useTransition } from 'react'
 import { moverEncuentroGlobal } from '@/app/(admin)/(apps)/torneos/actions'
 
@@ -10,6 +11,8 @@ interface TablaHorariosCanchasProps {
   encuentros: EncuentroWithRelations[]
   horarios: Horario[]
   canchas: string[] // Nombres de todas las canchas disponibles
+  /** Se llama tras mover un encuentro con éxito para que el padre recargue datos y la UI refleje el cambio */
+  onMoveSuccess?: () => void | Promise<void>
 }
 
 const obtenerEtiquetaDia = (dia?: string | null) => {
@@ -38,10 +41,13 @@ const formatearFecha = (fecha: Date | string | null | undefined): string => {
   return `${diaSemana}, ${dia} de ${mes} de ${año}`
 }
 
+const horaNorm = (h: string | null | undefined) => (h ?? '').trim().slice(0, 5)
+
 export default function TablaHorariosCanchas({ 
   encuentros, 
   horarios, 
-  canchas 
+  canchas,
+  onMoveSuccess 
 }: TablaHorariosCanchasProps) {
   const [localEncuentros, setLocalEncuentros] = useState<EncuentroWithRelations[]>(encuentros)
   const [isPending, startTransition] = useTransition()
@@ -57,17 +63,17 @@ export default function TablaHorariosCanchas({
     e.cancha && e.cancha.trim() !== '' && e.horario
   )
 
-  // Agrupar encuentros por jornada
+  // Agrupar encuentros por jornada (normalizar para evitar NaN si la API devuelve valores raros tras refetch)
   const encuentrosPorJornada = new Map<number, EncuentroWithRelations[]>()
   encuentrosConDatos.forEach(encuentro => {
-    const jornada = encuentro.jornada ?? 0
+    const jornada = Number(encuentro.jornada) || 0
     if (!encuentrosPorJornada.has(jornada)) {
       encuentrosPorJornada.set(jornada, [])
     }
     encuentrosPorJornada.get(jornada)!.push(encuentro)
   })
 
-  const jornadasOrdenadas = Array.from(encuentrosPorJornada.keys()).sort((a, b) => a - b)
+  const jornadasOrdenadas = Array.from(encuentrosPorJornada.keys()).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))
 
   // Función para obtener equipos que descansan en una jornada
   const getEquiposQueDescansan = (jornada: number): any[] => {
@@ -198,8 +204,7 @@ export default function TablaHorariosCanchas({
             let fechaKey = ''
             
             if (encuentro.fecha_programada) {
-              const fecha = new Date(encuentro.fecha_programada)
-              fechaKey = fecha.toISOString().split('T')[0] // YYYY-MM-DD
+              fechaKey = getDateOnlyString(encuentro.fecha_programada) // YYYY-MM-DD sin zona horaria
             } else if (encuentro.horario?.dia_semana) {
               const hoy = new Date()
               const diaSemana = encuentro.horario.dia_semana
@@ -237,7 +242,7 @@ export default function TablaHorariosCanchas({
                 <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <h4 className="fw-bold text-success mb-0 d-flex align-items-center">
                     <LuCalendar className="me-2" size={18} />
-                    Jornada {jornadaKey === 0 ? '-' : jornadaKey}
+                    Jornada {jornadaKey === 0 || !Number.isFinite(Number(jornadaKey)) ? '-' : (Number(jornadaKey) || 0)}
                   </h4>
                   {equiposDescansan.length > 0 && (
                     <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -343,25 +348,18 @@ export default function TablaHorariosCanchas({
                             jornada: number | null
                           }
 
-                          // Buscar el horario destino por día y hora
+                          // El servidor resuelve el horario_id por (día, hora) de la categoría del torneo del encuentro
                           const fecha = new Date(fechaKeyDestino + 'T00:00:00')
                           const diasDb = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
                           const diaDb = diasDb[fecha.getDay()] || 'domingo'
-
-                          const horarioDestino = horarios.find(
-                            h => h.dia_semana === diaDb && h.hora_inicio === horaDestino,
-                          )
-
-                          if (!horarioDestino) {
-                            console.warn('No se encontró horario destino para la hora/día seleccionados')
-                            return
-                          }
+                          const horaDestinoNorm = horaNorm(horaDestino)
 
                           startTransition(async () => {
                             const fechaDestino = new Date(fechaKeyDestino + 'T00:00:00')
                             const resultado = await moverEncuentroGlobal(
                               payload.encuentroId,
-                              horarioDestino.id,
+                              diaDb,
+                              horaDestinoNorm,
                               canchaDestino,
                               fechaDestino,
                             )
@@ -371,26 +369,8 @@ export default function TablaHorariosCanchas({
                               return
                             }
 
-                            // Actualizar estado local de forma optimista
-                            setLocalEncuentros(prev =>
-                              prev.map(e => {
-                                if (e.id === payload.encuentroId) {
-                                  return {
-                                    ...e,
-                                    cancha: canchaDestino,
-                                    horario: {
-                                      ...(e.horario as any),
-                                      id: horarioDestino.id,
-                                      hora_inicio: horarioDestino.hora_inicio,
-                                      dia_semana: horarioDestino.dia_semana,
-                                    },
-                                    horario_id: horarioDestino.id,
-                                    fecha_programada: fechaDestino,
-                                  } as any
-                                }
-                                return e
-                              }),
-                            )
+                            // Pedir al padre que recargue datos para que la UI refleje el cambio
+                            await onMoveSuccess?.()
                           })
                         }
 

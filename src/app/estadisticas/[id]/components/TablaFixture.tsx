@@ -2,6 +2,7 @@
 import { Card, CardBody, CardHeader, Col, Row, Table, Badge } from 'react-bootstrap'
 import { useMemo } from 'react'
 import { LuClock, LuMapPin, LuGamepad2 } from 'react-icons/lu'
+import { getDateOnlyString, parseDateOnlyToLocal } from '@/helpers/date'
 
 interface Equipo {
 	id: number
@@ -38,8 +39,8 @@ interface TablaFixtureProps {
 
 export default function TablaFixture({ encuentros, equiposDescansan = {}, equiposMap = {}, filtrarPorFechaActual = true }: TablaFixtureProps) {
 	const formatFechaConDia = (iso?: string | null) => {
-		if (!iso) return 'Sin fecha'
-		const d = new Date(iso)
+		const d = parseDateOnlyToLocal(iso)
+		if (!d) return 'Sin fecha'
 		const diaSemana = d.toLocaleDateString('es-ES', { weekday: 'long' })
 		const fecha = d.toLocaleDateString('es-ES')
 		const diaCapitalizado = diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1)
@@ -88,10 +89,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 	}
 	const getFechaColor = (fechaIso?: string | null) => {
 		if (!fechaIso) return '#6c757d'
-		// Normalizar fecha (solo día, sin hora)
-		const fecha = new Date(fechaIso)
-		fecha.setHours(0, 0, 0, 0)
-		const fechaString = fecha.toISOString().split('T')[0] // YYYY-MM-DD
+		const fechaString = getDateOnlyString(fechaIso) // YYYY-MM-DD sin zona horaria
 		
 		// Usar solo naranja y verde, alternando según la fecha
 		const colors = ['#f39c12', '#2ecc71'] // naranja y verde
@@ -144,9 +142,8 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 				// Si la jornada tiene al menos un encuentro con fecha >= fecha actual, incluirla
 				return lista.some(encuentro => {
 					if (!encuentro.fecha_programada) return false
-					const fechaEncuentro = new Date(encuentro.fecha_programada)
-					fechaEncuentro.setHours(0, 0, 0, 0)
-					return fechaEncuentro >= fechaActual
+					const fechaEncuentro = parseDateOnlyToLocal(encuentro.fecha_programada)
+					return fechaEncuentro != null && fechaEncuentro >= fechaActual
 				})
 			})
 		}
@@ -156,7 +153,7 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			// Obtener la fecha más reciente de cada jornada
 			const getFechaMasReciente = (lista: Encuentro[]) => {
 				const fechas = lista
-					.map(e => e.fecha_programada ? new Date(e.fecha_programada).getTime() : 0)
+					.map(e => parseDateOnlyToLocal(e.fecha_programada)?.getTime() ?? 0)
 					.filter(t => t > 0)
 				return fechas.length > 0 ? Math.max(...fechas) : 0
 			}
@@ -216,14 +213,10 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 
 	const sortEncuentros = (a: Encuentro, b: Encuentro) => {
 		// 1) Primero ordenar por fecha (solo día, sin hora) - DESCENDENTE (más reciente primero)
-		const fechaA = a.fecha_programada ? new Date(a.fecha_programada) : null
-		const fechaB = b.fecha_programada ? new Date(b.fecha_programada) : null
+		const fechaA = parseDateOnlyToLocal(a.fecha_programada)
+		const fechaB = parseDateOnlyToLocal(b.fecha_programada)
 		
 		if (fechaA && fechaB) {
-			// Normalizar fechas (solo día, sin hora)
-			fechaA.setHours(0, 0, 0, 0)
-			fechaB.setHours(0, 0, 0, 0)
-			
 			const diffFecha = fechaB.getTime() - fechaA.getTime() // Invertido para descendente
 			if (diffFecha !== 0) {
 				return diffFecha
@@ -395,13 +388,9 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 												const listaOrdenada = [...lista].sort(sortEncuentros)
 												return listaOrdenada.map((encuentro, index) => {
 													// Detectar si la fecha cambia respecto al encuentro anterior
-													const fechaActual = encuentro.fecha_programada 
-														? new Date(encuentro.fecha_programada).toISOString().split('T')[0]
-														: null
+													const fechaActual = getDateOnlyString(encuentro.fecha_programada) || null
 													const fechaProgAnterior = index > 0 ? listaOrdenada[index - 1]?.fecha_programada : null
-													const fechaAnterior = fechaProgAnterior != null && fechaProgAnterior
-														? new Date(fechaProgAnterior).toISOString().split('T')[0]
-														: null
+													const fechaAnterior = fechaProgAnterior != null ? getDateOnlyString(fechaProgAnterior) || null : null
 													const esNuevaFecha = fechaActual && fechaActual !== fechaAnterior
 													
 													return (
@@ -506,13 +495,9 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 									{(() => {
 										const listaOrdenada = [...lista].sort(sortEncuentros)
 										return listaOrdenada.map((encuentro, index) => {
-											const fechaActual = encuentro.fecha_programada 
-												? new Date(encuentro.fecha_programada).toISOString().split('T')[0]
-												: null
+											const fechaActual = getDateOnlyString(encuentro.fecha_programada) || null
 											const fechaProgAnterior = index > 0 ? listaOrdenada[index - 1]?.fecha_programada : null
-											const fechaAnterior = fechaProgAnterior != null && fechaProgAnterior
-												? new Date(fechaProgAnterior).toISOString().split('T')[0]
-												: null
+											const fechaAnterior = fechaProgAnterior != null ? getDateOnlyString(fechaProgAnterior) || null : null
 											const esNuevaFecha = fechaActual && fechaActual !== fechaAnterior
 											const canchaNombre = getCanchaName(encuentro.cancha) || 'Sin asignar'
 											const canchaColor = canchaNombre === 'Sin asignar' ? '#adb5bd' : getCanchaColor(canchaNombre)

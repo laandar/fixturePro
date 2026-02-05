@@ -2,7 +2,8 @@
 
 import { db } from '@/db'
 import { horarios, encuentros, equipos, torneos, equiposTorneo } from '@/db/schema'
-import { eq, and, asc, isNotNull, sql } from 'drizzle-orm'
+import { eq, and, asc, isNotNull, sql, inArray } from 'drizzle-orm'
+import { getDateForDiaSemanaInWeek } from '@/helpers/date'
 
 const DIAS_VALIDOS = ['viernes', 'sabado', 'domingo'] as const
 type DiaSemana = (typeof DIAS_VALIDOS)[number]
@@ -21,19 +22,37 @@ const normalizarDiaSemana = (dia: string | null): DiaSemana => {
   return (DIAS_VALIDOS.find(d => d === dia) ?? 'viernes') as DiaSemana
 }
 
+/** Obtiene los horarios de una categoría (horarios son por categoría, no por torneo). */
+export async function getHorariosByCategoriaId(categoriaId: number) {
+  try {
+    if (!categoriaId || Number.isNaN(categoriaId)) {
+      throw new Error('La categoría es obligatoria para obtener horarios')
+    }
+    const horariosData = await db
+      .select()
+      .from(horarios)
+      .where(eq(horarios.categoria_id, categoriaId))
+      .orderBy(ordenarDiaSemana, asc(horarios.orden), asc(horarios.hora_inicio))
+    return horariosData
+  } catch (error) {
+    console.error('Error al obtener horarios por categoría:', error)
+    throw new Error('Error al obtener horarios')
+  }
+}
+
+/** Obtiene los horarios del torneo (usa la categoría del torneo). Mantiene compatibilidad con la UI que pasa torneoId. */
 export async function getHorarios(torneoId: number) {
   try {
     if (!torneoId || Number.isNaN(torneoId)) {
       throw new Error('El torneo es obligatorio para obtener horarios')
     }
-    
-    const horariosData = await db
-      .select()
-      .from(horarios)
-      .where(eq(horarios.torneo_id, torneoId))
-      .orderBy(ordenarDiaSemana, asc(horarios.orden), asc(horarios.hora_inicio))
-    
-    return horariosData
+    const [torneo] = await db
+      .select({ categoria_id: torneos.categoria_id })
+      .from(torneos)
+      .where(eq(torneos.id, torneoId))
+      .limit(1)
+    if (!torneo?.categoria_id) return []
+    return getHorariosByCategoriaId(torneo.categoria_id)
   } catch (error) {
     console.error('Error al obtener horarios:', error)
     throw new Error('Error al obtener horarios')
@@ -45,7 +64,14 @@ export async function createHorario(torneoId: number, formData: FormData) {
     if (!torneoId || Number.isNaN(torneoId)) {
       throw new Error('El torneo es obligatorio para crear un horario')
     }
-    
+    const [torneo] = await db
+      .select({ categoria_id: torneos.categoria_id })
+      .from(torneos)
+      .where(eq(torneos.id, torneoId))
+      .limit(1)
+    if (!torneo?.categoria_id) {
+      throw new Error('El torneo no tiene categoría asignada')
+    }
     const horaInicio = formData.get('hora_inicio') as string
     const color = formData.get('color') as string || '#007bff'
     const orden = parseInt(formData.get('orden') as string) || 0
@@ -58,7 +84,7 @@ export async function createHorario(torneoId: number, formData: FormData) {
     const nuevoHorario = await db
       .insert(horarios)
       .values({
-        torneo_id: torneoId,
+        categoria_id: torneo.categoria_id,
         hora_inicio: horaInicio,
         dia_semana: diaSemana,
         color,
@@ -78,30 +104,32 @@ export async function updateHorario(id: number, torneoId: number, formData: Form
     if (!torneoId || Number.isNaN(torneoId)) {
       throw new Error('El torneo es obligatorio para actualizar un horario')
     }
-    
+    const [torneo] = await db
+      .select({ categoria_id: torneos.categoria_id })
+      .from(torneos)
+      .where(eq(torneos.id, torneoId))
+      .limit(1)
+    if (!torneo?.categoria_id) {
+      throw new Error('El torneo no tiene categoría asignada')
+    }
     const horarioExistente = await db
       .select()
       .from(horarios)
       .where(eq(horarios.id, id))
       .limit(1)
-    
     if (horarioExistente.length === 0) {
       throw new Error('Horario no encontrado')
     }
-    
-    if (horarioExistente[0].torneo_id !== torneoId) {
-      throw new Error('No puedes modificar un horario que pertenece a otro torneo')
+    if (horarioExistente[0].categoria_id !== torneo.categoria_id) {
+      throw new Error('No puedes modificar un horario que pertenece a otra categoría')
     }
-    
     const horaInicio = formData.get('hora_inicio') as string
     const color = formData.get('color') as string || '#007bff'
     const orden = parseInt(formData.get('orden') as string) || 0
     const diaSemana = normalizarDiaSemana(formData.get('dia_semana') as string | null)
-
     if (!horaInicio) {
       throw new Error('La hora de inicio es obligatoria')
     }
-
     const horarioActualizado = await db
       .update(horarios)
       .set({
@@ -111,9 +139,8 @@ export async function updateHorario(id: number, torneoId: number, formData: Form
         orden,
         updatedAt: new Date()
       })
-      .where(and(eq(horarios.id, id), eq(horarios.torneo_id, torneoId)))
+      .where(and(eq(horarios.id, id), eq(horarios.categoria_id, torneo.categoria_id)))
       .returning()
-
     return { success: true, horario: horarioActualizado[0] }
   } catch (error) {
     console.error('Error al actualizar horario:', error)
@@ -126,24 +153,28 @@ export async function deleteHorario(id: number, torneoId: number) {
     if (!torneoId || Number.isNaN(torneoId)) {
       throw new Error('El torneo es obligatorio para eliminar un horario')
     }
-    
+    const [torneo] = await db
+      .select({ categoria_id: torneos.categoria_id })
+      .from(torneos)
+      .where(eq(torneos.id, torneoId))
+      .limit(1)
+    if (!torneo?.categoria_id) {
+      throw new Error('El torneo no tiene categoría asignada')
+    }
     const horarioExistente = await db
       .select()
       .from(horarios)
       .where(eq(horarios.id, id))
       .limit(1)
-    
     if (horarioExistente.length === 0) {
       throw new Error('Horario no encontrado')
     }
-    
-    if (horarioExistente[0].torneo_id !== torneoId) {
-      throw new Error('No puedes eliminar un horario que pertenece a otro torneo')
+    if (horarioExistente[0].categoria_id !== torneo.categoria_id) {
+      throw new Error('No puedes eliminar un horario que pertenece a otra categoría')
     }
-    
     await db
       .delete(horarios)
-      .where(and(eq(horarios.id, id), eq(horarios.torneo_id, torneoId)))
+      .where(and(eq(horarios.id, id), eq(horarios.categoria_id, torneo.categoria_id)))
 
     return { success: true }
   } catch (error) {
@@ -736,10 +767,12 @@ async function ejecutarIteracionAsignacion(torneoId: number, configuracion: any,
         const horarioAsignar = horariosConPuntuacion[0].horario
         
         if (horarioAsignar) {
+          const nuevaFecha = getDateForDiaSemanaInWeek(encuentro.fecha_programada, horarioAsignar.dia_semana)
           await db
             .update(encuentros)
             .set({ 
               horario_id: horarioAsignar.id,
+              ...(nuevaFecha ? { fecha_programada: nuevaFecha } : {}),
               updatedAt: new Date()
             })
             .where(eq(encuentros.id, encuentro.id))
@@ -1112,10 +1145,12 @@ export async function asignarHorariosPorJornada(torneoId: number, jornada: numbe
       const horarioAsignar = horariosConPuntuacion[0].horario
       
       if (horarioAsignar) {
+        const nuevaFecha = getDateForDiaSemanaInWeek(encuentro.fecha_programada, horarioAsignar.dia_semana)
         await db
           .update(encuentros)
           .set({ 
             horario_id: horarioAsignar.id,
+            ...(nuevaFecha ? { fecha_programada: nuevaFecha } : {}),
             updatedAt: new Date()
           })
           .where(eq(encuentros.id, encuentro.id))
@@ -1178,30 +1213,26 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
 
     console.log('Equipos encontrados:', equiposData.length)
 
-    // Obtener horarios del torneo (los que se han usado en encuentros)
-    const horariosData = await db
-      .select({
-        id: horarios.id,
-        hora: horarios.hora_inicio,
-        dia: horarios.dia_semana
-      })
-      .from(horarios)
-      .innerJoin(encuentros, eq(horarios.id, encuentros.horario_id))
-      .where(
-        and(
-          eq(encuentros.torneo_id, torneoId),
-          eq(horarios.torneo_id, torneoId)
-        )
-      )
-      .groupBy(horarios.id, horarios.hora_inicio, horarios.dia_semana)
-      .orderBy(ordenarDiaSemana, asc(horarios.hora_inicio))
+    // Horarios que realmente se usan en los encuentros del torneo (todos, sin filtrar por categoría)
+    // Así no se "pierde" ningún encuentro movido a otro horario y el Total coincide con el fixture
+    const horarioIdsEnEncuentros = [...new Set(encuentrosData.map(e => e.horario_id).filter(Boolean))] as number[]
+    const horariosData = horarioIdsEnEncuentros.length === 0
+      ? []
+      : await db
+          .select({
+            id: horarios.id,
+            hora: horarios.hora_inicio,
+            dia: horarios.dia_semana
+          })
+          .from(horarios)
+          .where(inArray(horarios.id, horarioIdsEnEncuentros))
+          .orderBy(ordenarDiaSemana, asc(horarios.hora_inicio))
 
     console.log('Horarios encontrados:', horariosData.length)
 
-    // Crear mapa de distribución
+    // Crear mapa de distribución (solo horarios que se muestran = todos los usados en encuentros)
     const distribucion: Record<number, Record<number, number>> = {}
-    
-    // Inicializar contadores en 0
+
     equiposData.forEach(equipo => {
       distribucion[equipo.id] = {}
       horariosData.forEach(horario => {
@@ -1212,55 +1243,75 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
     // Contar encuentros por equipo y horario
     encuentrosData.forEach(encuentro => {
       if (encuentro.horario_id) {
-        // Contar para equipo local
-        if (distribucion[encuentro.equipo_local_id]) {
-          distribucion[encuentro.equipo_local_id][encuentro.horario_id]++
+        const localKey = encuentro.equipo_local_id
+        const visitKey = encuentro.equipo_visitante_id
+        if (distribucion[localKey]?.[encuentro.horario_id] !== undefined) {
+          distribucion[localKey][encuentro.horario_id]++
         }
-        // Contar para equipo visitante
-        if (distribucion[encuentro.equipo_visitante_id]) {
-          distribucion[encuentro.equipo_visitante_id][encuentro.horario_id]++
+        if (distribucion[visitKey]?.[encuentro.horario_id] !== undefined) {
+          distribucion[visitKey][encuentro.horario_id]++
         }
       }
     })
 
+    // Agrupar horarios por (día, hora) para no mostrar columnas repetidas (ej. dos "Sábado 14:00")
+    const formatearDia = (dia?: string | null) => {
+      switch (dia) {
+        case 'sabado': return 'Sábado'
+        case 'domingo': return 'Domingo'
+        case 'viernes':
+        default: return 'Viernes'
+      }
+    }
+    const horaNorm = (h: string | null | undefined) => (h ?? '').trim().slice(0, 5) // "14:00" o "14:00:00" -> "14:00"
+    const diaNorm = (d: string | null | undefined) => (d ?? '').trim().toLowerCase()
+    const slotKey = (dia: string | null | undefined, hora: string | null | undefined) =>
+      `${diaNorm(dia)}-${horaNorm(hora)}`
+    const slotsMap = new Map<string, { slotKey: string; nombre: string; hora: string; horarioIds: number[] }>()
+    const ordenDia = (d: string) => (d === 'viernes' ? 1 : d === 'sabado' ? 2 : 3)
+    horariosData.forEach(horario => {
+      const key = slotKey(horario.dia, horario.hora)
+      const horaStr = horaNorm(horario.hora)
+      const nombre = `${formatearDia(horario.dia)} ${horaStr}`
+      if (!slotsMap.has(key)) {
+        slotsMap.set(key, { slotKey: key, nombre, hora: horaStr, horarioIds: [] })
+      }
+      slotsMap.get(key)!.horarioIds.push(horario.id)
+    })
+    const slotsUnicos = [...slotsMap.values()].sort((a, b) => {
+      const [diaA, horaA] = a.slotKey.split('-')
+      const [diaB, horaB] = b.slotKey.split('-')
+      if (ordenDia(diaA) !== ordenDia(diaB)) return ordenDia(diaA) - ordenDia(diaB)
+      return (horaA ?? '').localeCompare(horaB ?? '')
+    })
+
     // Calcular estadísticas
     const totalJornadas = Math.max(...encuentrosData.map(e => e.jornada || 0), 0)
-    const totalHorarios = horariosData.length
+    const totalHorarios = slotsUnicos.length || 1
     const vecesPorHorario = totalJornadas / totalHorarios
     const vecesMinimas = Math.floor(vecesPorHorario)
     const vecesMaximas = Math.ceil(vecesPorHorario)
-
-    // Generar tabla
-    const formatearDia = (dia?: string | null) => {
-      switch (dia) {
-        case 'sabado':
-          return 'Sábado'
-        case 'domingo':
-          return 'Domingo'
-        case 'viernes':
-        default:
-          return 'Viernes'
-      }
-    }
 
     const tabla = {
       equipos: equiposData.map(equipo => ({
         id: equipo.id,
         nombre: equipo.nombre,
-        distribucion: horariosData.map(horario => ({
-          horario_id: horario.id,
-          horario_nombre: `${formatearDia(horario.dia)} ${horario.hora}`,
-          horario_hora: horario.hora,
-          veces: distribucion[equipo.id][horario.id] || 0
+        distribucion: slotsUnicos.map(slot => ({
+          horario_id: slot.slotKey,
+          horario_nombre: slot.nombre,
+          horario_hora: slot.hora,
+          veces: slot.horarioIds.reduce((sum, hid) => sum + (Number(distribucion[equipo.id]?.[hid]) || 0), 0)
         })),
-        totalEncuentros: Object.values(distribucion[equipo.id] || {}).reduce((sum, count) => sum + count, 0)
+        totalEncuentros: slotsUnicos.reduce((sum, slot) => 
+          sum + slot.horarioIds.reduce((s, hid) => s + (Number(distribucion[equipo.id]?.[hid]) || 0), 0), 0
+        )
       })),
-      horarios: horariosData.map(horario => ({
-        id: horario.id,
-        nombre: `${formatearDia(horario.dia)} ${horario.hora}`,
-        hora: `${formatearDia(horario.dia)} ${horario.hora}`,
+      horarios: slotsUnicos.map(slot => ({
+        id: slot.slotKey,
+        nombre: slot.nombre,
+        hora: slot.nombre,
         totalUsos: equiposData.reduce((sum, equipo) => 
-          sum + (distribucion[equipo.id][horario.id] || 0), 0
+          sum + slot.horarioIds.reduce((s, hid) => s + (distribucion[equipo.id][hid] || 0), 0), 0
         )
       })),
       estadisticas: {
@@ -1269,12 +1320,12 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
         vecesPorHorario: Math.round(vecesPorHorario * 100) / 100,
         vecesMinimas,
         vecesMaximas,
-        equiposConDistribucionEquitativa: equiposData.filter(equipo => {
-          const distribucionEquipo = distribucion[equipo.id]
-          return Object.values(distribucionEquipo).every(veces => 
-            veces >= vecesMinimas && veces <= vecesMaximas
-          )
-        }).length,
+        equiposConDistribucionEquitativa: equiposData.filter(equipo =>
+          slotsUnicos.every(slot => {
+            const veces = slot.horarioIds.reduce((sum, hid) => sum + (Number(distribucion[equipo.id]?.[hid]) || 0), 0)
+            return veces >= vecesMinimas && veces <= vecesMaximas
+          })
+        ).length,
         totalEquipos: equiposData.length
       }
     }
@@ -1298,6 +1349,199 @@ export async function generarTablaDistribucionHorarios(torneoId: number) {
 
   } catch (error) {
     console.error('Error al generar tabla de distribución:', error)
+    throw new Error(error instanceof Error ? error.message : 'Error al generar tabla de distribución')
+  }
+}
+
+const formatearDiaHorario = (dia?: string | null) => {
+  switch (dia) {
+    case 'sabado':
+      return 'Sábado'
+    case 'domingo':
+      return 'Domingo'
+    case 'viernes':
+    default:
+      return 'Viernes'
+  }
+}
+
+/**
+ * Genera la tabla de distribución de horarios para uno o varios torneos.
+ * Si hay varios torneos, muestra equipos de todos con columna (dia, hora) normalizada.
+ */
+export async function generarTablaDistribucionHorariosParaTorneos(torneoIds: number[]) {
+  if (torneoIds.length === 0) {
+    return { success: false, tabla: null, resumen: null }
+  }
+  if (torneoIds.length === 1) {
+    const result = await generarTablaDistribucionHorarios(torneoIds[0])
+    if (!result.success || !result.tabla) return result
+    const [torneoRow] = await db.select({ nombre: torneos.nombre }).from(torneos).where(eq(torneos.id, torneoIds[0]))
+    const torneoNombre = torneoRow?.nombre ?? `Torneo ${torneoIds[0]}`
+    const tabla = {
+      ...result.tabla,
+      equipos: result.tabla.equipos.map((eq: { id: number; nombre: string | null; distribucion: unknown[]; totalEncuentros: number }) => ({
+        ...eq,
+        torneoNombre,
+        displayName: eq.nombre
+      }))
+    }
+    return { ...result, tabla }
+  }
+
+  try {
+    const encuentrosData = await db
+      .select({
+        id: encuentros.id,
+        torneo_id: encuentros.torneo_id,
+        equipo_local_id: encuentros.equipo_local_id,
+        equipo_visitante_id: encuentros.equipo_visitante_id,
+        horario_id: encuentros.horario_id,
+        jornada: encuentros.jornada
+      })
+      .from(encuentros)
+      .where(
+        and(
+          inArray(encuentros.torneo_id, torneoIds),
+          isNotNull(encuentros.horario_id)
+        )
+      )
+      .orderBy(encuentros.jornada, encuentros.id)
+
+    const horarioIds = [...new Set(encuentrosData.map(e => e.horario_id).filter(Boolean))] as number[]
+    const horariosRaw = horarioIds.length > 0
+      ? await db
+          .select({ id: horarios.id, dia_semana: horarios.dia_semana, hora_inicio: horarios.hora_inicio })
+          .from(horarios)
+          .where(inArray(horarios.id, horarioIds))
+      : []
+
+    // Normalizar hora a "HH:MM" para que "14:00" y "14:00:00" colapsen en una sola columna
+    const horaNorm = (h: string | null | undefined) => (h ?? '').trim().slice(0, 5)
+    const diaNorm = (d: string | null | undefined) => (d ?? '').trim().toLowerCase()
+    const slotKey = (dia: string | null, hora: string | null) => `${diaNorm(dia)}-${horaNorm(hora)}`
+    const slotsOrdered = new Map<string, { id: string; nombre: string; hora: string }>()
+    horariosRaw.forEach(h => {
+      const key = slotKey(h.dia_semana, h.hora_inicio)
+      if (!slotsOrdered.has(key)) {
+        slotsOrdered.set(key, {
+          id: key,
+          nombre: `${formatearDiaHorario(h.dia_semana)} ${horaNorm(h.hora_inicio)}`,
+          hora: horaNorm(h.hora_inicio)
+        })
+      }
+    })
+    const ordenDia = (d: string) => (d === 'viernes' ? 1 : d === 'sabado' ? 2 : 3)
+    const slotsArray = [...slotsOrdered.entries()]
+      .sort((a, b) => {
+        const [diaA, horaA] = a[0].split('-')
+        const [diaB, horaB] = b[0].split('-')
+        if (ordenDia(diaA) !== ordenDia(diaB)) return ordenDia(diaA) - ordenDia(diaB)
+        return (horaA ?? '').localeCompare(horaB ?? '')
+      })
+      .map(([, v]) => v)
+
+    const horarioIdToSlot = new Map<number, string>()
+    horariosRaw.forEach(h => {
+      horarioIdToSlot.set(h.id, slotKey(h.dia_semana, h.hora_inicio))
+    })
+
+    const equiposPorTorneo = await db
+      .select({
+        equipo_id: equipos.id,
+        equipo_nombre: equipos.nombre,
+        torneo_id: equiposTorneo.torneo_id,
+        torneo_nombre: torneos.nombre
+      })
+      .from(equiposTorneo)
+      .innerJoin(equipos, eq(equipos.id, equiposTorneo.equipo_id))
+      .innerJoin(torneos, eq(torneos.id, equiposTorneo.torneo_id))
+      .where(inArray(equiposTorneo.torneo_id, torneoIds))
+      .orderBy(equipos.nombre)
+
+    const distribucion: Record<string, Record<string, number>> = {}
+    equiposPorTorneo.forEach(e => {
+      const rowKey = `${e.equipo_id}-${e.torneo_id}`
+      distribucion[rowKey] = {}
+      slotsArray.forEach(s => {
+        distribucion[rowKey][s.id] = 0
+      })
+    })
+
+    encuentrosData.forEach(enc => {
+      if (!enc.horario_id) return
+      const slot = horarioIdToSlot.get(enc.horario_id)
+      if (!slot) return
+      const localKey = `${enc.equipo_local_id}-${enc.torneo_id}`
+      const visitKey = `${enc.equipo_visitante_id}-${enc.torneo_id}`
+      if (distribucion[localKey]) distribucion[localKey][slot] = (distribucion[localKey][slot] ?? 0) + 1
+      if (distribucion[visitKey]) distribucion[visitKey][slot] = (distribucion[visitKey][slot] ?? 0) + 1
+    })
+
+    const totalJornadas = Math.max(...encuentrosData.map(e => e.jornada ?? 0), 0)
+    const totalHorarios = slotsArray.length || 1
+    const vecesPorHorario = totalJornadas / totalHorarios
+    const vecesMinimas = Math.floor(vecesPorHorario)
+    const vecesMaximas = Math.ceil(vecesPorHorario)
+
+    const equiposTabla = equiposPorTorneo.map(e => {
+      const rowKey = `${e.equipo_id}-${e.torneo_id}`
+      const dist = distribucion[rowKey] ?? {}
+      const distribucionArray = slotsArray.map(s => ({
+        horario_id: s.id,
+        horario_nombre: s.nombre,
+        horario_hora: s.hora,
+        veces: dist[s.id] ?? 0
+      }))
+      const totalEncuentros = Object.values(dist).reduce((sum, n) => sum + (Number(n) || 0), 0)
+      const equiposConDistribucionEquitativa = Object.values(dist).every(
+        v => v >= vecesMinimas && v <= vecesMaximas
+      )
+      return {
+        id: e.equipo_id,
+        torneoId: e.torneo_id,
+        nombre: e.equipo_nombre,
+        torneoNombre: e.torneo_nombre ?? '',
+        displayName: `${e.equipo_nombre ?? ''} (${e.torneo_nombre ?? ''})`,
+        distribucion: distribucionArray,
+        totalEncuentros
+      }
+    })
+
+    const tabla = {
+      equipos: equiposTabla,
+      horarios: slotsArray.map(s => ({
+        id: s.id,
+        nombre: s.nombre,
+        hora: s.nombre,
+        totalUsos: equiposTabla.reduce((sum, eq) => sum + (eq.distribucion.find((d: { horario_id: string }) => d.horario_id === s.id)?.veces ?? 0), 0)
+      })),
+      estadisticas: {
+        totalJornadas,
+        totalHorarios: slotsArray.length,
+        vecesPorHorario: Math.round(vecesPorHorario * 100) / 100,
+        vecesMinimas,
+        vecesMaximas,
+        equiposConDistribucionEquitativa: equiposTabla.filter(eq =>
+          eq.distribucion.every((d: { veces: number }) => d.veces >= vecesMinimas && d.veces <= vecesMaximas)
+        ).length,
+        totalEquipos: equiposTabla.length
+      }
+    }
+
+    return {
+      success: true,
+      tabla,
+      resumen: {
+        mensaje: `Distribución de horarios para ${tabla.equipos.length} equipos (${torneoIds.length} torneos) en ${totalJornadas} jornadas`,
+        distribucionEquitativa: tabla.estadisticas.equiposConDistribucionEquitativa === tabla.estadisticas.totalEquipos,
+        porcentajeEquitativo: tabla.estadisticas.totalEquipos
+          ? Math.round((tabla.estadisticas.equiposConDistribucionEquitativa / tabla.estadisticas.totalEquipos) * 100)
+          : 0
+      }
+    }
+  } catch (error) {
+    console.error('Error al generar tabla de distribución para torneos:', error)
     throw new Error(error instanceof Error ? error.message : 'Error al generar tabla de distribución')
   }
 }

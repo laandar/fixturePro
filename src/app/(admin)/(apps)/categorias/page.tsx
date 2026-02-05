@@ -168,7 +168,9 @@ const Page = () => {
 
   const [globalFilter, setGlobalFilter] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([
+    { id: 'estado', value: 'true' } // Mostrar solo activos por defecto
+  ])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [categoriaToDelete, setCategoriaToDelete] = useState<Categoria | null>(null)
@@ -660,7 +662,7 @@ const Page = () => {
                 </FloatingLabel>
               </Col>
 
-              <Col lg={6}>
+              <Col lg={12}>
                 <FloatingLabel label="Jugadores Menores a Edad Mínima Permitidos">
                   <FormControl 
                     type="number" 
@@ -796,7 +798,7 @@ const Page = () => {
                   </FloatingLabel>
                 </Col>
 
-                <Col lg={6}>
+                <Col lg={12}>
                   <FloatingLabel label="Jugadores Menores a Edad Mínima Permitidos">
                     <FormControl 
                       type="number" 

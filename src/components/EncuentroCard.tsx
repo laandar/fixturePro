@@ -1,5 +1,6 @@
 'use client'
 import MagicBentoCard from './MagicBentoCard'
+import { formatFechaProgramada } from '@/helpers/date'
 import type { EncuentroWithRelations } from '@/db/types'
 
 interface EncuentroCardProps {
@@ -222,8 +223,7 @@ export default function EncuentroCard({
                 lineHeight: '1'
               }}
             >
-              {encuentro.fecha_programada ? 
-                new Date(encuentro.fecha_programada).toLocaleDateString('es-ES') : 'Sin fecha'}
+              {formatFechaProgramada(encuentro.fecha_programada)}
             </span>
           </div>
           

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { encuentroQueries, torneoQueries } from '@/db/queries'
 import { revalidatePath } from 'next/cache'
+import { getDateOnlyString } from '@/helpers/date'
 
 export async function POST(request: Request) {
 	try {
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
 			torneo_id: Number(torneoId),
 			equipo_local_id: Number(equipoLocalId),
 			equipo_visitante_id: Number(equipoVisitanteId),
-			fecha_programada: fechaProgramada ? new Date(fechaProgramada) : null,
+			fecha_programada: fechaProgramada ? getDateOnlyString(fechaProgramada) : null,
 			horario_id: horarioId ? Number(horarioId) : null,
 			cancha: cancha ?? null,
 			jornada: jornada ? Number(jornada) : null,

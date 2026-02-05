@@ -1499,12 +1499,14 @@ export const encuentroQueries = {
     return result[0];
   },
 
-  // Actualizar fecha de todos los encuentros de una jornada
-  updateFechaByJornada: async (torneoId: number, jornada: number, fecha: Date) => {
+  // Actualizar fecha de todos los encuentros de una jornada (fecha_programada es tipo date: string YYYY-MM-DD)
+  updateFechaByJornada: async (torneoId: number, jornada: number, fecha: Date | string) => {
+    const { getDateOnlyString } = await import('@/helpers/date')
+    const fechaStr = typeof fecha === 'string' ? fecha : getDateOnlyString(fecha)
     const result = await db
       .update(encuentros)
       .set({ 
-        fecha_programada: fecha,
+        fecha_programada: fechaStr,
         updatedAt: new Date()
       })
       .where(and(

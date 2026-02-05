@@ -1140,6 +1140,19 @@ const Page = () => {
                 horariosIdsUsados.has(horario.id)
               )
               
+              const refetchTablaGlobal = async () => {
+                try {
+                  const [encuentros, horarios] = await Promise.all([
+                    getAllEncuentrosTodosTorneos(),
+                    getAllHorariosTodosTorneos()
+                  ])
+                  setEncuentrosGlobales(encuentros)
+                  setHorariosGlobales(horarios)
+                } catch {
+                  setError('Error al actualizar la tabla')
+                }
+              }
+
               return (
                 <TablaHorariosCanchas 
                   encuentros={encuentrosFiltrados}
@@ -1149,6 +1162,7 @@ const Page = () => {
                       .map(e => e.cancha)
                       .filter((c): c is string => c !== null && c !== undefined && c.trim() !== '')
                   )).sort()}
+                  onMoveSuccess={refetchTablaGlobal}
                 />
               )
             })()}

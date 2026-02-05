@@ -3,17 +3,18 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import '@/styles/mobile-tabs.css'
+import '@/styles/horarios-canchas-tab.css'
 import { Toast } from 'primereact/toast'
 import 'primereact/resources/themes/lara-light-cyan/theme.css'
 import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
-import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, deleteEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada, asignarCanchasAutomaticamente, generarTablaDistribucionCanchas } from '../actions'
+import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, deleteEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada, asignarCanchasAutomaticamente, generarTablaDistribucionCanchas, generarTablaDistribucionCanchasParaTorneos, getTorneosParaAsignacion, getTorneosByTemporada, asignarHorariosParaTorneos, asignarCanchasParaTorneos } from '../actions'
 import { getTarjetasTorneo } from '../../gestion-jugadores/actions'
 import { confirmarJornada,  confirmarRegeneracionJornada } from '../dynamic-actions'
 import { getEquiposByCategoria } from '../../equipos/actions'
-import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada, generarTablaDistribucionHorarios } from '../horarios-actions'
+import { getHorarios, createHorario, updateHorario, deleteHorario, asignarHorarioAEncuentro, asignarHorariosAutomaticamente, asignarHorariosPorJornada, generarTablaDistribucionHorarios, generarTablaDistribucionHorariosParaTorneos } from '../horarios-actions'
 import { getCanchas, getCanchasByCategoriaId } from '@/app/(admin)/(apps)/canchas/actions'
 import type { TorneoWithRelations, EquipoWithRelations, EncuentroWithRelations, Horario, Tarjeta } from '@/db/types'
 import type {  JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
@@ -108,6 +109,52 @@ const TorneoDetailPage = () => {
   
   // Estado para tabs
   const [activeTab, setActiveTab] = useState('equipos')
+  const [torneosParaHorarios, setTorneosParaHorarios] = useState<{ id: number; nombre: string | null }[]>([])
+  const [selectedTorneoIdsHorarios, setSelectedTorneoIdsHorarios] = useState<number[]>([torneoId])
+  const [torneosParaCanchas, setTorneosParaCanchas] = useState<{ id: number; nombre: string | null }[]>([])
+  const [selectedTorneoIdsCanchas, setSelectedTorneoIdsCanchas] = useState<number[]>([torneoId])
+
+  // Cargar torneos para asignación: si hay temporada, todos los torneos de la temporada; si no, torneos de la misma categoría
+  useEffect(() => {
+    if (torneo?.temporada_id) {
+      getTorneosByTemporada(torneo.temporada_id)
+        .then(lista => {
+          setTorneosParaHorarios(lista)
+          setTorneosParaCanchas(lista)
+          const ids = lista.map(t => t.id)
+          setSelectedTorneoIdsHorarios(prev => (prev.length === 0 || !ids.includes(prev[0]) ? [torneoId].filter(id => ids.includes(id)) : prev))
+          setSelectedTorneoIdsCanchas(prev => (prev.length === 0 || !ids.includes(prev[0]) ? [torneoId].filter(id => ids.includes(id)) : prev))
+        })
+        .catch(() => {
+          setTorneosParaHorarios([])
+          setTorneosParaCanchas([])
+          setSelectedTorneoIdsHorarios([torneoId])
+          setSelectedTorneoIdsCanchas([torneoId])
+        })
+      return
+    }
+    if (!torneo?.categoria_id) {
+      setTorneosParaHorarios([])
+      setTorneosParaCanchas([])
+      setSelectedTorneoIdsHorarios([torneoId])
+      setSelectedTorneoIdsCanchas([torneoId])
+      return
+    }
+    getTorneosParaAsignacion(torneo.categoria_id)
+      .then(lista => {
+        setTorneosParaHorarios(lista)
+        setTorneosParaCanchas(lista)
+        const ids = lista.map(t => t.id)
+        setSelectedTorneoIdsHorarios(prev => (prev.length === 0 || !ids.includes(prev[0]) ? [torneoId].filter(id => ids.includes(id)) : prev))
+        setSelectedTorneoIdsCanchas(prev => (prev.length === 0 || !ids.includes(prev[0]) ? [torneoId].filter(id => ids.includes(id)) : prev))
+      })
+      .catch(() => {
+        setTorneosParaHorarios([])
+        setTorneosParaCanchas([])
+        setSelectedTorneoIdsHorarios([torneoId])
+        setSelectedTorneoIdsCanchas([torneoId])
+      })
+  }, [torneo?.categoria_id, torneo?.temporada_id, torneoId])
 
   // Efecto para manejar indicadores de scroll en las pestañas móviles
   useEffect(() => {
@@ -669,8 +716,9 @@ const TorneoDetailPage = () => {
   const handleMostrarTablaDistribucion = async () => {
     try {
       setLoading(true)
-      const resultado = await generarTablaDistribucionHorarios(torneoId)
-      if (resultado.success) {
+      const ids = selectedTorneoIdsHorarios.length ? selectedTorneoIdsHorarios : [torneoId]
+      const resultado = await generarTablaDistribucionHorariosParaTorneos(ids)
+      if (resultado.success && resultado.tabla) {
         setTablaDistribucion(resultado.tabla)
         setShowTablaDistribucionModal(true)
       }
@@ -682,93 +730,40 @@ const TorneoDetailPage = () => {
   }
 
   const handleEjecutarAsignacionAutomatica = async () => {
+    const ids = selectedTorneoIdsHorarios.length ? selectedTorneoIdsHorarios : [torneoId]
     try {
       setLoading(true)
-      
-      // Ejecutar redistribución automática con reiniciar asignaciones para lograr distribución equitativa
-      const resultadoAsignacion = await asignarHorariosAutomaticamente(torneoId, {
-        reiniciarAsignaciones: true, // Siempre reiniciar para redistribución completa
-        soloEncuentrosSinHorario: false, // Redistribuir todos los encuentros
-        ordenPorJornada: true
+      const resultadoAsignacion = await asignarHorariosParaTorneos(ids, {
+        reiniciarAsignaciones: true
       })
 
       if (resultadoAsignacion?.success) {
-        // Recargar datos para obtener los encuentros actualizados
         await loadData()
-        
-        // Actualizar fechas de todas las jornadas (igual que actualizarTodasLasFechas)
-        const jornadasUnicas = [...new Set(encuentros
-          .filter(e => e.jornada !== null && e.horario_id !== null)
-          .map(e => e.jornada)
-          .filter(j => j !== null)
-        )] as number[]
-        
-        for (const jornada of jornadasUnicas) {
-          // Obtener los encuentros de esta jornada
-          const encuentrosJornada = encuentros.filter(e => e.jornada === jornada)
-          
-          if (encuentrosJornada.length === 0) continue
-          
-          // Obtener la fecha de la jornada (del primer encuentro, igual que getFechaJornada)
-          const primerEncuentro = encuentrosJornada[0]
-          if (!primerEncuentro.fecha_programada) continue
-          
-          // Obtener la fecha en formato string (igual que getFechaJornada)
-          const fecha = new Date(primerEncuentro.fecha_programada)
-          const fechaStr = fecha.toISOString().split('T')[0]
-          
-          if (!fechaStr) continue
-          
-          try {
-            // Aplicar la misma lógica que actualizarTodasLasFechas
-            let fechaAjustada = new Date(fechaStr + 'T00:00:00')
-            
-            // Si es sábado, restar un día (igual que guardarFechaJornada)
-            if (fechaAjustada.getDay() === 6) { // 6 = sábado
-              fechaAjustada.setDate(fechaAjustada.getDate() - 1)
-            }
-            
-            await updateFechaJornada(torneoId, jornada, fechaAjustada)
-          } catch (err) {
-            console.error(`Error al actualizar fecha de jornada ${jornada}:`, err)
+        if (ids.length >= 1) {
+          const resultadoTabla = await generarTablaDistribucionHorariosParaTorneos(ids)
+          if (resultadoTabla.success) {
+            setTablaDistribucion(resultadoTabla.tabla)
+            const equiposEquitativos = resultadoTabla.tabla.estadisticas.equiposConDistribucionEquitativa
+            const totalEquipos = resultadoTabla.tabla.estadisticas.totalEquipos
+            const porcentaje = Math.round((equiposEquitativos / totalEquipos) * 100)
+            const mensaje = `Redistribución completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros. ${equiposEquitativos}/${totalEquipos} equipos con distribución equitativa (${porcentaje}%)`
+            setSuccess(mensaje)
+            toast.current?.show({ severity: 'success', summary: 'Redistribución completada', detail: mensaje, life: 6000 })
+          } else {
+            setSuccess(resultadoAsignacion.mensaje)
+            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: resultadoAsignacion.mensaje, life: 5000 })
           }
-        }
-        
-        // Recargar datos nuevamente después de actualizar las fechas
-        await loadData()
-        
-        // Generar nueva tabla de distribución
-        const resultadoTabla = await generarTablaDistribucionHorarios(torneoId)
-        if (resultadoTabla.success) {
-          setTablaDistribucion(resultadoTabla.tabla)
-          
-          // Mostrar mensaje con estadísticas de la redistribución
-          const equiposEquitativos = resultadoTabla.tabla.estadisticas.equiposConDistribucionEquitativa
-          const totalEquipos = resultadoTabla.tabla.estadisticas.totalEquipos
-          const porcentaje = Math.round((equiposEquitativos / totalEquipos) * 100)
-          
-          const mensaje = `Redistribución automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros redistribuidos. ${equiposEquitativos}/${totalEquipos} equipos con distribución equitativa (${porcentaje}%)`
-          setSuccess(mensaje)
-          
-          toast.current?.show({ 
-            severity: 'success', 
-            summary: 'Redistribución Automática Completada', 
-            detail: mensaje, 
-            life: 6000 
-          })
         } else {
-          setSuccess(`Asignación automática completada: ${resultadoAsignacion.asignacionesRealizadas} encuentros actualizados`)
+          setSuccess(resultadoAsignacion.mensaje)
+          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: resultadoAsignacion.mensaje, life: 5000 })
         }
+      } else {
+        toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: resultadoAsignacion?.mensaje ?? 'No se realizaron asignaciones', life: 5000 })
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error en la asignación automática'
       setError(errorMessage)
-      toast.current?.show({ 
-        severity: 'error', 
-        summary: 'Error', 
-        detail: errorMessage, 
-        life: 5000 
-      })
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     } finally {
       setLoading(false)
     }
@@ -777,7 +772,8 @@ const TorneoDetailPage = () => {
   const handleMostrarTablaDistribucionCanchas = async () => {
     try {
       setLoading(true)
-      const resultado = await generarTablaDistribucionCanchas(torneoId)
+      const ids = selectedTorneoIdsHorarios.length ? selectedTorneoIdsHorarios : [torneoId]
+      const resultado = await generarTablaDistribucionCanchasParaTorneos(ids)
       if (resultado.success) {
         setTablaDistribucionCanchas(resultado.tabla)
         setShowTablaDistribucionCanchas(true)
@@ -791,15 +787,13 @@ const TorneoDetailPage = () => {
   }
 
   const handleEjecutarAsignacionCanchas = async () => {
+    const ids = selectedTorneoIdsCanchas.length ? selectedTorneoIdsCanchas : [torneoId]
     try {
       setLoading(true)
       
-      // Ejecutar asignación automática de canchas con configuración seleccionada
-      const resultadoAsignacion = await asignarCanchasAutomaticamente(torneoId, {
+      const resultadoAsignacion = await asignarCanchasParaTorneos(ids, {
         reiniciarAsignaciones: reiniciarAsignacionesCanchas,
-        soloEncuentrosSinCancha: soloEncuentrosSinCancha,
-        ordenPorJornada: true,
-        canchaPrioritariaId: canchaPrioritariaId || null
+        canchaPrioritariaId: canchaPrioritariaId ?? undefined
       })
 
       if (resultadoAsignacion?.success) {
@@ -807,16 +801,17 @@ const TorneoDetailPage = () => {
         setSuccess(mensaje)
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: mensaje, life: 5000 })
         
-        // Recargar datos
         await loadData()
         
-        // Actualizar tabla de distribución si está abierta
         if (showTablaDistribucionCanchas) {
-          const resultadoTabla = await generarTablaDistribucionCanchas(torneoId)
+          const idsCanchas = selectedTorneoIdsCanchas.length ? selectedTorneoIdsCanchas : [torneoId]
+          const resultadoTabla = await generarTablaDistribucionCanchasParaTorneos(idsCanchas)
           if (resultadoTabla.success) {
             setTablaDistribucionCanchas(resultadoTabla.tabla)
           }
         }
+      } else {
+        toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: resultadoAsignacion?.mensaje ?? 'No se realizaron asignaciones', life: 5000 })
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error en la asignación automática de canchas'
@@ -827,7 +822,45 @@ const TorneoDetailPage = () => {
     }
   }
 
-
+  /** Ejecuta redistribución de horarios y luego de canchas en un solo paso. */
+  const handleEjecutarRedistribucionCompleta = async () => {
+    const ids = selectedTorneoIdsHorarios.length ? selectedTorneoIdsHorarios : [torneoId]
+    try {
+      setLoading(true)
+      const rHorarios = await asignarHorariosParaTorneos(ids, { reiniciarAsignaciones })
+      if (!rHorarios?.success) {
+        toast.current?.show({ severity: 'warn', summary: 'Horarios', detail: rHorarios?.mensaje ?? 'No se realizaron asignaciones de horarios', life: 5000 })
+      }
+      const rCanchas = await asignarCanchasParaTorneos(ids, {
+        reiniciarAsignaciones: reiniciarAsignacionesCanchas,
+        canchaPrioritariaId: canchaPrioritariaId ?? undefined
+      })
+      await loadData()
+      if (rHorarios?.success || rCanchas?.success) {
+        const mensaje = [
+          rHorarios?.success ? `Horarios: ${rHorarios.asignacionesRealizadas} encuentros` : null,
+          rCanchas?.success ? `Canchas: ${rCanchas.asignacionesRealizadas} encuentros` : null
+        ].filter(Boolean).join('. ')
+        toast.current?.show({ severity: 'success', summary: 'Redistribución completada', detail: mensaje, life: 6000 })
+        if (ids.length >= 1 && rHorarios?.success) {
+          const resultadoTabla = await generarTablaDistribucionHorariosParaTorneos(ids)
+          if (resultadoTabla.success) setTablaDistribucion(resultadoTabla.tabla)
+        }
+        if (rCanchas?.success) {
+          const resultadoTabla = await generarTablaDistribucionCanchasParaTorneos(ids)
+          if (resultadoTabla.success) setTablaDistribucionCanchas(resultadoTabla.tabla)
+        }
+      } else {
+        toast.current?.show({ severity: 'warn', summary: 'Aviso', detail: 'No se realizaron asignaciones', life: 5000 })
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error en la redistribución'
+      setError(errorMessage)
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const getEncuentrosPorJornada = () => {
     const jornadas: Record<number, EncuentroWithRelations[]> = {}
@@ -1141,7 +1174,7 @@ const TorneoDetailPage = () => {
                       </NavItem>
                       <NavItem className="flex-shrink-0">
                         <NavLink 
-                          eventKey="canchas"
+                          eventKey="horarios-canchas"
                           className="px-2 px-md-3 py-2"
                           style={{ 
                             fontSize: '0.875rem',
@@ -1152,24 +1185,8 @@ const TorneoDetailPage = () => {
                             justifyContent: 'center'
                           }}
                         >
-                          <span className="d-none d-sm-inline">Asignar Canchas</span>
-                          <span className="d-sm-none">Canchas</span>
-                        </NavLink>
-                      </NavItem>
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
-                          eventKey="horarios"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          Horarios
+                          <span className="d-none d-sm-inline">Horarios y Canchas</span>
+                          <span className="d-sm-none">Horarios / Canchas</span>
                         </NavLink>
                       </NavItem>
                       <NavItem className="flex-shrink-0">
@@ -1283,8 +1300,8 @@ const TorneoDetailPage = () => {
                               {equipoTorneo.equipo?.entrenador?.nombre || 'Sin entrenador'}
                             </p>
                             <div className="d-flex justify-content-center gap-2">
-                              <Badge bg="primary">{equipoTorneo.puntos ?? 0} pts</Badge>
-                              <Badge bg="secondary">{equipoTorneo.partidos_jugados ?? 0} PJ</Badge>
+                              <Badge bg="primary">{Number(equipoTorneo.puntos) || 0} pts</Badge>
+                              <Badge bg="secondary">{Number(equipoTorneo.partidos_jugados) || 0} PJ</Badge>
                             </div>
                             <Button 
                               variant="outline-danger" 
@@ -1419,353 +1436,211 @@ const TorneoDetailPage = () => {
                   </Row>
                 </Tab.Pane>
 
-                {/* Tab: Horarios */}
-                <Tab.Pane eventKey="horarios">
-                  <>
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <h4 className="fw-bold text-primary mb-0">🕐 Paso 4: Gestión de Horarios</h4>
-                      <div className="d-flex gap-2">
-                      <Button 
-                        variant="info" 
-                        size="sm"
-                        onClick={handleMostrarTablaDistribucion}
-                        disabled={horarios.length === 0}
-                        className="px-3">
-                        <LuInfo className="me-1" size={16} />
-                        Tabla
-                      </Button>
-                      <Button 
-                        variant="primary" 
-                        size="sm"
-                        onClick={() => setShowHorariosModal(true)}
-                        className="px-3">
-                        <LuPlus className="me-1" size={16} />
-                        Nuevo
-                      </Button>
-                    </div>
-                  </div>
+                {/* Tab: Horarios y Canchas (unificada) — Diseño mejorado */}
+                <Tab.Pane eventKey="horarios-canchas">
+                  <div className="hc-tab">
+                    {/* Header con CTA principal */}
+                    <header className="hc-header">
+                      <div className="hc-header-top">
+                        <h2 className="hc-title">
+                          <span className="hc-title-icon"><LuClock size={22} /></span>
+                          Horarios y Canchas
+                        </h2>
+                        <div className="hc-actions">
+                          <button type="button" className="hc-btn-secondary" onClick={handleMostrarTablaDistribucion} disabled={horarios.length === 0}>
+                            <LuInfo size={16} /> Tabla Horarios
+                          </button>
+                          <button type="button" className="hc-btn-secondary" onClick={handleMostrarTablaDistribucionCanchas} disabled={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0}>
+                            <LuInfo size={16} /> Tabla Canchas
+                          </button>
+                          <button type="button" className="hc-btn-secondary" onClick={() => setShowHorariosModal(true)}>
+                            <LuPlus size={16} /> Nuevo Horario
+                          </button>
+                          <Button
+                            variant="success"
+                            className="hc-cta-primary"
+                            onClick={handleEjecutarRedistribucionCompleta}
+                            disabled={loading || horarios.length === 0 || canchas.filter(c => c.estado).length === 0 || selectedTorneoIdsHorarios.length === 0}
+                          >
+                            {loading ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                                Redistribuyendo...
+                              </>
+                            ) : (
+                              <>
+                                <LuSettings size={18} />
+                                Ejecutar Redistribución
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="hc-desc">
+                        Asigna horarios y canchas a los encuentros de los torneos seleccionados. Un solo clic aplica primero horarios y luego canchas.
+                      </p>
+                    </header>
 
-                  <Alert variant="info" className="mb-3 py-2">
-                    <div className="d-flex align-items-center">
-                      <LuClock className="me-2" size={16} />
-                      <small className="mb-0">
-                        <strong>Horarios:</strong> Define tiempos específicos para cada encuentro con asignación automática y distribución equitativa.
-                      </small>
-                    </div>
-                  </Alert>
+                    {/* Torneos a incluir */}
+                    {torneosParaHorarios.length > 0 && (
+                      <div className="hc-block">
+                        <div className="hc-block-header">Torneos a incluir</div>
+                        <div className="hc-block-body">
+                          <div className="hc-chips">
+                            {torneosParaHorarios.map((t) => (
+                              <label key={t.id} className={`hc-chip ${selectedTorneoIdsHorarios.includes(t.id) ? 'active' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  className="visually-hidden"
+                                  checked={selectedTorneoIdsHorarios.includes(t.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedTorneoIdsHorarios((prev) => (prev.includes(t.id) ? prev : [...prev, t.id]))
+                                    } else {
+                                      setSelectedTorneoIdsHorarios((prev) => prev.filter((id) => id !== t.id))
+                                    }
+                                  }}
+                                />
+                                <span>{t.nombre || `Torneo ${t.id}`}</span>
+                                {t.id === torneoId && <span className="hc-chip-badge">actual</span>}
+                              </label>
+                            ))}
+                          </div>
+                          {selectedTorneoIdsHorarios.length === 0 && (
+                            <p className="hc-warning-text">Selecciona al menos un torneo para ejecutar la redistribución.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                  <Row>
-                    <Col md={8}>
-                      <Card>
-                        <CardHeader className="bg-light py-3">
-                          <h5 className="mb-0 fw-bold text-primary">
-                            <LuClock className="me-2" size={18} />Horarios Disponibles
-                          </h5>
-                        </CardHeader>
+                    {/* Opciones de redistribución */}
+                    <div className="hc-block">
+                      <div className="hc-block-header">Opciones de redistribución</div>
+                      <div className="hc-block-body">
+                        <div className="hc-options">
+                          <div className="hc-option-item">
+                            <div className="form-check">
+                              <input className="form-check-input" type="checkbox" id="reiniciarAsignacionesUnificado" checked={reiniciarAsignaciones} onChange={(e) => setReiniciarAsignaciones(e.target.checked)} />
+                              <label className="form-check-label" htmlFor="reiniciarAsignacionesUnificado">Reiniciar horarios antes</label>
+                            </div>
+                            <small className="text-muted">Quita horarios asignados y vuelve a distribuir</small>
+                          </div>
+                          <div className="hc-option-item">
+                            <div className="form-check">
+                              <input className="form-check-input" type="checkbox" id="reiniciarAsignacionesCanchasUnificado" checked={reiniciarAsignacionesCanchas} onChange={(e) => setReiniciarAsignacionesCanchas(e.target.checked)} />
+                              <label className="form-check-label" htmlFor="reiniciarAsignacionesCanchasUnificado">Reiniciar canchas antes</label>
+                            </div>
+                            <small className="text-muted">Quita canchas asignadas y vuelve a distribuir</small>
+                          </div>
+                          <div className="hc-option-item">
+                            <label htmlFor="canchaPrioritariaUnificado">Cancha prioritaria</label>
+                            <FormSelect id="canchaPrioritariaUnificado" value={canchaPrioritariaId || ''} onChange={(e) => setCanchaPrioritariaId(e.target.value ? parseInt(e.target.value) : null)}>
+                              <option value="">Distribución equitativa</option>
+                              {canchas.filter(c => c.estado).map((cancha) => (
+                                <option key={cancha.id} value={cancha.id}>{cancha.nombre}</option>
+                              ))}
+                            </FormSelect>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Grid: Horarios | Canchas + Resumen */}
+                    <div className="hc-grid">
+                      <Card className="hc-horarios-card hc-block">
+                        <CardHeader><LuClock size={18} /> Horarios disponibles</CardHeader>
                         <CardBody>
                           {horarios.length === 0 ? (
-                            <div className="text-center py-5">
-                              <LuClock className="fs-1 text-muted mb-4" style={{fontSize: '4rem'}} />
-                              <h4 className="mb-3">No hay horarios configurados</h4>
-                              <p className="text-muted fs-5 mb-4">Crea horarios para poder asignarlos a los encuentros</p>
-                              <Button 
-                                variant="primary" 
-                                size="lg"
-                                onClick={() => setShowHorariosModal(true)}
-                                className="px-5">
-                                <LuPlus className="me-2" size={20} />
-                                Crear Primer Horario
+                            <div className="hc-empty">
+                              <div className="hc-empty-icon"><LuClock size={40} /></div>
+                              <div className="hc-empty-title">No hay horarios configurados</div>
+                              <p className="hc-empty-text">Crea horarios para asignarlos a los encuentros</p>
+                              <Button variant="primary" onClick={() => setShowHorariosModal(true)} className="rounded-2">
+                                <LuPlus className="me-2" /> Crear primer horario
                               </Button>
                             </div>
                           ) : (
-                            <div className="d-flex flex-column gap-4">
+                            <>
                               {DIAS_HORARIOS.map(dia => {
-                                const horariosPorDia = horarios.filter(
-                                  horario => normalizarDiaHorario(horario.dia_semana) === dia.value
-                                )
-                                
+                                const horariosPorDia = horarios.filter(horario => normalizarDiaHorario(horario.dia_semana) === dia.value)
                                 return (
-                                  <div key={dia.value}>
-                                    <div className="d-flex align-items-center justify-content-between mb-2">
-                                      <div className="d-flex align-items-center gap-2">
-                                        <Badge bg={dia.badge} pill className="text-uppercase">
-                                          {dia.label}
-                                        </Badge>
-                                        <small className="text-muted">
-                                          {horariosPorDia.length === 0
-                                            ? 'Sin horarios configurados'
-                                            : `${horariosPorDia.length} horario${horariosPorDia.length > 1 ? 's' : ''}`}
-                                        </small>
-                                      </div>
-                                      {horariosPorDia.length > 0 && (
-                                        <small className="text-muted">
-                                          Ordenados por hora y prioridad
-                                        </small>
-                                      )}
+                                  <div key={dia.value} className="hc-dia-section">
+                                    <div className="hc-dia-head">
+                                      <Badge bg={dia.badge} pill className="hc-dia-badge">{dia.label}</Badge>
+                                      <span className="hc-dia-count">{horariosPorDia.length === 0 ? 'Sin horarios' : `${horariosPorDia.length} horario${horariosPorDia.length > 1 ? 's' : ''}`}</span>
                                     </div>
-                                    
                                     {horariosPorDia.length === 0 ? (
-                                      <div className="py-2 text-muted fst-italic">
-                                        No hay horarios configurados para este día.
-                                      </div>
+                                      <p className="text-muted fst-italic small mb-0">No hay horarios para este día.</p>
                                     ) : (
-                                      <div className="row g-3">
+                                      <Row className="g-2 g-md-3">
                                         {horariosPorDia.map(horario => (
-                                          <div key={horario.id} className="col-md-6 col-lg-4">
-                                            <div className="card h-100 border-0 shadow-sm">
-                                              <div className="card-body p-3">
-                                                <div className="d-flex align-items-center justify-content-between mb-2">
-                                                  <div 
-                                                    className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                                    style={{
-                                                      width: '40px', 
-                                                      height: '40px', 
-                                                      backgroundColor: horario.color || '#007bff',
-                                                      fontSize: '14px'
-                                                    }}
-                                                  >
-                                                    {horario.orden}
-                                                  </div>
-                                                  <div className="d-flex gap-1">
-                                                    <Button 
-                                                      variant="outline-primary" 
-                                                      size="sm"
-                                                      onClick={() => handleEditHorario(horario)}
-                                                      title="Editar horario"
-                                                      className="p-2">
-                                                      <LuSettings size={14} />
-                                                    </Button>
-                                                    <Button 
-                                                      variant="outline-danger" 
-                                                      size="sm"
-                                                      onClick={() => handleDeleteHorario(horario.id)}
-                                                      title="Eliminar horario"
-                                                      className="p-2">
-                                                      <LuTrash size={14} />
-                                                    </Button>
-                                                  </div>
+                                          <Col key={horario.id} xs={12} sm={6} lg={4}>
+                                            <div className="hc-horario-item">
+                                              <div className="hc-horario-top">
+                                                <span className="hc-horario-num" style={{ backgroundColor: horario.color || '#0d6efd' }}>{horario.orden}</span>
+                                                <div className="hc-horario-actions">
+                                                  <Button variant="outline-primary" size="sm" onClick={() => handleEditHorario(horario)} title="Editar"><LuSettings size={14} /></Button>
+                                                  <Button variant="outline-danger" size="sm" onClick={() => handleDeleteHorario(horario.id)} title="Eliminar"><LuTrash size={14} /></Button>
                                                 </div>
-                                                <h5 className="mb-1 fw-bold text-primary">{horario.hora_inicio}</h5>
-                                                <small className="text-muted d-block">
-                                                  Orden: {horario.orden}
-                                                </small>
-                                                <small className="text-muted">
-                                                  Día: {obtenerEtiquetaDia(horario.dia_semana)}
-                                                </small>
                                               </div>
+                                              <div className="hc-horario-time">{horario.hora_inicio}</div>
+                                              <div className="hc-horario-meta">{obtenerEtiquetaDia(horario.dia_semana)}</div>
                                             </div>
-                                          </div>
+                                          </Col>
                                         ))}
-                                      </div>
+                                      </Row>
                                     )}
                                   </div>
                                 )
                               })}
-                            </div>
+                            </>
                           )}
                         </CardBody>
                       </Card>
-                    </Col>
-                  </Row>
-                    </>
-                  
-                </Tab.Pane>
 
-                {/* Tab: Asignar Canchas */}
-                <Tab.Pane eventKey="canchas">
-                  <>
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <h4 className="fw-bold text-primary mb-0">🏟️ Paso 3: Asignación Automática de Canchas</h4>
-                      <div className="d-flex gap-2">
-                      <Button 
-                        variant="info" 
-                        size="sm"
-                        onClick={handleMostrarTablaDistribucionCanchas}
-                        disabled={encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length === 0}
-                        className="px-3">
-                        <LuInfo className="me-1" size={16} />
-                        Ver Distribución
-                      </Button>
-                      <Button 
-                        variant="success" 
-                        size="sm"
-                        onClick={handleEjecutarAsignacionCanchas}
-                        disabled={loading || canchas.filter(c => c.estado).length === 0}
-                        className="px-3">
-                        {loading ? (
-                          <>
-                            <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                            Ejecutando...
-                          </>
-                        ) : (
-                          <>
-                            <LuSettings className="me-1" size={16} />
-                            Ejecutar Asignación
-                          </>
-                        )}
-                      </Button>
+                      <div className="hc-sidebar">
+                        <Card className="hc-canchas-card hc-block">
+                          <CardHeader>Canchas disponibles</CardHeader>
+                          <CardBody>
+                            {canchas.filter(c => c.estado).length === 0 ? (
+                              <p className="text-muted small mb-0">{torneo?.categoria ? `No hay canchas activas para ${torneo.categoria.nombre}` : 'No hay canchas activas'}</p>
+                            ) : (
+                              <>
+                                {canchas.filter(c => c.estado).map(cancha => (
+                                  <div key={cancha.id} className="hc-cancha-item">
+                                    <div className="hc-cancha-avatar"><LuCheck size={18} /></div>
+                                    <div className="hc-cancha-info">
+                                      <strong>{cancha.nombre}</strong>
+                                      {cancha.ubicacion && <small>{cancha.ubicacion}</small>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+                          </CardBody>
+                        </Card>
+                        <Card className="hc-resumen-card hc-block">
+                          <CardHeader>Resumen</CardHeader>
+                          <CardBody>
+                            <div className="hc-stats">
+                              <div className="hc-stat">
+                                <span className="hc-stat-value primary">{encuentros.length}</span>
+                                <span className="hc-stat-label">Encuentros</span>
+                              </div>
+                              <div className="hc-stat">
+                                <span className="hc-stat-value success">{encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length}</span>
+                                <span className="hc-stat-label">Con cancha</span>
+                              </div>
+                              <div className="hc-stat">
+                                <span className="hc-stat-value warning">{encuentros.filter(e => !e.cancha || e.cancha.trim() === '').length}</span>
+                                <span className="hc-stat-label">Sin cancha</span>
+                              </div>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      </div>
                     </div>
                   </div>
-
-                  <Alert variant="info" className="mb-3 py-2">
-                    <div className="d-flex align-items-center">
-                      <LuInfo className="me-2" size={16} />
-                      <small className="mb-0">
-                        <strong>Asignación Automática:</strong> Opcionalmente selecciona una cancha prioritaria que recibirá los primeros partidos hasta completar su capacidad (número de horarios disponibles). Si no seleccionas una cancha prioritaria, los partidos se distribuirán equitativamente entre todas las canchas disponibles.
-                      </small>
-                    </div>
-                  </Alert>
-
-                  <Row>
-                    <Col md={8}>
-                      <Card>
-                        <CardHeader className="bg-light py-3">
-                          <h5 className="mb-0 fw-bold text-primary">
-                            ⚙️ Configuración de Asignación
-                          </h5>
-                        </CardHeader>
-                        <CardBody>
-                          <div className="row g-3">
-                            <div className="col-md-12 mb-3">
-                              <label htmlFor="canchaPrioritaria" className="form-label fw-semibold">
-                                🏆 Cancha Prioritaria <span className="text-muted">(Opcional)</span>
-                              </label>
-                              <FormSelect
-                                id="canchaPrioritaria"
-                                value={canchaPrioritariaId || ''}
-                                onChange={(e) => setCanchaPrioritariaId(e.target.value ? parseInt(e.target.value) : null)}
-                              >
-                                <option value="">Sin cancha prioritaria (distribución equitativa)</option>
-                                {canchas.filter(c => c.estado).map((cancha) => (
-                                  <option key={cancha.id} value={cancha.id}>
-                                    {cancha.nombre} {cancha.ubicacion && `- ${cancha.ubicacion}`}
-                                  </option>
-                                ))}
-                              </FormSelect>
-                              <small className="text-muted d-block mt-1">
-                                Si seleccionas una cancha prioritaria, recibirá los primeros partidos hasta completar su capacidad (número de horarios disponibles). Si no seleccionas ninguna, los partidos se distribuirán equitativamente entre todas las canchas disponibles.
-                              </small>
-                            </div>
-                            <div className="col-md-6">
-                              <div className="form-check">
-                                <input 
-                                  className="form-check-input" 
-                                  type="checkbox" 
-                                  id="reiniciarAsignacionesCanchas"
-                                  checked={reiniciarAsignacionesCanchas}
-                                  onChange={(e) => setReiniciarAsignacionesCanchas(e.target.checked)}
-                                />
-                                <label className="form-check-label" htmlFor="reiniciarAsignacionesCanchas">
-                                  <small className="fw-semibold">Reiniciar todas las asignaciones</small>
-                                  <br />
-                                  <small className="text-muted">Elimina las canchas asignadas antes de asignar nuevas</small>
-                                </label>
-                              </div>
-                            </div>
-                            <div className="col-md-6">
-                              <div className="form-check">
-                                <input 
-                                  className="form-check-input" 
-                                  type="checkbox" 
-                                  id="soloEncuentrosSinCancha"
-                                  checked={soloEncuentrosSinCancha}
-                                  onChange={(e) => setSoloEncuentrosSinCancha(e.target.checked)}
-                                />
-                                <label className="form-check-label" htmlFor="soloEncuentrosSinCancha">
-                                  <small className="fw-semibold">Solo encuentros sin cancha</small>
-                                  <br />
-                                  <small className="text-muted">Asigna canchas solo a encuentros que no tienen cancha asignada</small>
-                                </label>
-                              </div>
-                            </div>
-                          </div>
-                        </CardBody>
-                      </Card>
-                    </Col>
-                    <Col md={4}>
-                      <Card>
-                        <CardHeader className="bg-light py-3">
-                          <h6 className="mb-0">📊 Canchas Disponibles</h6>
-                          {torneo?.categoria && (
-                            <small className="text-muted">Categoría: {torneo.categoria.nombre}</small>
-                          )}
-                        </CardHeader>
-                        <CardBody>
-                          {canchas.filter(c => c.estado).length === 0 ? (
-                            <div className="text-center py-3">
-                              <p className="text-muted mb-0">
-                                {torneo?.categoria 
-                                  ? `No hay canchas activas para la categoría ${torneo.categoria.nombre}`
-                                  : 'No hay canchas activas'}
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="d-grid gap-2">
-                              {canchas.filter(c => c.estado).map(cancha => (
-                                <div key={cancha.id} className="d-flex align-items-center gap-2 p-2 bg-light rounded">
-                                  <div 
-                                    className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                    style={{
-                                      width: '32px', 
-                                      height: '32px', 
-                                      backgroundColor: '#28a745',
-                                      fontSize: '12px'
-                                    }}
-                                  >
-                                    ✓
-                                  </div>
-                                  <div className="flex-grow-1">
-                                    <strong>{cancha.nombre}</strong>
-                                    {cancha.ubicacion && (
-                                      <small className="d-block text-muted">{cancha.ubicacion}</small>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </CardBody>
-                      </Card>
-                    </Col>
-                  </Row>
-
-                  <Row className="mt-3">
-                    <Col>
-                      <Card>
-                        <CardHeader className="bg-light py-3">
-                          <h6 className="mb-0">📋 Resumen de Encuentros</h6>
-                        </CardHeader>
-                        <CardBody>
-                          <div className="row text-center">
-                            <Col md={4}>
-                              <div className="p-3 bg-light rounded">
-                                <h4 className="mb-0 text-primary">{encuentros.length}</h4>
-                                <small className="text-muted">Total Encuentros</small>
-                              </div>
-                            </Col>
-                            <Col md={4}>
-                              <div className="p-3 bg-light rounded">
-                                <h4 className="mb-0 text-success">
-                                  {encuentros.filter(e => e.cancha && e.cancha.trim() !== '').length}
-                                </h4>
-                                <small className="text-muted">Con Cancha Asignada</small>
-                              </div>
-                            </Col>
-                            <Col md={4}>
-                              <div className="p-3 bg-light rounded">
-                                <h4 className="mb-0 text-warning">
-                                  {encuentros.filter(e => !e.cancha || e.cancha.trim() === '').length}
-                                </h4>
-                                <small className="text-muted">Sin Cancha Asignada</small>
-                              </div>
-                            </Col>
-                          </div>
-                        </CardBody>
-                      </Card>
-                    </Col>
-                  </Row>
-                    </>
-                  
                 </Tab.Pane>
 
                 {/* Tab: Sanciones */}
@@ -1935,8 +1810,8 @@ const TorneoDetailPage = () => {
                                           <span className="fw-semibold">{item.equipo.nombre}</span>
                                         </div>
                                         <div className="d-flex gap-2">
-                                          <Badge bg="warning" className="text-dark">{item.amarillas} 🟨</Badge>
-                                          <Badge bg="danger">{item.rojas} 🟥</Badge>
+                                          <Badge bg="warning" className="text-dark">{Number(item.amarillas) || 0} 🟨</Badge>
+                                          <Badge bg="danger">{Number(item.rojas) || 0} 🟥</Badge>
                                         </div>
                                       </div>
                                     ))}
@@ -2507,11 +2382,11 @@ const TorneoDetailPage = () => {
                   Redistribución Automática de Horarios
                 </h6>
                 <small className="text-muted d-block mt-1">
-                  Ejecuta una redistribución automática para lograr una distribución equitativa de horarios entre todos los equipos
+                  Ejecuta redistribución de horarios y canchas para una distribución equitativa
                 </small>
                 {tablaDistribucion && tablaDistribucion.estadisticas.equiposConDistribucionEquitativa < tablaDistribucion.estadisticas.totalEquipos && (
                   <small className="text-warning d-block mt-1">
-                    ⚠️ Se detectaron desequilibrios. Haz clic en "Ejecutar Redistribución" para aplicar la redistribución automática.
+                    ⚠️ Se detectaron desequilibrios. Haz clic en &quot;Ejecutar Redistribución&quot; para aplicar horarios y canchas.
                   </small>
                 )}
                 {tablaDistribucion && tablaDistribucion.estadisticas.equiposConDistribucionEquitativa === tablaDistribucion.estadisticas.totalEquipos && (
@@ -2523,8 +2398,8 @@ const TorneoDetailPage = () => {
               <Button 
                 variant="success" 
                 size="sm"
-                onClick={handleEjecutarAsignacionAutomatica}
-                disabled={loading}
+                onClick={handleEjecutarRedistribucionCompleta}
+                disabled={loading || selectedTorneoIdsHorarios.length === 0}
                 className="px-3">
                 {loading ? (
                   <>
@@ -2597,21 +2472,21 @@ const TorneoDetailPage = () => {
                       </thead>
                       <tbody>
                         {tablaDistribucion.equipos.map((equipo: any) => (
-                          <tr key={equipo.id}>
-                            <td className="fw-bold">{equipo.nombre}</td>
+                          <tr key={`${equipo.id}-${equipo.torneoId ?? equipo.id}`}>
+                            <td className="fw-bold">{equipo.displayName ?? equipo.nombre}</td>
                             {equipo.distribucion.map((dist: any) => (
                               <td key={dist.horario_id} className="text-center">
                                 <Badge 
-                                  bg={dist.veces >= tablaDistribucion.estadisticas.vecesMinimas && 
-                                      dist.veces <= tablaDistribucion.estadisticas.vecesMaximas ? 
+                                  bg={(Number(dist.veces) || 0) >= (Number(tablaDistribucion.estadisticas.vecesMinimas) || 0) && 
+                                      (Number(dist.veces) || 0) <= (Number(tablaDistribucion.estadisticas.vecesMaximas) || 0) ? 
                                       "success" : "warning"}
                                 >
-                                  {dist.veces}
+                                  {Number(dist.veces) || 0}
                                 </Badge>
                               </td>
                             ))}
                             <td className="text-center">
-                              <Badge bg="primary">{equipo.totalEncuentros}</Badge>
+                              <Badge bg="primary">{Number(equipo.totalEncuentros) || 0}</Badge>
                             </td>
                           </tr>
                         ))}
@@ -2626,7 +2501,7 @@ const TorneoDetailPage = () => {
                         <small className="text-muted">
                           <strong>Equipos con distribución equitativa:</strong>{' '}
                           <Badge bg={tablaDistribucion.estadisticas.equiposConDistribucionEquitativa === tablaDistribucion.estadisticas.totalEquipos ? "success" : "warning"}>
-                            {tablaDistribucion.estadisticas.equiposConDistribucionEquitativa} / {tablaDistribucion.estadisticas.totalEquipos}
+                            {Number(tablaDistribucion.estadisticas.equiposConDistribucionEquitativa) || 0} / {Number(tablaDistribucion.estadisticas.totalEquipos) || 0}
                           </Badge>
                         </small>
                       </div>
@@ -2691,21 +2566,21 @@ const TorneoDetailPage = () => {
                       </thead>
                       <tbody>
                         {tablaDistribucionCanchas.equipos.map((equipo: any) => (
-                          <tr key={equipo.id}>
-                            <td className="fw-bold">{equipo.nombre}</td>
+                          <tr key={`${equipo.id}-${equipo.torneoId ?? equipo.id}`}>
+                            <td className="fw-bold">{equipo.displayName ?? equipo.nombre}</td>
                             {equipo.distribucion.map((dist: any) => (
                               <td key={dist.cancha} className="text-center">
                                 <Badge 
-                                  bg={dist.veces >= tablaDistribucionCanchas.estadisticas.vecesMinimas && 
-                                      dist.veces <= tablaDistribucionCanchas.estadisticas.vecesMaximas ? 
+                                  bg={(Number(dist.veces) || 0) >= (Number(tablaDistribucionCanchas.estadisticas.vecesMinimas) || 0) && 
+                                      (Number(dist.veces) || 0) <= (Number(tablaDistribucionCanchas.estadisticas.vecesMaximas) || 0) ? 
                                       "success" : "warning"}
                                 >
-                                  {dist.veces}
+                                  {Number(dist.veces) || 0}
                                 </Badge>
                               </td>
                             ))}
                             <td className="text-center">
-                              <Badge bg="primary">{equipo.totalEncuentros}</Badge>
+                              <Badge bg="primary">{Number(equipo.totalEncuentros) || 0}</Badge>
                             </td>
                           </tr>
                         ))}

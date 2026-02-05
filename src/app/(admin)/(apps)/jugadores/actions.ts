@@ -34,12 +34,24 @@ export type JugadorActionResult = {
 // ===== FUNCIONES AUXILIARES =====
 
 /**
+ * Sanitiza la cédula para usarla en public_id de Cloudinary y nombres de archivo.
+ * Cloudinary permite letras, números, guiones bajos y guiones.
+ */
+function sanitizeCedulaForPublicId(cedula: string): string {
+  return cedula.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+/**
  * Guarda una imagen usando Cloudinary (preferido) o almacenamiento local (fallback)
  * @param file Archivo de imagen
- * @param jugadorId ID del jugador
+ * @param cedula Cédula del jugador (se usa como nombre/identificador de la imagen)
  * @returns URL de la imagen (Cloudinary o ruta local)
  */
-async function saveImage(file: File, jugadorId: number): Promise<string> {
+async function saveImage(file: File, cedula: string): Promise<string> {
+  const cedulaSanitized = sanitizeCedulaForPublicId(cedula)
+  if (!cedulaSanitized) {
+    throw new Error('La cédula no puede estar vacía para guardar la foto')
+  }
   try {
     // SIEMPRE intentar usar Cloudinary primero
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME
@@ -55,11 +67,9 @@ async function saveImage(file: File, jugadorId: number): Promise<string> {
       )
     }
     
-    // Subir a Cloudinary
-    // Asegurar que jugadorId sea string para el public_id
-    const jugadorIdStr = typeof jugadorId === 'number' ? jugadorId.toString() : jugadorId
-    const publicId = `jugador_${jugadorIdStr}`
-    console.log(`📤 Subiendo imagen a Cloudinary para jugador ${jugadorIdStr}...`)
+    // Subir a Cloudinary usando la cédula como identificador
+    const publicId = `jugador_${cedulaSanitized}`
+    console.log(`📤 Subiendo imagen a Cloudinary para jugador (cédula: ${cedulaSanitized})...`)
     console.log(`   Public ID: ${publicId}`)
     const cloudinaryUrl = await uploadFileToCloudinary(file, publicId, 'jugadores')
     console.log(`✅ Imagen subida a Cloudinary: ${cloudinaryUrl}`)
@@ -73,7 +83,7 @@ async function saveImage(file: File, jugadorId: number): Promise<string> {
     }
 
     const timestamp = Date.now()
-    const fileName = `jugador_${jugadorId}_${timestamp}.jpg`
+    const fileName = `jugador_${cedulaSanitized}_${timestamp}.jpg`
     const filePath = join(uploadDir, fileName)
     
     const bytes = await file.arrayBuffer()
@@ -480,7 +490,7 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
       if (foto && foto.size > 0) {
         try {
           const jugadorIdNum = typeof jugador_existente_id === 'string' ? parseInt(jugador_existente_id) : jugador_existente_id
-          const fotoPath = await saveImage(foto, jugadorIdNum)
+          const fotoPath = await saveImage(foto, cedulaJugador)
           await jugadorQueries.update(jugadorIdNum, { foto: fotoPath })
         } catch (error) {
           console.error('Error al guardar la foto:', error)
@@ -756,7 +766,7 @@ export async function createJugador(formData: FormData): Promise<JugadorActionRe
     // Si hay una foto, guardarla y actualizar el jugador
     if (foto && foto.size > 0) {
       try {
-        const fotoPath = await saveImage(foto, parseInt(nuevoJugador.id))
+        const fotoPath = await saveImage(foto, cedula)
         await jugadorQueries.update(parseInt(nuevoJugador.id), { foto: fotoPath })
       } catch (error) {
         console.error('Error al guardar la foto:', error)
@@ -1004,8 +1014,7 @@ export async function updateJugador(id: number | string, formData: FormData, rel
     // Si hay una nueva foto, guardarla y eliminar la anterior
     if (foto && foto.size > 0) {
       try {
-        const jugadorIdNum = typeof id === 'string' ? parseInt(id) : id
-        const fotoPath = await saveImage(foto, jugadorIdNum)
+        const fotoPath = await saveImage(foto, cedula)
         jugadorData.foto = fotoPath
         
         // Eliminar la foto anterior solo si es diferente

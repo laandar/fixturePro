@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Card, CardBody, CardHeader, Row, Col, Badge, Button, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect } from 'react-bootstrap'
 import { LuCalendar, LuMapPin, LuUser, LuEye } from 'react-icons/lu'
+import { formatFechaProgramada } from '@/helpers/date'
 import type { EncuentroWithRelations, EquipoWithRelations } from '@/db/types'
 
 interface FixtureDisplayProps {
@@ -174,11 +175,7 @@ export default function FixtureDisplay({ encuentros, equiposDescansan, equiposPa
                               <LuCalendar className="text-muted" />
                               <small className="text-muted">
                                 {encuentro.fecha_programada ? 
-                                  new Date(encuentro.fecha_programada).toLocaleDateString('es-ES', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric'
-                                  }) : 'Por definir'}
+                                  formatFechaProgramada(encuentro.fecha_programada) : 'Por definir'}
                               </small>
                             </div>
                           </div>

@@ -224,7 +224,7 @@ export async function confirmarJornada(
         equipo_visitante_id: encuentro.equipoVisitante,
         horario_id: (encuentro as any).horarioId || null, // Incluir horario asignado
         jornada: jornada.numero,
-        fecha_programada: encuentro.fecha,
+        fecha_programada: typeof encuentro.fecha === 'string' ? encuentro.fecha : (encuentro.fecha ? `${encuentro.fecha.getFullYear()}-${String(encuentro.fecha.getMonth() + 1).padStart(2, '0')}-${String(encuentro.fecha.getDate()).padStart(2, '0')}` : null),
         estado: 'programado',
         cancha: encuentro.cancha,
         arbitro: encuentro.arbitro,
@@ -371,7 +371,7 @@ export async function confirmarRegeneracionJornada(
         equipo_visitante_id: encuentro.equipoVisitante,
         horario_id: (encuentro as any).horarioId || null, // Incluir horario asignado
         jornada: jornada.numero,
-        fecha_programada: encuentro.fecha,
+        fecha_programada: typeof encuentro.fecha === 'string' ? encuentro.fecha : (encuentro.fecha ? `${encuentro.fecha.getFullYear()}-${String(encuentro.fecha.getMonth() + 1).padStart(2, '0')}-${String(encuentro.fecha.getDate()).padStart(2, '0')}` : null),
         estado: 'programado',
         cancha: encuentro.cancha,
         arbitro: encuentro.arbitro,

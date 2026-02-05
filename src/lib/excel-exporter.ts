@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { formatFechaProgramada } from '@/helpers/date'
 import type { TorneoWithRelations, EncuentroWithRelations } from '@/db/types'
 
 interface ExcelExportOptions {
@@ -72,7 +73,7 @@ export const exportFixtureToExcel = async ({
     // Agregar encuentros
     encuentrosJornada.forEach(encuentro => {
       const fechaEncuentro = encuentro.fecha_programada ? 
-        new Date(encuentro.fecha_programada).toLocaleDateString('es-ES') : ''
+        formatFechaProgramada(encuentro.fecha_programada) : ''
       const horarioEncuentro = encuentro.horario ? encuentro.horario.hora_inicio : ''
       
       jornadaSheet.addRow([

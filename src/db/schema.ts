@@ -135,10 +135,10 @@ export const equiposTorneo = pgTable('equipos_torneo', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// Tabla de horarios
+// Tabla de horarios (por categoría: todos los torneos de la misma categoría comparten horarios)
 export const horarios = pgTable('horarios', {
   id: serial('id').primaryKey(),
-  torneo_id: integer('torneo_id').references(() => torneos.id, { onDelete: 'cascade' }).notNull(),
+  categoria_id: integer('categoria_id').references(() => categorias.id, { onDelete: 'cascade' }).notNull(),
   hora_inicio: text('hora_inicio').notNull(), // Formato HH:MM (24h)
   dia_semana: text('dia_semana', { enum: ['viernes', 'sabado', 'domingo'] }).default('viernes').notNull(),
   color: text('color').default('#007bff'), // Color para identificar el horario
@@ -154,7 +154,7 @@ export const encuentros = pgTable('encuentros', {
   equipo_local_id: integer('equipo_local_id').references(() => equipos.id).notNull(),
   equipo_visitante_id: integer('equipo_visitante_id').references(() => equipos.id).notNull(),
   horario_id: integer('horario_id').references(() => horarios.id), // Referencia al horario asignado
-  fecha_programada: timestamp('fecha_programada'),
+  fecha_programada: date('fecha_programada'),
   fecha_jugada: timestamp('fecha_jugada'),
   cancha: text('cancha'),
   arbitro: text('arbitro'),
@@ -208,6 +208,7 @@ export const canchasCategorias = pgTable('canchas_categorias', {
 export const categoriasRelations = relations(categorias, ({ many }) => ({
   equiposCategoria: many(equipoCategoria),
   canchasCategorias: many(canchasCategorias),
+  horarios: many(horarios),
 }));
 
 export const entrenadoresRelations = relations(entrenadores, ({ many }) => ({
@@ -352,9 +353,9 @@ export const goles = pgTable('goles', {
 
 // Relaciones para horarios
 export const horariosRelations = relations(horarios, ({ one, many }) => ({
-  torneo: one(torneos, {
-    fields: [horarios.torneo_id],
-    references: [torneos.id],
+  categoria: one(categorias, {
+    fields: [horarios.categoria_id],
+    references: [categorias.id],
   }),
   encuentros: many(encuentros),
 }));

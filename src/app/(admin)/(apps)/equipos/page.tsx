@@ -190,7 +190,9 @@ const Page = () => {
 
   const [globalFilter, setGlobalFilter] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([
+    { id: 'estado', value: 'true' } // Mostrar solo activos por defecto
+  ])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [equipoToDelete, setEquipoToDelete] = useState<EquipoWithRelations | null>(null)
@@ -317,8 +319,18 @@ const Page = () => {
         estado: formData.get('estado')
       })
       
-      // Enviar actualización al servidor
-      await updateEquipo(editingEquipo.id, formData)
+      // Enviar actualización al servidor (retorna resultado en vez de lanzar para JUGADORES_AFECTADOS)
+      const result = await updateEquipo(editingEquipo.id, formData)
+      
+      // El servidor retorna { success: false, code: 'JUGADORES_AFECTADOS', data } cuando hay jugadores
+      if (result && result.success === false && result.code === 'JUGADORES_AFECTADOS') {
+        const jugadoresData = result.data.jugadoresAfectados || result.data
+        setJugadoresAfectados(jugadoresData)
+        setCategoriaMigracionGlobal(null)
+        setFormDataPendiente(formData)
+        setShowMigracionModal(true)
+        return
+      }
       
       toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Equipo actualizado exitosamente', life: 5000 })
       setEditSelectedCategorias([]) // Limpiar selección
@@ -326,49 +338,18 @@ const Page = () => {
       setEditingEquipo(null)
       
       // Actualizar el equipo en el estado local para mantener la paginación
-      // Obtener los datos actualizados del equipo desde el servidor
       const updatedEquipo = await getEquipoByIdWithRelations(editingEquipo.id)
       if (updatedEquipo) {
         setData(prev => prev.map(equipo => 
           equipo.id === editingEquipo.id ? (updatedEquipo as EquipoWithRelations) : equipo
         ))
       } else {
-        // Si no se puede obtener el equipo actualizado, recargar todos los datos
         await loadData()
       }
       
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Error al actualizar equipo'
-      
-      // Verificar si el error contiene información de jugadores afectados
-      if (errorMessage.startsWith('JUGADORES_AFECTADOS:')) {
-        try {
-          const errorData = JSON.parse(errorMessage.replace('JUGADORES_AFECTADOS:', ''))
-          
-          // El nuevo formato incluye más información, extraer solo el array de jugadores
-          const jugadoresData = errorData.jugadoresAfectados || errorData
-          
-          // Log detallado para debugging
-          console.log('Error detallado de jugadores afectados:', {
-            equipoId: errorData.equipoId,
-            equipoNombre: errorData.equipoNombre,
-            categoriasAEliminar: errorData.categoriasAEliminar,
-            totalJugadoresAfectados: errorData.totalJugadoresAfectados,
-            timestamp: errorData.timestamp,
-            contexto: errorData.contexto
-          })
-          
-          setJugadoresAfectados(jugadoresData)
-          setCategoriaMigracionGlobal(null) // Resetear categoría global
-          setFormDataPendiente(formData)
-          setShowMigracionModal(true)
-        } catch (parseError) {
-          console.error('Error al parsear jugadores afectados:', parseError, errorMessage)
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al procesar jugadores afectados', life: 5000 })
-        }
-      } else {
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
-      }
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 })
     }
   }
 
@@ -971,15 +952,21 @@ const Page = () => {
                   // Recargar datos
                   await loadData()
                 }
-              } catch (error) {
+              } catch (error: unknown) {
                 console.error('Error completo al migrar jugadores:', error)
-                const errorMessage = error instanceof Error ? error.message : 'Error al migrar jugadores'
+                let errorMessage = 'Error al migrar jugadores'
+                if (error instanceof Error) {
+                  errorMessage = error.message
+                } else if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+                  errorMessage = (error as { message: string }).message
+                }
                 
                 // Si el error es de jugadores afectados, no debería ocurrir aquí
-                // pero lo manejamos por si acaso
-                if (errorMessage.startsWith('JUGADORES_AFECTADOS:')) {
+                const jugadoresAfectadosPrefix = 'JUGADORES_AFECTADOS:'
+                if (errorMessage.includes(jugadoresAfectadosPrefix)) {
                   try {
-                    const errorData = JSON.parse(errorMessage.replace('JUGADORES_AFECTADOS:', ''))
+                    const jsonStart = errorMessage.indexOf(jugadoresAfectadosPrefix) + jugadoresAfectadosPrefix.length
+                    const errorData = JSON.parse(errorMessage.substring(jsonStart))
                     console.error('Error detallado:', {
                       equipoId: errorData.equipoId,
                       equipoNombre: errorData.equipoNombre,

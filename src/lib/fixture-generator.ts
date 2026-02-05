@@ -5,7 +5,8 @@ import type { EquipoWithRelations, TorneoWithRelations, EncuentroWithRelations }
 export interface FixtureOptions {
   permiteRevancha?: boolean
   diasEntreJornadas?: number
-  fechaInicio?: Date
+  /** Fecha de inicio: string "YYYY-MM-DD" (como viene de BD date) o Date */
+  fechaInicio?: Date | string
   canchas?: string[]
   arbitros?: string[]
   jornadaInicial?: number
@@ -295,12 +296,28 @@ export async function generateFixture(
   // Convertir resultado al formato esperado por el código existente
   const encuentros: any[] = []
   
+  // Parsear fecha de inicio sin zona horaria: "YYYY-MM-DD" o Date → (y, m, d) UTC
+  const parseFechaInicio = (): { y: number; m: number; d: number } => {
+    const fi = options.fechaInicio
+    if (typeof fi === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fi)) {
+      const [y, m, d] = fi.split('-').map(Number)
+      return { y, m: m - 1, d }
+    }
+    if (fi instanceof Date) {
+      return { y: fi.getUTCFullYear(), m: fi.getUTCMonth(), d: fi.getUTCDate() }
+    }
+    const hoy = new Date()
+    return { y: hoy.getUTCFullYear(), m: hoy.getUTCMonth(), d: hoy.getUTCDate() }
+  }
+  const diasEntreJornadas = options.diasEntreJornadas ?? 7
+
   result.jornadas.forEach(jornada => {
     jornada.encuentros.forEach(encuentro => {
-      // Calcular fecha del encuentro
-      const fechaBase = options.fechaInicio || new Date()
-      const fechaEncuentro = new Date(fechaBase)
-      fechaEncuentro.setDate(fechaBase.getDate() + (encuentro.jornada - 1) * (options.diasEntreJornadas || 7))
+      // Calcular fecha del encuentro (solo día, tipo date en BD) sin zona horaria
+      const { y, m, d } = parseFechaInicio()
+      const inicioUTC = new Date(Date.UTC(y, m, d, 0, 0, 0, 0))
+      inicioUTC.setUTCDate(inicioUTC.getUTCDate() + (encuentro.jornada - 1) * diasEntreJornadas)
+      const fechaProgramadaStr = `${inicioUTC.getUTCFullYear()}-${String(inicioUTC.getUTCMonth() + 1).padStart(2, '0')}-${String(inicioUTC.getUTCDate()).padStart(2, '0')}`
       
       // Seleccionar cancha y árbitro aleatoriamente
       const cancha = options.canchas?.[Math.floor(Math.random() * (options.canchas?.length || 1))] || 'Cancha Principal'
@@ -311,7 +328,7 @@ export async function generateFixture(
         equipo_local_id: encuentro.equipoLocal,
         equipo_visitante_id: encuentro.equipoVisitante,
         jornada: encuentro.jornada,
-        fecha_programada: fechaEncuentro,
+        fecha_programada: fechaProgramadaStr,
         estado: 'programado',
         cancha: cancha,
         arbitro: arbitro,
