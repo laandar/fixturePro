@@ -106,6 +106,7 @@ export const menuItems: MenuItemType[] = [
       { key: 'ingreso-jugadores', label: 'Ingreso de Jugadores', url: '/ingreso-jugadores', roles: ['admin'] },
       { key: 'entrenadores', label: 'Entrenadores', url: '/entrenadores', roles: ['admin'] },
       { key: 'torneos', label: 'Torneos', url: '/torneos', roles: ['admin'] },
+      { key: 'sorteo-grupos', label: 'Sorteo de Grupos', url: '/sorteo-grupos', roles: ['admin'] },
       { key: 'gestion-jugadores', label: 'Vocalías', url: '/gestion-jugadores', roles: ['admin', 'arbitro'] },
       { key: 'descargar-pdfs-vocalia', label: 'Descargar PDFs Vocalía', url: '/descargar-pdfs-vocalia', roles: ['admin', 'arbitro'] },
     ],

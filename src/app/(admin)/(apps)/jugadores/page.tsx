@@ -3126,8 +3126,7 @@ const Page = () => {
                   <thead className="table-light">
                     <tr>
                       <th>Cédula</th>
-                      <th>Nommulario
-                      bre</th>
+                      <th>Nombre</th>
                       <th>Categorías</th>
                     </tr>
                   </thead>
@@ -3242,9 +3241,10 @@ const Page = () => {
                 Puedes visualizar los jugadores en dos formatos:
               </p>
               <ul>
-                <li><strong>Vista de Tarjetas (Grid):</strong> Visualización en formato de tarjetas con imágenes</li>
-                <li><strong>Vista de Lista (Table):</strong> Visualización en formato de tabla para una vista más compacta</li>
+                <li><strong>Vista de Tarjetas (Grid):</strong> Visualización en formato de tarjetas con imágenes. Los botones superiores (ícono de cuadrícula o lista) permiten alternar entre vistas.</li>
+                <li><strong>Vista de Lista (Table):</strong> Visualización en formato de tabla para una vista más compacta con todas las columnas</li>
               </ul>
+              <p className="mb-0">En móvil, la vista de tarjetas se muestra como un carrusel deslizable.</p>
             </div>
 
             <div className="mb-4">
@@ -3272,9 +3272,11 @@ const Page = () => {
               <p className="mt-3"><strong>Filtros por Categoría y Equipo:</strong></p>
               <ul>
                 <li>Selecciona una categoría para filtrar los jugadores de esa categoría</li>
-                <li>Luego selecciona un equipo para ver solo los jugadores de ese equipo</li>
+                <li>Luego selecciona un equipo para ver solo los jugadores de ese equipo (el selector de equipos depende de la categoría seleccionada)</li>
                 <li>Los filtros son combinables y se aplican en tiempo real</li>
               </ul>
+              <p className="mt-3"><strong>Limpiar filtros:</strong> Cuando hay filtros activos, aparece el enlace <strong>&quot;Limpiar todos los filtros&quot;</strong> para restablecer la vista.</p>
+              <p className="mt-2 mb-0"><strong>En móvil:</strong> Los filtros están en un panel lateral que se abre con el botón de menú (ícono de hamburguesa).</p>
             </div>
 
             <div className="mb-4">
@@ -3293,27 +3295,24 @@ const Page = () => {
                     <li><strong>Liga:</strong> Liga a la que pertenece</li>
                     <li><strong>Fecha de Nacimiento:</strong> Fecha de nacimiento del jugador</li>
                     <li><strong>Sexo:</strong> Selecciona el sexo del jugador (Masculino, Femenino u Otro)</li>
-                    <li><strong>Teléfono:</strong> Número de contacto (opcional)</li>
-                    <li><strong>Provincia y Dirección:</strong> Datos de ubicación (opcional)</li>
-                    <li><strong>Observaciones:</strong> Notas adicionales sobre el jugador (opcional)</li>
-                    <li><strong>Estado:</strong> Selecciona si el jugador está "Activo" o "Inactivo" (por defecto: Activo)</li>
-                    <li><strong>Jugador Foráneo:</strong> Marca esta casilla si el jugador es foráneo</li>
+                    <li><strong>Número de Jugador:</strong> Número de camiseta (entre 1 y 999)</li>
+                    <li><strong>Situación Jugador:</strong> Selecciona <strong>PASE</strong> o <strong>PRÉSTAMO</strong> según corresponda</li>
+                    <li><strong>Teléfono, Provincia y Dirección:</strong> Datos de contacto y ubicación (opcional)</li>
+                    <li><strong>Equipo-Categoría:</strong> Obligatorio. Selecciona el equipo y categoría donde se asignará</li>
+                    <li><strong>Estado:</strong> Activo o Inactivo (por defecto: Activo)</li>
+                    <li><strong>Observaciones:</strong> Notas adicionales (opcional)</li>
+                    <li><strong>Jugador Foráneo:</strong> Marca si el jugador es foráneo</li>
                   </ul>
                 </li>
-                <li>Selecciona el <strong>Equipo-Categoría</strong> donde se asignará el jugador (obligatorio)</li>
-                <li>Ingresa el <strong>Número de Jugador</strong> (número de camiseta, entre 1 y 99)</li>
-                <li>Opcionalmente, captura una foto del jugador:
-                  <ul>
-                    <li>Haz clic en <strong>"Capturar Foto"</strong> para usar la cámara del dispositivo</li>
-                  </ul>
-                </li>
-                <li>Haz clic en <strong>"Guardar"</strong> para crear el jugador</li>
+                <li><strong>Opcional - Calificar al crear:</strong> Marca el checkbox &quot;Calificar jugador en temporada&quot; y selecciona la temporada para calificar automáticamente al guardar</li>
+                <li>Opcionalmente captura una foto con el botón <strong>&quot;Capturar Foto&quot;</strong></li>
+                <li>Haz clic en <strong>&quot;Guardar&quot;</strong> para crear el jugador</li>
               </ol>
               <Alert variant="warning" className="mt-2 mb-0">
                 <small><strong>Nota:</strong> Si la cédula ya existe, el sistema cargará los datos existentes y solo creará una nueva relación con el equipo-categoría seleccionado.</small>
               </Alert>
               <Alert variant="info" className="mt-2 mb-0">
-                <small><strong>Campos obligatorios:</strong> Cédula, Apellido y Nombre, Nacionalidad, Liga y Equipo-Categoría.</small>
+                <small><strong>Campos obligatorios:</strong> Cédula, Apellido y Nombre, Nacionalidad, Liga, Equipo-Categoría, Número de Jugador y Situación.</small>
               </Alert>
             </div>
 
@@ -3325,19 +3324,41 @@ const Page = () => {
               <p>Para editar la información de un jugador:</p>
               <ol>
                 <li>Haz clic en el botón <strong>Editar</strong> (ícono de lápiz) en la tarjeta o fila del jugador</li>
-                <li>Modifica los campos que necesites actualizar</li>
-                <li>Puedes cambiar la foto del jugador usando la cámara (haz clic en "Cambiar Foto")</li>
-                <li>Haz clic en <strong>"Actualizar Jugador"</strong> para aplicar los cambios</li>
+                <li>Modifica los campos que necesites: nombre, situación (PASE/PRÉSTAMO), equipo-categoría, número de jugador, etc.</li>
+                <li><strong>Opcional - Calificar al editar:</strong> Marca el checkbox &quot;Calificar jugador en temporada&quot; y selecciona la temporada para calificar al guardar</li>
+                <li>Puedes cambiar la foto del jugador usando la cámara (haz clic en &quot;Cambiar Foto&quot;)</li>
+                <li>Haz clic en <strong>&quot;Actualizar Jugador&quot;</strong> para aplicar los cambios</li>
               </ol>
               <Alert variant="info" className="mt-2 mb-0">
-                <small><strong>Nota:</strong> Solo puedes editar jugadores que tengan un equipo-categoría asignado. Si un jugador no tiene relación con un equipo-categoría, el botón de Editar estará deshabilitado.</small>
+                <small><strong>Nota:</strong> Si cambias de equipo-categoría, el sistema puede solicitar confirmación. Los jugadores con equipo-categoría asignado tienen el botón Editar habilitado.</small>
               </Alert>
             </div>
 
             <div className="mb-4">
               <h5 className="text-primary mb-3">
+                <TbCertificate className="me-2" />
+                5. Calificar Jugadores
+              </h5>
+              <p>La calificación registra a los jugadores en una temporada para fines de federación o control:</p>
+              <p><strong>Calificación individual:</strong></p>
+              <ul>
+                <li>Haz clic en el botón <strong>Calificar</strong> (ícono de certificado) en la fila del jugador</li>
+                <li>Se abrirá un modal para seleccionar la <strong>temporada</strong> y la <strong>situación</strong> (PASE o PRÉSTAMO)</li>
+                <li>Confirma para registrar la calificación</li>
+              </ul>
+              <p className="mt-3"><strong>Calificación múltiple:</strong></p>
+              <ul>
+                <li>Selecciona varios jugadores con las casillas de verificación</li>
+                <li>Haz clic en el botón <strong>&quot;Calificar (N)&quot;</strong> (botón azul con ícono de certificado)</li>
+                <li>Selecciona la temporada y confirma</li>
+              </ul>
+              <p className="mt-3 mb-0"><strong>Indicador de calificación:</strong> Los jugadores calificados en la última temporada muestran un badge verde &quot;Calificado&quot; junto a su nombre.</p>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
                 <TbPrinter className="me-2" />
-                5. Imprimir Carnets de Jugadores
+                6. Imprimir Carnets de Jugadores
               </h5>
               <p><strong>Imprimir Carnet Individual:</strong></p>
               <ul>
@@ -3366,7 +3387,7 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuDownload className="me-2" />
-                6. Exportar a Excel
+                7. Exportar a Excel
               </h5>
               <p>Para descargar la lista de jugadores en formato Excel:</p>
               <ol>
@@ -3379,7 +3400,7 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuRefreshCw className="me-2" />
-                7. Actualizar Datos
+                8. Actualizar Datos
               </h5>
               <p>
                 El botón <strong>"Actualizar"</strong> (botón azul con ícono de actualizar) recarga todos los datos desde el servidor.
@@ -3390,7 +3411,7 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <TbTrash className="me-2" />
-                8. Eliminar Relación de Jugador
+                9. Eliminar Relación de Jugador
               </h5>
               <p>Para eliminar la relación de un jugador con un equipo-categoría:</p>
               <ol>
@@ -3405,32 +3426,33 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuClock className="me-2" />
-                9. Ver Historial de Jugador
+                10. Ver Historial de Jugador
               </h5>
-              <p>Para ver el historial completo de un jugador:</p>
-              <ol>
-                <li>Haz clic en el botón <strong>Historial</strong> (ícono de reloj) en la tarjeta o fila del jugador</li>
-                <li>Se abrirá un modal mostrando todo el historial de cambios, movimientos entre equipos, categorías, etc.</li>
-              </ol>
+              <p>Para ver el historial completo de un jugador (movimientos entre equipos, categorías, calificaciones, etc.):</p>
+              <ul>
+                <li><strong>Vista de tarjetas:</strong> Haz clic en el botón <strong>&quot;Ver Perfil&quot;</strong> en la tarjeta del jugador</li>
+                <li><strong>Vista de tabla:</strong> Haz clic en el <strong>nombre del jugador</strong> en la columna Jugador</li>
+                <li>Se abrirá un modal con todo el historial del jugador</li>
+              </ul>
             </div>
 
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuUser className="me-2" />
-                10. Selección Múltiple
+                11. Selección Múltiple
               </h5>
               <p>Puedes seleccionar múltiples jugadores para realizar acciones en lote:</p>
               <ul>
                 <li>Marca las casillas de verificación en los jugadores que deseas seleccionar</li>
                 <li>Usa la casilla en el encabezado para seleccionar todos los jugadores visibles</li>
-                <li>Con jugadores seleccionados, el botón de "Imprimir" estará disponible</li>
+                <li>Con jugadores seleccionados: el botón <strong>&quot;Imprimir (N)&quot;</strong> y el botón <strong>&quot;Calificar (N)&quot;</strong> estarán disponibles</li>
               </ul>
             </div>
 
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <TbCamera className="me-2" />
-                11. Funcionalidad de Foto del Jugador
+                12. Funcionalidad de Foto del Jugador
               </h5>
               <p>El sistema permite capturar una foto para cada jugador:</p>
               <ul>
@@ -3446,7 +3468,7 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuChevronLeft className="me-2" />
-                12. Paginación y Navegación
+                13. Paginación y Navegación
               </h5>
               <p>En la vista de lista:</p>
               <ul>
@@ -3460,7 +3482,7 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuUser className="me-2" />
-                13. Permisos y Restricciones
+                14. Permisos y Restricciones
               </h5>
               <p>El sistema utiliza un sistema de permisos que controla qué acciones puedes realizar:</p>
               <ul>
@@ -3477,40 +3499,41 @@ const Page = () => {
             <div className="mb-4">
               <h5 className="text-primary mb-3">
                 <LuUser className="me-2" />
-                14. Información Adicional en la Vista
+                15. Información Adicional en la Vista
               </h5>
               <p>En la vista de tabla, puedes ver las siguientes columnas:</p>
               <ul>
-                <li><strong>Jugador:</strong> Foto, nombre completo y cédula (el nombre es un enlace al detalle)</li>
-                <li><strong>Nacionalidad:</strong> País de origen del jugador</li>
-                <li><strong>Liga:</strong> Liga a la que pertenece</li>
+                <li><strong>Jugador:</strong> Foto, nombre completo (clic para ver historial) y cédula. Badge &quot;Calificado&quot; si está calificado en la última temporada</li>
                 <li><strong>Sexo:</strong> Sexo del jugador</li>
                 <li><strong>Número:</strong> Número de camiseta en el equipo-categoría actual</li>
+                <li><strong>Situación:</strong> PASE o PRÉSTAMO del jugador en el equipo-categoría</li>
                 <li><strong>Teléfono:</strong> Número de contacto</li>
-                <li><strong>Provincia:</strong> Provincia de residencia</li>
                 <li><strong>Foráneo:</strong> Indica si el jugador es foráneo (Sí/No)</li>
-                <li><strong>Categoría:</strong> Categoría del torneo donde está inscrito</li>
+                <li><strong>Categoría:</strong> Categoría donde está inscrito</li>
                 <li><strong>Equipo:</strong> Equipo al que pertenece</li>
-                <li><strong>Estado:</strong> Estado del jugador (Activo/Inactivo)</li>
-                <li><strong>Fecha Creación:</strong> Fecha en que se registró el jugador en el sistema</li>
+                <li><strong>Estado:</strong> Activo o Inactivo</li>
+                <li><strong>Fecha de Nacimiento:</strong> Fecha de nacimiento del jugador</li>
+                <li><strong>Edad:</strong> Edad calculada. Badge &quot;JUVENIL&quot; si es menor a la edad mínima de la categoría</li>
+                <li><strong>Fecha Creación:</strong> Fecha en que se registró en el sistema</li>
               </ul>
+              <p className="mb-0">Algunas columnas (Sexo, Teléfono, Estado) pueden ocultarse usando las opciones de visibilidad de la tabla.</p>
             </div>
 
             <div className="mb-3">
               <h5 className="text-primary mb-3">
                 <LuTrophy className="me-2" />
-                15. Consejos Adicionales
+                16. Consejos Adicionales
               </h5>
               <ul>
                 <li>Usa los filtros para encontrar rápidamente grupos específicos de jugadores</li>
                 <li>La búsqueda funciona en tiempo real, no necesitas presionar Enter</li>
                 <li>Puedes cambiar entre vista de tarjetas y vista de lista según tu preferencia</li>
-                <li>Si un jugador está en múltiples equipos o categorías, el sistema te lo advertirá al imprimir</li>
-                <li>El sistema valida automáticamente los datos antes de guardar</li>
-                <li>Un jugador puede estar en múltiples equipos o categorías - esto es normal y el sistema lo maneja correctamente</li>
-                <li>Haz clic en el nombre del jugador en la tabla para ver su perfil completo</li>
+                <li>La situación PASE/PRÉSTAMO se usa para el control federativo; califica a los jugadores en la temporada correspondiente</li>
+                <li>Si un jugador está en múltiples equipos o categorías, el sistema te lo advertirá al imprimir carnets</li>
+                <li>El badge JUVENIL indica que el jugador es menor a la edad mínima de su categoría</li>
+                <li>Haz clic en el nombre del jugador para ver su historial completo</li>
                 <li>Los jugadores sin foto mostrarán un avatar por defecto</li>
-                <li>El campo de "Observaciones" es útil para notas importantes sobre el jugador</li>
+                <li>Puedes calificar al crear o editar marcando el checkbox correspondiente y seleccionando la temporada</li>
                 <li>Al imprimir múltiples carnets, se generan en una sola ventana lista para imprimir</li>
               </ul>
             </div>
@@ -3518,7 +3541,7 @@ const Page = () => {
             <div className="mb-3">
               <h5 className="text-primary mb-3">
                 <LuUser className="me-2" />
-                16. Solución de Problemas Comunes
+                17. Solución de Problemas Comunes
               </h5>
               <p><strong>No puedo editar o eliminar un jugador:</strong></p>
               <ul>
@@ -3528,8 +3551,14 @@ const Page = () => {
               <p className="mt-3"><strong>No puedo agregar un jugador:</strong></p>
               <ul>
                 <li>Verifica que tengas permisos de creación</li>
-                <li>Asegúrate de completar todos los campos obligatorios</li>
+                <li>Asegúrate de completar todos los campos obligatorios (Cédula, Nombre, Nacionalidad, Liga, Equipo-Categoría, Número, Situación)</li>
                 <li>Verifica que hayas seleccionado un Equipo-Categoría</li>
+              </ul>
+              <p className="mt-3"><strong>No puedo calificar un jugador:</strong></p>
+              <ul>
+                <li>El jugador debe tener un equipo-categoría asignado para ser calificado</li>
+                <li>Debe existir al menos una temporada activa (creada en la sección de Torneos)</li>
+                <li>Si el jugador ya está calificado en esa temporada, el sistema lo indicará</li>
               </ul>
               <p className="mt-3"><strong>La cámara no funciona:</strong></p>
               <ul>

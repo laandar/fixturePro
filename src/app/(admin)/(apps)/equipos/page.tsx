@@ -30,7 +30,7 @@ import Link from 'next/link'
 import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, FormCheck, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import Select from 'react-select'
 import { LuSearch, LuTrophy, LuUsers } from 'react-icons/lu'
-import { TbEdit, TbEye, TbPlus, TbTrash } from 'react-icons/tb'
+import { TbEdit, TbEye, TbHelp, TbPlus, TbTrash } from 'react-icons/tb'
 import { getEquipos, getCategorias, getEntrenadores, createEquipo, updateEquipo, deleteEquipo, deleteMultipleEquipos, getEquipoByIdWithRelations, getJugadoresAfectadosPorCambioCategoria, migrarJugadoresACategoria } from './actions'
 import type { EquipoWithRelations, Categoria, Entrenador } from '@/db/types'
 
@@ -196,6 +196,7 @@ const Page = () => {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [equipoToDelete, setEquipoToDelete] = useState<EquipoWithRelations | null>(null)
+  const [showManualUsuario, setShowManualUsuario] = useState(false)
 
   const table = useReactTable({
     data,
@@ -495,6 +496,13 @@ const Page = () => {
                     <TbPlus className="fs-lg" />
                   </Button>
                 )}
+                <Button 
+                  variant="outline-info" 
+                  className="rounded-circle btn-icon"
+                  onClick={() => setShowManualUsuario(true)}
+                  title="Manual de Usuario">
+                  <TbHelp className="fs-lg" />
+                </Button>
               </div>
 
               <div className="d-flex align-items-center gap-2">
@@ -1006,6 +1014,156 @@ const Page = () => {
             disabled={loading || !categoriaMigracionGlobal}
           >
             {loading ? 'Migrando...' : `Migrar ${jugadoresAfectados.length} jugador(es)`}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal de Manual de Usuario */}
+      <Modal show={showManualUsuario} onHide={() => setShowManualUsuario(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>
+            <TbHelp className="me-2" />
+            Manual de Usuario - Equipos
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <div className="manual-content">
+            <Alert variant="info" className="mb-4">
+              <strong>Bienvenido al Manual de Usuario</strong>
+              <br />
+              <small>Esta guía te ayudará a gestionar los equipos de tu organización: crear, editar, filtrar y administrar la información de cada equipo.</small>
+            </Alert>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuSearch className="me-2" />
+                1. Búsqueda y Vista General
+              </h5>
+              <p>
+                La pantalla de <strong>Equipos</strong> muestra una tabla con todos los equipos registrados. Cada fila incluye el nombre del equipo, imagen, entrenador asignado, categorías, fecha de creación y estado.
+              </p>
+              <ul>
+                <li><strong>Campo de búsqueda:</strong> Escribe en el campo superior para buscar equipos por nombre o entrenador en tiempo real.</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuTrophy className="me-2" />
+                2. Filtros
+              </h5>
+              <p>Utiliza los filtros para encontrar equipos específicos:</p>
+              <ul>
+                <li><strong>Filtrar por Categoría:</strong> Selecciona una categoría (Sub-8, Sub-10, Sub-12, etc.) para ver solo los equipos que participan en esa categoría.</li>
+                <li><strong>Filtrar por Estado:</strong> Filtra por equipos <strong>Activos</strong> o <strong>Inactivos</strong>. Por defecto se muestran solo los activos.</li>
+                <li><strong>Registros por página:</strong> El selector numérico permite mostrar 5, 8, 10, 15 o 20 equipos por página.</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbPlus className="me-2" />
+                3. Crear Nuevo Equipo
+              </h5>
+              <p>Para agregar un nuevo equipo:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>+</strong> (botón morado circular) en la barra superior.</li>
+                <li>Se abrirá un panel lateral con el formulario de creación.</li>
+                <li>Completa los campos obligatorios:
+                  <ul>
+                    <li><strong>Nombre del Equipo:</strong> Nombre oficial del equipo.</li>
+                    <li><strong>Categorías:</strong> Selecciona una o más categorías (puedes elegir varias). Un equipo puede participar en múltiples categorías.</li>
+                    <li><strong>Entrenador:</strong> Asigna un entrenador de la lista.</li>
+                  </ul>
+                </li>
+                <li>Opcionalmente: <strong>Estado</strong> (Activo/Inactivo) e <strong>Imagen del Equipo</strong> (URL).</li>
+                <li>Haz clic en <strong>Crear Equipo</strong> para guardar.</li>
+              </ol>
+              <Alert variant="info" className="mt-2 mb-0">
+                <small><strong>Nota:</strong> Si no tienes permiso para crear equipos, el botón aparecerá deshabilitado.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbEdit className="me-2" />
+                4. Editar Equipo
+              </h5>
+              <p>Para modificar la información de un equipo:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Editar</strong> (ícono de lápiz) en la fila del equipo.</li>
+                <li>Se abrirá un panel lateral con los datos actuales del equipo.</li>
+                <li>Modifica los campos que necesites: nombre, categorías, entrenador, estado o imagen.</li>
+                <li>Haz clic en <strong>Actualizar Equipo</strong> para guardar los cambios.</li>
+              </ol>
+              <Alert variant="warning" className="mt-2 mb-0">
+                <small><strong>Migración de jugadores:</strong> Si al cambiar las categorías hay jugadores afectados (por ejemplo, al quitar una categoría), el sistema mostrará un modal para que selecciones a qué categoría migrar a esos jugadores antes de completar la actualización.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbTrash className="me-2" />
+                5. Eliminar Equipo
+              </h5>
+              <p>Para eliminar un equipo:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Eliminar</strong> (ícono de papelera) en la fila del equipo.</li>
+                <li>Confirma la eliminación en el mensaje de advertencia que aparece.</li>
+              </ol>
+              <Alert variant="danger" className="mt-2 mb-0">
+                <small><strong>Importante:</strong> La eliminación es irreversible. Asegúrate de que el equipo no tenga datos dependientes (jugadores, torneos, etc.) antes de eliminarlo.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuUsers className="me-2" />
+                6. Columnas de la Tabla
+              </h5>
+              <ul>
+                <li><strong>Nombre del Equipo:</strong> Nombre e imagen del equipo; debajo se muestra el entrenador asignado.</li>
+                <li><strong>Entrenador:</strong> Nombre del entrenador responsable.</li>
+                <li><strong>Categorías:</strong> Badges con las categorías en las que participa el equipo.</li>
+                <li><strong>Fecha Creación:</strong> Fecha en que se registró el equipo.</li>
+                <li><strong>Estado:</strong> Activo (verde) o Inactivo (rojo).</li>
+                <li><strong>Acciones:</strong> Botones para editar y eliminar (según permisos).</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                7. Paginación
+              </h5>
+              <p>En la parte inferior de la tabla encontrarás la paginación:</p>
+              <ul>
+                <li>Navega entre páginas con los botones Anterior y Siguiente.</li>
+                <li>El contador muestra cuántos equipos estás visualizando (ej: &quot;Mostrando 1 a 8 de 15 equipos&quot;).</li>
+              </ul>
+            </div>
+
+            <div className="mb-3">
+              <h5 className="text-primary mb-3">
+                8. Permisos y Consejos
+              </h5>
+              <ul>
+                <li>Las acciones visibles (crear, editar, eliminar) dependen de los permisos asignados a tu usuario.</li>
+                <li>Un equipo puede tener múltiples categorías; es útil para equipos que participan en varios torneos.</li>
+                <li>La imagen del equipo puede ser una URL externa; se mostrará en la tabla y en el detalle.</li>
+                <li>Si cambias las categorías de un equipo que ya tiene jugadores, el sistema te guiará para migrarlos correctamente.</li>
+              </ul>
+            </div>
+
+            <Alert variant="success" className="mb-0">
+              <strong>¿Necesitas más ayuda?</strong>
+              <br />
+              <small>Si tienes preguntas adicionales o encuentras algún problema, contacta al administrador del sistema.</small>
+            </Alert>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowManualUsuario(false)}>
+            Cerrar
           </Button>
         </ModalFooter>
       </Modal>

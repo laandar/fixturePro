@@ -23,7 +23,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardBody, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Badge, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import { LuSearch, LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuMapPin, LuChevronDown, LuChevronUp, LuCircleCheck, LuX } from 'react-icons/lu'
-import { TbEdit, TbEye, TbPlus, TbTrash, TbSettings } from 'react-icons/tb'
+import { TbEdit, TbEye, TbHelp, TbPlus, TbSettings, TbTrash } from 'react-icons/tb'
 import { getTorneos, deleteTorneo, createTorneo, updateTorneo, getAllEncuentrosTodosTorneos, getAllHorariosTodosTorneos } from './actions'
 import { getTemporadas, createTemporada, updateTemporada, deleteTemporada, toggleTemporadaActiva } from './temporadas-actions'
 import { getCategorias } from '../categorias/actions'
@@ -203,6 +203,7 @@ const Page = () => {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [torneoToDelete, setTorneoToDelete] = useState<TorneoWithRelations | null>(null)
+  const [showManualUsuario, setShowManualUsuario] = useState(false)
 
   const table = useReactTable({
     data,
@@ -527,6 +528,13 @@ const Page = () => {
                     <TbPlus className="fs-lg" />
                   </Button>
                 )}
+                <Button 
+                  variant="outline-info" 
+                  className="rounded-circle btn-icon"
+                  onClick={() => setShowManualUsuario(true)}
+                  title="Manual de Usuario">
+                  <TbHelp className="fs-lg" />
+                </Button>
               </div>
 
               <div className="d-flex align-items-center gap-2">
@@ -1206,6 +1214,178 @@ const Page = () => {
         </ModalBody>
         <ModalFooter className="border-top">
           <Button variant="secondary" onClick={() => setShowTemporadasModal(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal de Manual de Usuario */}
+      <Modal show={showManualUsuario} onHide={() => setShowManualUsuario(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>
+            <TbHelp className="me-2" />
+            Manual de Usuario - Torneos
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <div className="manual-content">
+            <Alert variant="info" className="mb-4">
+              <strong>Bienvenido al Manual de Usuario</strong>
+              <br />
+              <small>Esta guía te ayudará a gestionar torneos, temporadas y la programación de encuentros. Desde aquí puedes crear torneos, ver el fixture global y administrar las temporadas del campeonato.</small>
+            </Alert>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuTrophy className="me-2" />
+                1. Vista General
+              </h5>
+              <p>
+                La pantalla de <strong>Torneos</strong> muestra los torneos agrupados por <strong>temporada</strong>. Cada temporada (ej: 2025-2026) puede contener varios torneos. Los torneos sin temporada aparecen en el grupo &quot;Sin Temporada&quot;.
+              </p>
+              <ul>
+                <li><strong>Expandir/Colapsar:</strong> Haz clic en el encabezado de cada temporada (o en la flecha) para mostrar u ocultar sus torneos</li>
+                <li><strong>Tarjetas de torneo:</strong> Cada torneo muestra su nombre, categoría, estado, cantidad de equipos, cantidad de encuentros y botones de acción</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuCalendar className="me-2" />
+                2. Gestionar Temporadas
+              </h5>
+              <p>Las temporadas agrupan torneos por campeonato (ej: temporada 2025-2026):</p>
+              <ol>
+                <li>Haz clic en el botón <strong>&quot;Gestionar Temporadas&quot;</strong> (parte superior de la página)</li>
+                <li>Se abre un modal donde puedes:
+                  <ul>
+                    <li><strong>Crear temporada:</strong> Nombre, estado (Activa/Inactiva), fechas de inicio y fin, descripción</li>
+                    <li><strong>Editar temporada:</strong> Modificar los datos existentes</li>
+                    <li><strong>Activar/Desactivar:</strong> Las temporadas inactivas no muestran sus torneos en la vista principal</li>
+                    <li><strong>Eliminar temporada:</strong> Solo si no tiene torneos asociados</li>
+                  </ul>
+                </li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuMapPin className="me-2" />
+                3. Ver Tabla Global de Horarios
+              </h5>
+              <p>La <strong>Tabla Global</strong> muestra todos los encuentros programados de los torneos activos en un formato horarios vs canchas:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>&quot;Ver Tabla Global&quot;</strong></li>
+                <li>Se abre un modal a pantalla completa donde puedes:
+                  <ul>
+                    <li><strong>Seleccionar torneos:</strong> Elige uno o más torneos en curso para ver sus encuentros</li>
+                    <li><strong>Ver programación:</strong> Los encuentros se organizan por jornada, horario y cancha</li>
+                    <li><strong>Mover encuentros:</strong> Puedes arrastrar y soltar encuentros para cambiar horario o cancha (si tienes permisos)</li>
+                  </ul>
+                </li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuSearch className="me-2" />
+                4. Buscar y Filtrar Torneos
+              </h5>
+              <ul>
+                <li><strong>Búsqueda:</strong> Escribe en el campo superior para buscar torneos por nombre o descripción en tiempo real</li>
+                <li><strong>Filtrar por Estado:</strong> Planificado, En Curso, Finalizado o Cancelado</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbPlus className="me-2" />
+                5. Crear Nuevo Torneo
+              </h5>
+              <p>Para crear un torneo:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>+</strong> (botón morado circular)</li>
+                <li>Se abre un panel lateral con el formulario. Completa:
+                  <ul>
+                    <li><strong>Nombre y Descripción</strong></li>
+                    <li><strong>Categoría:</strong> Sub-8, Sub-10, etc.</li>
+                    <li><strong>Temporada:</strong> Opcional. Vincula el torneo a una temporada/campeonato</li>
+                    <li><strong>Tipo de Torneo:</strong> Liga, Eliminación o Grupos</li>
+                    <li><strong>Fechas de Inicio y Fin</strong></li>
+                    <li><strong>Estado:</strong> Planificado, En Curso, Finalizado o Cancelado</li>
+                    <li><strong>Permitir Revancha:</strong> Opción para partidos de revancha</li>
+                  </ul>
+                </li>
+                <li>Haz clic en <strong>Crear Torneo</strong></li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbEdit className="me-2" />
+                6. Editar y Ver Detalles
+              </h5>
+              <ul>
+                <li><strong>Ver detalles:</strong> Haz clic en el ícono de ojo o en el nombre del torneo para ir a la página de detalle, donde podrás gestionar equipos, generar el fixture y más</li>
+                <li><strong>Editar:</strong> Haz clic en el ícono de lápiz para modificar nombre, categoría, fechas, estado, etc. desde el panel lateral</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbTrash className="me-2" />
+                7. Eliminar Torneo
+              </h5>
+              <p>Haz clic en el ícono de papelera y confirma la eliminación. <strong>Atención:</strong> Esta acción es irreversible y puede afectar equipos y encuentros asociados.</p>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuTrophy className="me-2" />
+                8. Estados del Torneo
+              </h5>
+              <ul>
+                <li><strong>Planificado:</strong> Torneo configurado pero aún no iniciado</li>
+                <li><strong>En Curso:</strong> Torneo activo; aparece en la Tabla Global</li>
+                <li><strong>Finalizado:</strong> Torneo concluido</li>
+                <li><strong>Cancelado:</strong> Torneo cancelado</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuGamepad2 className="me-2" />
+                9. Tipos de Torneo
+              </h5>
+              <ul>
+                <li><strong>Liga:</strong> Todos contra todos</li>
+                <li><strong>Eliminación:</strong> Eliminación directa</li>
+                <li><strong>Grupos:</strong> Fase de grupos seguida de eliminación</li>
+              </ul>
+            </div>
+
+            <div className="mb-3">
+              <h5 className="text-primary mb-3">
+                <LuUsers className="me-2" />
+                10. Consejos
+              </h5>
+              <ul>
+                <li>Configura las temporadas antes de crear torneos para organizarlos correctamente</li>
+                <li>La página de detalle del torneo (/torneos/[id]) permite inscribir equipos, generar el fixture y gestionar encuentros</li>
+                <li>La Tabla Global es útil para evitar conflictos de horarios y canchas entre torneos</li>
+                <li>Las acciones visibles dependen de los permisos de tu usuario</li>
+              </ul>
+            </div>
+
+            <Alert variant="success" className="mb-0">
+              <strong>¿Necesitas más ayuda?</strong>
+              <br />
+              <small>Si tienes preguntas adicionales o encuentras algún problema, contacta al administrador del sistema.</small>
+            </Alert>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowManualUsuario(false)}>
             Cerrar
           </Button>
         </ModalFooter>

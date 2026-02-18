@@ -23,7 +23,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Button, Card, CardFooter, CardHeader, Col, Container, FloatingLabel, Form, FormControl, FormSelect, Offcanvas, OffcanvasBody, OffcanvasHeader, OffcanvasTitle, Row, Alert, Modal, ModalHeader, ModalBody, ModalFooter, ModalTitle } from 'react-bootstrap'
 import { LuSearch, LuTrophy } from 'react-icons/lu'
-import { TbEdit, TbPlus, TbTrash, TbPhoto } from 'react-icons/tb'
+import { TbEdit, TbHelp, TbPhoto, TbPlus, TbTrash } from 'react-icons/tb'
 import { getCategorias, createCategoria, updateCategoria, deleteCategoria, deleteMultipleCategorias, updateCarnetImages } from './actions'
 import type { Categoria } from '@/db/types'
 import { formatearRangoEdad } from '@/lib/age-helpers'
@@ -174,6 +174,7 @@ const Page = () => {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
   const [categoriaToDelete, setCategoriaToDelete] = useState<Categoria | null>(null)
+  const [showManualUsuario, setShowManualUsuario] = useState(false)
 
   const table = useReactTable({
     data,
@@ -531,6 +532,13 @@ const Page = () => {
                     <TbPlus className="fs-lg" />
                   </Button>
                 )}
+                <Button 
+                  variant="outline-info" 
+                  className="rounded-circle btn-icon"
+                  onClick={() => setShowManualUsuario(true)}
+                  title="Manual de Usuario">
+                  <TbHelp className="fs-lg" />
+                </Button>
               </div>
 
               <div className="d-flex align-items-center gap-2">
@@ -961,6 +969,168 @@ const Page = () => {
             </Form>
           )}
         </ModalBody>
+      </Modal>
+
+      {/* Modal de Manual de Usuario */}
+      <Modal show={showManualUsuario} onHide={() => setShowManualUsuario(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <ModalTitle>
+            <TbHelp className="me-2" />
+            Manual de Usuario - Categorías
+          </ModalTitle>
+        </ModalHeader>
+        <ModalBody style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <div className="manual-content">
+            <Alert variant="info" className="mb-4">
+              <strong>Bienvenido al Manual de Usuario</strong>
+              <br />
+              <small>Esta guía te ayudará a gestionar las categorías deportivas: crear, editar, configurar carnets y administrar los rangos de edad y jugadores permitidos.</small>
+            </Alert>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuSearch className="me-2" />
+                1. Búsqueda y Vista General
+              </h5>
+              <p>
+                La pantalla de <strong>Categorías</strong> muestra una tabla con todas las categorías registradas (Sub-8, Sub-10, Sub-12, etc.). Cada fila incluye el nombre, estado, rango de edad, jugadores permitidos y fecha de creación.
+              </p>
+              <ul>
+                <li><strong>Campo de búsqueda:</strong> Escribe en el campo superior para buscar categorías por nombre en tiempo real.</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuTrophy className="me-2" />
+                2. Filtros
+              </h5>
+              <p>Utiliza los filtros para encontrar categorías específicas:</p>
+              <ul>
+                <li><strong>Filtrar por Estado:</strong> Filtra por categorías <strong>Activas</strong> o <strong>Inactivas</strong>. Por defecto se muestran solo las activas.</li>
+                <li><strong>Registros por página:</strong> El selector numérico permite mostrar 5, 8, 10, 15 o 20 categorías por página.</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbPlus className="me-2" />
+                3. Crear Nueva Categoría
+              </h5>
+              <p>Para agregar una nueva categoría:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>+</strong> (botón morado circular) en la barra superior.</li>
+                <li>Se abrirá un panel lateral con el formulario de creación.</li>
+                <li>Completa los campos:
+                  <ul>
+                    <li><strong>Nombre de la Categoría:</strong> Nombre oficial (ej: Sub-10, Sub-12).</li>
+                    <li><strong>Edad Mínima/Máxima:</strong> Define el rango en años y meses (ej: 8 años 0 meses a 10 años 11 meses para Sub-10).</li>
+                    <li><strong>Número de Jugadores Permitidos:</strong> Cantidad máxima de jugadores por equipo en esta categoría.</li>
+                    <li><strong>Jugadores Menores Permitidos:</strong> Cantidad de jugadores que pueden ser menores a la edad mínima (0 = no permitir).</li>
+                    <li><strong>Estado:</strong> Activo o Inactivo.</li>
+                  </ul>
+                </li>
+                <li>Haz clic en <strong>Crear Categoría</strong> para guardar.</li>
+              </ol>
+              <Alert variant="info" className="mt-2 mb-0">
+                <small><strong>Nota:</strong> Si no tienes permiso para crear categorías, el botón aparecerá deshabilitado.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbEdit className="me-2" />
+                4. Editar Categoría
+              </h5>
+              <p>Para modificar la información de una categoría:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Editar</strong> (ícono de lápiz) en la fila de la categoría.</li>
+                <li>Se abrirá un panel lateral con los datos actuales.</li>
+                <li>Modifica los campos que necesites y haz clic en <strong>Actualizar Categoría</strong>.</li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbPhoto className="me-2" />
+                5. Configurar Carnet
+              </h5>
+              <p>Las categorías pueden tener imágenes personalizadas para los carnets de jugadores:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Configurar Carnet</strong> (ícono de cámara/foto) en la fila de la categoría.</li>
+                <li>Se abrirá un modal donde podrás subir:
+                  <ul>
+                    <li><strong>Imagen Frontal del Carnet:</strong> Diseño de la parte frontal del carnet.</li>
+                    <li><strong>Imagen Trasera del Carnet:</strong> Diseño de la parte trasera del carnet.</li>
+                  </ul>
+                </li>
+                <li>Formatos permitidos: PNG, JPEG, WEBP.</li>
+                <li>Verás una vista previa de la imagen actual o la nueva antes de guardar.</li>
+                <li>Haz clic en <strong>Guardar Imágenes</strong> para aplicar los cambios.</li>
+              </ol>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <TbTrash className="me-2" />
+                6. Eliminar Categoría
+              </h5>
+              <p>Para eliminar una categoría:</p>
+              <ol>
+                <li>Haz clic en el botón <strong>Eliminar</strong> (ícono de papelera) en la fila de la categoría.</li>
+                <li>Confirma la eliminación en el mensaje de advertencia que aparece.</li>
+              </ol>
+              <Alert variant="danger" className="mt-2 mb-0">
+                <small><strong>Importante:</strong> La eliminación es irreversible. Asegúrate de que la categoría no tenga equipos, jugadores o torneos asociados antes de eliminarla.</small>
+              </Alert>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                <LuTrophy className="me-2" />
+                7. Columnas de la Tabla
+              </h5>
+              <ul>
+                <li><strong>Nombre de la Categoría:</strong> Nombre e ID de la categoría.</li>
+                <li><strong>Estado:</strong> Activo (verde) o Inactivo (gris).</li>
+                <li><strong>Rango de Edad:</strong> Badge con el rango formateado (ej: 8a 0m - 10a 11m).</li>
+                <li><strong>Jugadores Permitidos:</strong> Número máximo de jugadores por equipo.</li>
+                <li><strong>Fecha Creación:</strong> Fecha en que se registró la categoría.</li>
+                <li><strong>Acciones:</strong> Botones para editar, configurar carnet y eliminar (según permisos).</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <h5 className="text-primary mb-3">
+                8. Paginación
+              </h5>
+              <p>En la parte inferior de la tabla encontrarás la paginación para navegar entre páginas y el contador de registros mostrados.</p>
+            </div>
+
+            <div className="mb-3">
+              <h5 className="text-primary mb-3">
+                9. Consejos
+              </h5>
+              <ul>
+                <li>El rango de edad es útil para validar que los jugadores cumplan los requisitos de la categoría.</li>
+                <li>Las categorías inactivas no aparecerán en algunos filtros de torneos o equipos.</li>
+                <li>Configura las imágenes del carnet antes de generar carnets para los jugadores.</li>
+                <li>Los jugadores menores permitidos permiten cierta flexibilidad en categorías donde se aceptan jugadores ligeramente menores.</li>
+              </ul>
+            </div>
+
+            <Alert variant="success" className="mb-0">
+              <strong>¿Necesitas más ayuda?</strong>
+              <br />
+              <small>Si tienes preguntas adicionales o encuentras algún problema, contacta al administrador del sistema.</small>
+            </Alert>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowManualUsuario(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
       </Modal>
     </Container>
   )

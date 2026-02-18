@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Container, Row, Col, Card, CardHeader, CardBody, Alert, FormSelect, Table, Badge, Button, Modal, Form, FormControl, Tabs, Tab } from 'react-bootstrap'
+import { TbHelp } from 'react-icons/tb'
 import { getTorneos } from '@/app/(admin)/(apps)/torneos/actions'
 import { getResumenTarjetasPorJornadaEquipo, getValoresTarjetas, type ResumenTarjetasItem, getSaldosPorEquipo, registrarPagoTorneo, registrarCargoManual, getCargosManualesTorneo, updateCargoManual, deleteCargoManual, getTarjetasPorEquipoJornada, deleteTarjetaContabilidad, type TarjetaDetalle, getResumenGeneral, getEstadoCuentaEquipo, getPagosTorneo, updatePago, anularPago, reactivarPago, getJornadaFechaFuturaMasCercana, getJornadasDisponibles, type ResumenGeneral, type EstadoCuentaEquipo, type PagoItem } from './actions'
 
@@ -74,6 +75,7 @@ const ContabilidadTarjetasPage = () => {
   const [jornadaCargoManual, setJornadaCargoManual] = useState<string>('')
   const [aplicarATodosEquiposManual, setAplicarATodosEquiposManual] = useState<boolean>(false)
   const [errorCargoManual, setErrorCargoManual] = useState<string | null>(null)
+  const [showManualUsuario, setShowManualUsuario] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -536,7 +538,23 @@ const ContabilidadTarjetasPage = () => {
 
   return (
     <Container fluid>
-      <PageBreadcrumb title="Contabilidad de Tarjetas" subtitle="Apps" />
+      <Row className="mb-3 align-items-center">
+        <Col>
+          <PageBreadcrumb title="Contabilidad de Tarjetas" subtitle="Apps" />
+        </Col>
+        <Col xs="auto">
+          <Button
+            variant="outline-info"
+            size="sm"
+            onClick={() => setShowManualUsuario(true)}
+            className="d-flex align-items-center"
+            title="Manual de Usuario"
+          >
+            <TbHelp className="me-2" size={18} />
+            Manual de Usuario
+          </Button>
+        </Col>
+      </Row>
 
       {error && (
         <Alert variant="danger">{error}</Alert>
@@ -1596,6 +1614,73 @@ const ContabilidadTarjetasPage = () => {
             disabled={!motivoAnulacion.trim()}
           >
             Anular Pago
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal Manual de Usuario */}
+      <Modal show={showManualUsuario} onHide={() => setShowManualUsuario(false)} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="d-flex align-items-center">
+            <TbHelp className="me-2" />
+            Manual de Usuario - Contabilidad de Tarjetas
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <div className="manual-content">
+            <Alert variant="info" className="mb-4">
+              <strong>Contabilidad de Tarjetas</strong>
+              <br />
+              <small>Desde aquí se gestiona la contabilidad por tarjetas amarillas y rojas de cada torneo: montos por equipo, pagos, cargos manuales, resúmenes y estado de cuenta.</small>
+            </Alert>
+
+            <h6 className="text-primary mb-2">Seleccionar Torneo</h6>
+            <p>En la parte superior elige el <strong>torneo</strong> del que quieres ver la contabilidad. Debajo del selector aparecen los <strong>valores unitarios</strong> actuales: cuánto vale cada tarjeta amarilla y cada tarjeta roja (en la moneda configurada para el torneo). Esos valores se usan para calcular automáticamente el monto por equipo: (amarillas × valor amarilla) + (rojas × valor roja). Si no ves valores o son cero, revisa la configuración del torneo.</p>
+
+            <h6 className="text-primary mb-2 mt-3">Pestaña Contabilidad</h6>
+            <h6 className="text-secondary small mb-1">Resumen por jornada</h6>
+            <p>Se listan las <strong>jornadas</strong> en tarjetas; en cada una hay una tabla con: <strong>Equipo</strong>, cantidad de <strong>amarillas</strong> y <strong>rojas</strong>, y <strong>Monto</strong> calculado. En la columna de amarillas, si el equipo tiene al menos una tarjeta en esa jornada, aparece el enlace <strong>&quot;Ver/Editar&quot;</strong>.</p>
+            <ul className="small mb-2">
+              <li><strong>Ver/Editar:</strong> Abre un modal con el detalle de cada tarjeta de ese equipo en esa jornada: <strong>ID</strong>, <strong>Tipo</strong> (amarilla/roja), <strong>Jugador ID</strong>. Desde ahí puedes <strong>Eliminar</strong> una tarjeta (por ejemplo si se cargó por error); al eliminar se pide confirmación y la acción no se puede deshacer. Los montos y saldos se recalculan al cerrar el modal.</li>
+            </ul>
+            <h6 className="text-secondary small mb-1">Saldos por Equipo</h6>
+            <p>Tabla con: <strong>Equipo</strong>, total de amarillas y rojas, <strong>Importe + Cargos</strong> (lo que debe por tarjetas y cargos manuales), <strong>Pagos</strong> (lo ya abonado), <strong>Saldo</strong> (importe + cargos − pagos). Un saldo <strong>positivo</strong> (badge amarillo) significa que el equipo debe dinero; un saldo <strong>negativo o cero</strong> (badge verde) significa que está al día o con saldo a favor. Arriba a la derecha se muestra el <strong>Saldo General</strong> del torneo.</p>
+            <ul className="small mb-2">
+              <li><strong>Abonar:</strong> Registra un pago de ese equipo. En el modal se pide <strong>Monto</strong> (obligatorio, mayor a 0) y <strong>Descripción</strong> (opcional). Al guardar, el saldo del equipo disminuye.</li>
+              <li><strong>Cargo manual:</strong> Agrega un cargo a ese equipo (multa, recargo, etc.). Se abre un modal con <strong>Monto</strong>, <strong>Descripción</strong>, <strong>Jornada</strong> (opcional; si se deja vacía el cargo es &quot;global&quot;) y la opción &quot;Aplicar a todos los equipos&quot;. Al guardar, el saldo del equipo aumenta.</li>
+            </ul>
+            <h6 className="text-secondary small mb-1">Cargos Manuales</h6>
+            <p>Listado de todos los cargos manuales del torneo con: <strong>ID</strong>, <strong>Equipo</strong>, <strong>Jornada</strong> (número de jornada o &quot;Global&quot;), <strong>Descripción</strong>, <strong>Monto</strong>. Acciones: <strong>Nuevo</strong> (crear cargo: elegir equipo o marcar &quot;Aplicar a todos los equipos&quot;, monto, jornada opcional, descripción), <strong>Editar</strong> (cambiar monto, jornada, descripción), <strong>Eliminar</strong> (con confirmación; no se puede deshacer). El <strong>campo de búsqueda</strong> filtra por nombre de equipo o texto de la descripción.</p>
+
+            <h6 className="text-primary mb-2 mt-3">Pestaña Resumen General</h6>
+            <p>Muestra un resumen financiero del torneo. <strong>Ingresos:</strong> detalle por tarjetas amarillas (cantidad y monto), tarjetas rojas (cantidad y monto), cargos manuales, y total de ingresos. <strong>Egresos:</strong> pagos realizados y total de egresos. <strong>Resumen:</strong> Ingresos totales, Egresos totales y <strong>Saldo neto</strong> (ingresos − egresos). Abajo se indica cuántos equipos tienen saldo pendiente (deben dinero). Los datos se cargan al entrar en la pestaña o al cambiar de torneo.</p>
+
+            <h6 className="text-primary mb-2 mt-3">Pestaña Estado de Cuenta</h6>
+            <p>Permite ver el detalle de movimientos de un equipo. Primero selecciona un <strong>equipo</strong> en el desplegable (lista los equipos que tienen saldo en el torneo). Opcionalmente elige una <strong>jornada</strong> para filtrar solo movimientos hasta esa jornada; &quot;Todas las jornadas&quot; muestra todo. Se muestra: <strong>Saldo inicial</strong>, <strong>Saldo final</strong>, cantidad de <strong>movimientos</strong> y una tabla con cada movimiento: <strong>Fecha</strong>, <strong>Tipo</strong> (tarjeta amarilla, roja, cargo manual, pago), <strong>Descripción</strong>, <strong>Jornada</strong>, <strong>Monto</strong> (positivo = suma al debe, negativo = pago/abono), <strong>Saldo acumulado</strong>. Los tipos se distinguen con íconos/colores (amarilla, roja, cargo, pago).</p>
+
+            <h6 className="text-primary mb-2 mt-3">Pestaña Gestión de Pagos</h6>
+            <p>Lista todos los pagos registrados del torneo. Columnas: <strong>Fecha</strong>, <strong>Equipo</strong>, <strong>Monto</strong>, <strong>Descripción</strong>, <strong>Referencia</strong>, <strong>Jornada</strong>, <strong>Estado</strong> (Activo / Anulado), <strong>Acciones</strong>. Arriba: el checkbox <strong>Incluir pagos anulados</strong> muestra u oculta los pagos anulados en la lista (por defecto están ocultos).</p>
+            <ul className="small mb-2">
+              <li><strong>Editar:</strong> Solo para pagos activos. Permite cambiar Monto, Descripción, Referencia y Jornada. El equipo no se puede cambiar.</li>
+              <li><strong>Anular:</strong> Solo para pagos activos. Se debe indicar un <strong>motivo de anulación</strong> (obligatorio). El pago deja de sumar en los saldos; el equipo volverá a tener ese monto como pendiente. La anulación queda registrada.</li>
+              <li><strong>Reactivar:</strong> Solo para pagos anulados. Revierte la anulación y el pago vuelve a considerarse en los saldos. Útil si se anuló por error.</li>
+            </ul>
+
+            <h6 className="text-primary mb-2 mt-3">Solución de problemas</h6>
+            <ul className="small mb-2">
+              <li>Si una tarjeta se cargó mal en un partido, use <strong>Ver/Editar</strong> en la jornada correspondiente y elimine la tarjeta incorrecta. Las tarjetas correctas se siguen cargando desde <strong>Gestión de Jugadores</strong> del encuentro.</li>
+              <li>Si un pago se registró mal, puede <strong>Editar</strong> el monto/descripción en Gestión de Pagos, o <strong>Anular</strong> y registrar uno nuevo con Abonar.</li>
+              <li>Los valores por amarilla/roja se configuran en el torneo; si cambian, los montos ya calculados no se recalculan solos para movimientos pasados, pero los nuevos cálculos usarán los valores actuales.</li>
+            </ul>
+
+            <Alert variant="success" className="mb-0 mt-3">
+              <strong>Consejo:</strong> Las tarjetas se registran en la pantalla de Gestión de Jugadores del partido; aquí solo se consultan, se registran pagos y cargos, y se ven los resúmenes.
+            </Alert>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowManualUsuario(false)}>
+            Cerrar
           </Button>
         </Modal.Footer>
       </Modal>

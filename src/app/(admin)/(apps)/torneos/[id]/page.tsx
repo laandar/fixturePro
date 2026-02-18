@@ -10,6 +10,7 @@ import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Nav, NavItem, NavLink, Table, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormControl, FloatingLabel, FormSelect, Tab } from 'react-bootstrap'
 import { LuTrophy, LuCalendar, LuUsers, LuGamepad2, LuSettings, LuPlus, LuTrash, LuTriangle, LuCheck, LuX, LuClock, LuFilter, LuDownload, LuInfo } from 'react-icons/lu'
+import { TbHelp } from 'react-icons/tb'
 import { getTorneoById, addEquiposToTorneo, removeEquipoFromTorneo, generateFixtureForTorneo, getEncuentrosByTorneo, updateEncuentro, deleteEncuentro, regenerateFixtureFromJornada, deleteJornada, getEquiposDescansan, crearJornadaConEmparejamientos, getJugadoresByTorneo, updateFechaJornada, asignarCanchasAutomaticamente, generarTablaDistribucionCanchas, generarTablaDistribucionCanchasParaTorneos, getTorneosParaAsignacion, getTorneosByTemporada, asignarHorariosParaTorneos, asignarCanchasParaTorneos } from '../actions'
 import { getTarjetasTorneo } from '../../gestion-jugadores/actions'
 import { confirmarJornada,  confirmarRegeneracionJornada } from '../dynamic-actions'
@@ -47,6 +48,9 @@ const obtenerEtiquetaDia = (dia?: string | null) => {
   const valorNormalizado = normalizarDiaHorario(dia)
   return DIAS_HORARIOS.find(d => d.value === valorNormalizado)?.label || 'Viernes'
 }
+
+// Ocultar temporalmente la pestaña Sanciones (cambiar a true para mostrarla)
+const SHOW_SANCIONES_TAB = false
 
 const TorneoDetailPage = () => {
   const params = useParams()
@@ -109,6 +113,13 @@ const TorneoDetailPage = () => {
   
   // Estado para tabs
   const [activeTab, setActiveTab] = useState('equipos')
+  const [showManualUsuario, setShowManualUsuario] = useState(false)
+  const [manualTab, setManualTab] = useState<'equipos' | 'fixture' | 'horarios-canchas' | 'dinamico' | 'sanciones'>('equipos')
+
+  const openManualTab = (tab: 'equipos' | 'fixture' | 'horarios-canchas' | 'dinamico' | 'sanciones') => {
+    setManualTab(tab)
+    setShowManualUsuario(true)
+  }
   const [torneosParaHorarios, setTorneosParaHorarios] = useState<{ id: number; nombre: string | null }[]>([])
   const [selectedTorneoIdsHorarios, setSelectedTorneoIdsHorarios] = useState<number[]>([torneoId])
   const [torneosParaCanchas, setTorneosParaCanchas] = useState<{ id: number; nombre: string | null }[]>([])
@@ -1070,7 +1081,7 @@ const TorneoDetailPage = () => {
                 </h4>
                 <p className="text-muted mb-0">{torneo.descripcion}</p>
               </div>
-              <div className="d-flex gap-2">
+              <div className="d-flex gap-2 align-items-center">
                 <Badge bg={torneo.estado === 'en_curso' ? 'success' : torneo.estado === 'finalizado' ? 'primary' : 'secondary'}>
                   {torneo.estado === 'planificado' ? 'Planificado' : 
                    torneo.estado === 'en_curso' ? 'En Curso' : 
@@ -1211,22 +1222,24 @@ const TorneoDetailPage = () => {
                           <span className="d-sm-none">Dinámico</span>
                         </NavLink>
                       </NavItem>
-                      <NavItem className="flex-shrink-0">
-                        <NavLink 
-                          eventKey="sanciones"
-                          className="px-2 px-md-3 py-2"
-                          style={{ 
-                            fontSize: '0.875rem',
-                            whiteSpace: 'nowrap',
-                            minWidth: 'fit-content',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          Sanciones
-                        </NavLink>
-                      </NavItem>
+                      {SHOW_SANCIONES_TAB && (
+                        <NavItem className="flex-shrink-0">
+                          <NavLink 
+                            eventKey="sanciones"
+                            className="px-2 px-md-3 py-2"
+                            style={{ 
+                              fontSize: '0.875rem',
+                              whiteSpace: 'nowrap',
+                              minWidth: 'fit-content',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            Sanciones
+                          </NavLink>
+                        </NavItem>
+                      )}
                     </Nav>
                   </div>
                   {/* Indicadores de scroll */}
@@ -1263,9 +1276,18 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Equipos Participantes */}
                 <Tab.Pane eventKey="equipos">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5>Equipos Participantes ({equiposParticipantes.length})</h5>
-                    <div className="d-flex gap-2">
+                  <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h5 className="mb-0">Equipos Participantes ({equiposParticipantes.length})</h5>
+                    <div className="d-flex gap-2 flex-wrap">
+                      <Button
+                        variant="outline-info"
+                        size="sm"
+                        onClick={() => openManualTab('equipos')}
+                        title="Manual de esta pestaña"
+                      >
+                        <TbHelp className="me-1" />
+                        Manual de Usuario
+                      </Button>
                       <Button 
                         variant="primary" 
                         size="sm"
@@ -1325,6 +1347,17 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Fixture */}
                 <Tab.Pane eventKey="fixture">
+                  <div className="d-flex justify-content-end mb-3">
+                    <Button
+                      variant="outline-info"
+                      size="sm"
+                      onClick={() => openManualTab('fixture')}
+                      title="Manual de esta pestaña"
+                    >
+                      <TbHelp className="me-1" />
+                      Manual de Usuario
+                    </Button>
+                  </div>
                   <TorneoFixtureSection
                     torneo={torneo}
                     encuentros={encuentros}
@@ -1363,9 +1396,18 @@ const TorneoDetailPage = () => {
 
                 {/* Tab: Sistema Dinámico */}
                 <Tab.Pane eventKey="dinamico">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5>Sistema Dinámico de Fixture</h5>
-                    <div className="d-flex gap-2">
+                  <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h5 className="mb-0">Sistema Dinámico de Fixture</h5>
+                    <div className="d-flex gap-2 flex-wrap">
+                      <Button
+                        variant="outline-info"
+                        size="sm"
+                        onClick={() => openManualTab('dinamico')}
+                        title="Manual de esta pestaña"
+                      >
+                        <TbHelp className="me-1" />
+                        Manual de Usuario
+                      </Button>
                       <Button 
                         variant="primary" 
                         size="sm"
@@ -1452,6 +1494,9 @@ const TorneoDetailPage = () => {
                           Horarios y Canchas
                         </h2>
                         <div className="hc-actions">
+                          <Button variant="outline-info" size="sm" className="hc-btn-secondary" onClick={() => openManualTab('horarios-canchas')} title="Manual de esta pestaña">
+                            <TbHelp size={16} className="me-1" /> Manual de Usuario
+                          </Button>
                           <button type="button" className="hc-btn-secondary" onClick={handleMostrarTablaDistribucion} disabled={horarios.length === 0}>
                             <LuInfo size={16} /> Tabla Horarios
                           </button>
@@ -1648,14 +1693,24 @@ const TorneoDetailPage = () => {
                   </div>
                 </Tab.Pane>
 
-                {/* Tab: Sanciones */}
+                {/* Tab: Sanciones (oculta temporalmente con SHOW_SANCIONES_TAB) */}
+                {SHOW_SANCIONES_TAB && (
                 <Tab.Pane eventKey="sanciones">
-                  <div className="d-flex justify-content-between align-items-center mb-4">
+                  <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                     <div>
                       <h5 className="mb-1">🟨🟥 Sanciones y Tarjetas</h5>
                       <p className="text-muted mb-0">Control de tarjetas amarillas, rojas y jugadores sancionados</p>
                     </div>
-                    <div className="d-flex gap-2">
+                    <div className="d-flex gap-2 flex-wrap align-items-center">
+                      <Button
+                        variant="outline-info"
+                        size="sm"
+                        onClick={() => openManualTab('sanciones')}
+                        title="Manual de esta pestaña"
+                      >
+                        <TbHelp className="me-1" />
+                        Manual de Usuario
+                      </Button>
                       <Badge bg="primary" className="fs-6 px-3 py-2">
                         {encuentros.filter(e => e.estado === 'finalizado').length} partidos jugados
                       </Badge>
@@ -1830,6 +1885,7 @@ const TorneoDetailPage = () => {
                     )
                   })()}
                 </Tab.Pane>
+                )}
 
 
               </Tab.Content>
@@ -2642,6 +2698,142 @@ const TorneoDetailPage = () => {
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setShowTablaDistribucionCanchas(false)}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal de Manual de Usuario (contenido según pestaña) */}
+      <Modal show={showManualUsuario} onHide={() => setShowManualUsuario(false)} size="lg" centered>
+        <ModalHeader closeButton>
+          <Modal.Title className="d-flex align-items-center">
+            <TbHelp className="me-2" />
+            {manualTab === 'equipos' && 'Manual - Equipos Participantes'}
+            {manualTab === 'fixture' && 'Manual - Fixture'}
+            {manualTab === 'horarios-canchas' && 'Manual - Horarios y Canchas'}
+            {manualTab === 'dinamico' && 'Manual - Sistema Dinámico'}
+            {manualTab === 'sanciones' && 'Manual - Sanciones'}
+          </Modal.Title>
+        </ModalHeader>
+        <ModalBody style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+          <div className="manual-content">
+            {manualTab === 'equipos' && (
+              <>
+                <Alert variant="info" className="mb-4">
+                  <strong>Equipos Participantes</strong>
+                  <br />
+                  <small>Desde aquí defines qué equipos forman parte del torneo. Solo se listan equipos de la misma categoría del torneo y que estén activos.</small>
+                </Alert>
+                <h6 className="text-primary mb-2">Agregar Equipos</h6>
+                <p>Haz clic en <strong>&quot;Agregar Equipos&quot;</strong>. Se abre un modal con todos los equipos disponibles (de la categoría del torneo). Puedes seleccionar varios a la vez con las casillas. Al confirmar, los equipos quedan inscritos en el torneo. El botón se deshabilita si no hay equipos disponibles (todos ya están o no hay equipos en la categoría).</p>
+                <h6 className="text-primary mb-2 mt-3">Generar Fixture</h6>
+                <p>Este botón aparece cuando hay <strong>al menos 2 equipos</strong>. Al hacer clic se abre el asistente para generar el fixture (todos contra todos u otra modalidad según el tipo de torneo). Debes generar el fixture antes de poder asignar horarios y canchas a los encuentros.</p>
+                <h6 className="text-primary mb-2 mt-3">Tarjetas de equipo</h6>
+                <p>Cada equipo se muestra en una tarjeta con: imagen del equipo, nombre, entrenador, <strong>puntos (pts)</strong>, <strong>partidos jugados (PJ)</strong>. El botón <strong>&quot;Remover&quot;</strong> quita al equipo del torneo; no borra el equipo del sistema ni de otras pantallas.</p>
+                <Alert variant="warning" className="mb-0 mt-3">
+                  <small>Si el torneo no tiene categoría asignada, se mostrarán todos los equipos activos del sistema al agregar.</small>
+                </Alert>
+              </>
+            )}
+
+            {manualTab === 'fixture' && (
+              <>
+                <Alert variant="info" className="mb-4">
+                  <strong>Fixture</strong>
+                  <br />
+                  <small>Visualizas y gestionas todos los encuentros del torneo por jornada. Aquí se editan resultados, horarios, canchas y estado de cada partido.</small>
+                </Alert>
+                <h6 className="text-primary mb-2">Descargar Excel</h6>
+                <p>Exporta el fixture actual a un archivo Excel con todos los encuentros, jornadas, equipos, horarios y canchas. Útil para imprimir o compartir.</p>
+                <h6 className="text-primary mb-2 mt-3">Generar Fixture / Regenerar Fixture</h6>
+                <p>Si aún no hay encuentros, el botón dice <strong>&quot;Generar Fixture&quot;</strong>; si ya existen, <strong>&quot;Regenerar Fixture&quot;</strong>. Al hacer clic se abre el asistente que crea todos los partidos según el tipo de torneo (liga, eliminación, grupos). Regenerar reemplaza todo el fixture actual.</p>
+                <h6 className="text-primary mb-2 mt-3">Sistema Dinámico</h6>
+                <p>Genera una sola jornada con restricciones (por ejemplo, indicar qué equipo debe descansar) sin tocar el resto del fixture. Ideal para ajustar una fecha puntual.</p>
+                <h6 className="text-primary mb-2 mt-3">Emparejamientos</h6>
+                <p>Muestra un resumen de emparejamientos faltantes o incompletos por jornada. Sirve para detectar si falta algún partido en alguna fecha.</p>
+                <h6 className="text-primary mb-2 mt-3">Crear Emparejamiento</h6>
+                <p>Añade un partido manual: eliges equipo local, visitante, fecha programada, horario, cancha y jornada. Útil para partidos aplazados o añadidos a mano.</p>
+                <h6 className="text-primary mb-2 mt-3">Eliminar Jornada</h6>
+                <p>Elimina todos los encuentros de una jornada que indiques. Se pide confirmación. Útil si quieres volver a generar solo esa fecha.</p>
+                <h6 className="text-primary mb-2 mt-3">Gestionar Jugadores</h6>
+                <p>Enlace a la pantalla de gestión de jugadores de este torneo (inscripción, carnets, etc.).</p>
+                <h6 className="text-primary mb-2 mt-3">En cada encuentro (tarjeta)</h6>
+                <p>Puedes editar horario, cancha, y eliminar el encuentro. Las tarjetas amarillas y rojas se cargan desde aquí y se reflejan en la pestaña Sanciones.</p>
+              </>
+            )}
+
+            {manualTab === 'horarios-canchas' && (
+              <>
+                <Alert variant="info" className="mb-4">
+                  <strong>Horarios y Canchas</strong>
+                  <br />
+                  <small>Configuras las franjas horarias (por día) y asignas automáticamente horario y cancha a cada encuentro. Puedes incluir varios torneos en la redistribución.</small>
+                </Alert>
+                <h6 className="text-primary mb-2">Torneos a incluir</h6>
+                <p>Los chips permiten elegir uno o más torneos para la redistribución. Si el torneo tiene temporada, se listan los torneos de esa temporada; si no, los de la misma categoría. Debes seleccionar al menos un torneo (incluido el actual) para que el botón &quot;Ejecutar Redistribución&quot; esté activo.</p>
+                <h6 className="text-primary mb-2 mt-3">Tabla Horarios / Tabla Canchas</h6>
+                <p><strong>Tabla Horarios:</strong> Muestra cómo se reparten los encuentros entre los horarios configurados (útil para ver carga por franja). <strong>Tabla Canchas:</strong> Muestra la distribución por cancha. Ambas se habilitan cuando hay datos (horarios creados o encuentros con cancha).</p>
+                <h6 className="text-primary mb-2 mt-3">Nuevo Horario</h6>
+                <p>Crea una franja horaria: día de la semana (Viernes, Sábado, Domingo), hora de inicio, orden de uso y color. Los horarios se agrupan por día. Luego puedes editar o eliminar cada franja desde la lista. Sin horarios no podrás asignar horarios a los encuentros.</p>
+                <h6 className="text-primary mb-2 mt-3">Ejecutar Redistribución</h6>
+                <p>Asigna en un solo paso primero <strong>horarios</strong> y después <strong>canchas</strong> a todos los encuentros de los torneos seleccionados. El sistema reparte de forma automática. Requiere: al menos un torneo seleccionado, horarios creados y canchas activas (de la categoría del torneo).</p>
+                <h6 className="text-primary mb-2 mt-3">Opciones de redistribución</h6>
+                <ul className="mb-0">
+                  <li><strong>Reiniciar horarios antes:</strong> Quita todos los horarios ya asignados a los encuentros y vuelve a distribuir desde cero.</li>
+                  <li><strong>Reiniciar canchas antes:</strong> Quita las canchas asignadas y vuelve a asignar canchas.</li>
+                  <li><strong>Cancha prioritaria:</strong> Si eliges una cancha, el algoritmo la prioriza en la distribución (más partidos en esa cancha). &quot;Distribución equitativa&quot; reparte sin priorizar.</li>
+                </ul>
+                <p className="mt-3 mb-0">Las canchas disponibles son las activas asociadas a la categoría del torneo. El resumen lateral muestra cuántos encuentros tienen cancha y cuántos no.</p>
+              </>
+            )}
+
+            {manualTab === 'dinamico' && (
+              <>
+                <Alert variant="info" className="mb-4">
+                  <strong>Sistema Dinámico de Fixture</strong>
+                  <br />
+                  <small>Genera jornadas una a una con restricciones (descansos forzados, equilibrio entre equipos) sin regenerar todo el fixture.</small>
+                </Alert>
+                <h6 className="text-primary mb-2">Generar Jornada Dinámica</h6>
+                <p>Al hacer clic se abre un asistente donde puedes indicar qué equipo(s) deben <strong>descansar</strong> en esa jornada. El sistema propone emparejamientos válidos: no repite partidos ya jugados y respeta los descansos indicados. Puedes revisar la propuesta y confirmar o ver alternativas antes de guardar.</p>
+                <h6 className="text-primary mb-2 mt-3">Estado de Equipos</h6>
+                <p>Lista cada equipo y la cantidad de <strong>descansos</strong> que lleva hasta el momento. Sirve para equilibrar y decidir quién debe descansar en la próxima jornada.</p>
+                <h6 className="text-primary mb-2 mt-3">Jornadas Generadas</h6>
+                <p>Muestra las jornadas que ya fueron generadas con este sistema (badges por número de jornada). Si no hay ninguna, verás el mensaje &quot;No hay jornadas generadas aún&quot;.</p>
+                <Alert variant="success" className="mb-0 mt-3">
+                  <small>Recomendado cuando necesitas controlar descansos, localías o restricciones por fecha sin modificar el resto del calendario.</small>
+                </Alert>
+              </>
+            )}
+
+            {manualTab === 'sanciones' && (
+              <>
+                <Alert variant="info" className="mb-4">
+                  <strong>Sanciones y Tarjetas</strong>
+                  <br />
+                  <small>Consulta tarjetas amarillas, rojas y jugadores sancionados. Los datos se alimentan desde los partidos finalizados en la pestaña Fixture.</small>
+                </Alert>
+                <h6 className="text-primary mb-2">Requisito para ver datos</h6>
+                <p>Solo se muestran estadísticas cuando hay partidos en estado <strong>finalizado</strong> y con sanciones cargadas. Las tarjetas se registran al editar cada encuentro en la pestaña Fixture (resultado y tarjetas por jugador). Si no hay partidos finalizados, verás el mensaje explicativo.</p>
+                <h6 className="text-primary mb-2 mt-3">Jugadores con Sanciones</h6>
+                <p>Tabla con: jugador (foto y nombre), equipo, cantidad de tarjetas amarillas, rojas, total de tarjetas, estado (Sancionado o Disponible) y partidos que debe cumplir de sanción. Un jugador aparece como &quot;Sancionado&quot; cuando acumula 5 amarillas o tiene roja y debe cumplir partido(s) sin jugar.</p>
+                <h6 className="text-primary mb-2 mt-3">Reglas de sanciones</h6>
+                <ul>
+                  <li><strong>Tarjeta amarilla:</strong> Advertencia; se acumulan.</li>
+                  <li><strong>5 amarillas:</strong> 1 partido de sanción (no puede jugar el siguiente partido).</li>
+                  <li><strong>Tarjeta roja:</strong> 1 partido de sanción.</li>
+                </ul>
+                <h6 className="text-primary mb-2 mt-3">Sanciones por Equipo</h6>
+                <p>Resumen por equipo: total de amarillas y rojas. Útil para comparar disciplina entre equipos.</p>
+                <Alert variant="warning" className="mb-0 mt-3">
+                  <small>Para que un jugador aparezca aquí, las tarjetas deben haberse cargado en el partido correspondiente (editar encuentro en Fixture y guardar amarillas/rojas).</small>
+                </Alert>
+              </>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowManualUsuario(false)}>
             Cerrar
           </Button>
         </ModalFooter>
