@@ -148,28 +148,28 @@ export default function TablaFixture({ encuentros, equiposDescansan = {}, equipo
 			})
 		}
 		
-		// Ordenar jornadas por fecha más reciente primero
+		// Ordenar jornadas en orden ascendente (primera jornada primero)
 		return jornadasFiltradas.sort((a, b) => {
-			// Obtener la fecha más reciente de cada jornada
-			const getFechaMasReciente = (lista: Encuentro[]) => {
+			// Obtener la fecha más antigua de cada jornada para ordenar cronológicamente
+			const getFechaMasAntigua = (lista: Encuentro[]) => {
 				const fechas = lista
 					.map(e => parseDateOnlyToLocal(e.fecha_programada)?.getTime() ?? 0)
 					.filter(t => t > 0)
-				return fechas.length > 0 ? Math.max(...fechas) : 0
+				return fechas.length > 0 ? Math.min(...fechas) : 0
 			}
 			
-			const fechaA = getFechaMasReciente(a[1])
-			const fechaB = getFechaMasReciente(b[1])
+			const fechaA = getFechaMasAntigua(a[1])
+			const fechaB = getFechaMasAntigua(b[1])
 			
-			// Si ambas tienen fechas, ordenar descendente (más reciente primero)
+			// Si ambas tienen fechas, ordenar ascendente (primera jornada primero)
 			if (fechaA > 0 && fechaB > 0) {
-				return fechaB - fechaA
+				return fechaA - fechaB
 			}
-			// Si solo una tiene fecha, ponerla primero
-			if (fechaA > 0) return -1
-			if (fechaB > 0) return 1
-			// Si ninguna tiene fecha, mantener orden por número de jornada descendente
-			return b[0] - a[0]
+			// Si solo una tiene fecha, la que tiene fecha va según corresponda
+			if (fechaA > 0) return 1
+			if (fechaB > 0) return -1
+			// Si ninguna tiene fecha, orden por número de jornada ascendente
+			return a[0] - b[0]
 		})
 	}, [encuentros, filtrarPorFechaActual])
 
