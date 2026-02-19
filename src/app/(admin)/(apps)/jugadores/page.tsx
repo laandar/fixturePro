@@ -181,15 +181,16 @@ const Page = () => {
   const [selectedCategorias, setSelectedCategorias] = useState<string[]>([])
   const [selectedEquipos, setSelectedEquipos] = useState<string[]>([])
   
-  // Función para obtener equipos filtrados por categorías seleccionadas
+  // Función para obtener equipos filtrados por categorías seleccionadas, ordenados A-Z por nombre de equipo
   const getFilteredEquipos = () => {
-    if (selectedCategorias.length === 0) {
-      return equiposCategorias
+    let lista = equiposCategorias
+    if (selectedCategorias.length > 0) {
+      lista = equiposCategorias.filter(equipoCategoria =>
+        selectedCategorias.includes(equipoCategoria.categoria.nombre)
+      )
     }
-    
-    // Filtrar equipos-categorías que pertenecen a las categorías seleccionadas
-    return equiposCategorias.filter(equipoCategoria => 
-      selectedCategorias.includes(equipoCategoria.categoria.nombre)
+    return [...lista].sort((a, b) =>
+      (a.equipo?.nombre || '').localeCompare(b.equipo?.nombre || '', 'es')
     )
   }
 
@@ -567,11 +568,13 @@ const Page = () => {
   const [selectedEditEquipoCategoria, setSelectedEditEquipoCategoria] = useState<any>(null)
 
   // Opciones para react-select
-  const equipoCategoriaOptions = equiposCategorias.map((equipoCategoria) => ({
-    value: equipoCategoria.id,
-    label: `${equipoCategoria.equipo.nombre} - ${equipoCategoria.categoria.nombre}`,
-    equipoCategoria: equipoCategoria
-  }))
+  const equipoCategoriaOptions = [...equiposCategorias]
+    .sort((a, b) => (a.equipo?.nombre || '').localeCompare(b.equipo?.nombre || '', 'es'))
+    .map((equipoCategoria) => ({
+      value: equipoCategoria.id,
+      label: `${equipoCategoria.equipo.nombre} - ${equipoCategoria.categoria.nombre}`,
+      equipoCategoria: equipoCategoria
+    }))
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 8 })
