@@ -159,6 +159,10 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
     const [showSelectionModalA, setShowSelectionModalA] = useState(false)
     const [showSelectionModalB, setShowSelectionModalB] = useState(false)
 
+    // Selección pendiente en el modal: no se aplica a la lista de atrás hasta "Confirmar Selección"
+    const [pendingSelectionA, setPendingSelectionA] = useState<JugadorWithEquipo[] | null>(null)
+    const [pendingSelectionB, setPendingSelectionB] = useState<JugadorWithEquipo[] | null>(null)
+
 
     const [tarjetas, setTarjetas] = useState<CardType[]>([])
     const [showTarjetaModal, setShowTarjetaModal] = useState(false)
@@ -973,7 +977,90 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         setter([])
     }, [])
 
+    // Inicializar selección pendiente al abrir el modal (copia del estado real)
+    const initPendingForModal = useCallback((equipo: 'A' | 'B') => {
+        if (equipo === 'A') setPendingSelectionA([...jugadoresParticipantesA])
+        else setPendingSelectionB([...jugadoresParticipantesB])
+    }, [jugadoresParticipantesA, jugadoresParticipantesB])
 
+    // Toggle en el modal: solo actualiza la selección pendiente, no la lista de atrás
+    const handleTogglePendingSelection = useCallback((jugador: JugadorWithEquipo, equipo: 'A' | 'B') => {
+        if (equipo === 'A') {
+            setPendingSelectionA(prev => {
+                const list = prev ?? [...jugadoresParticipantesA]
+                if (list.some(p => p.id === jugador.id)) return list.filter(p => p.id !== jugador.id)
+                return [...list, jugador]
+            })
+        } else {
+            setPendingSelectionB(prev => {
+                const list = prev ?? [...jugadoresParticipantesB]
+                if (list.some(p => p.id === jugador.id)) return list.filter(p => p.id !== jugador.id)
+                return [...list, jugador]
+            })
+        }
+    }, [jugadoresParticipantesA, jugadoresParticipantesB])
+
+    const handleSelectAllPending = useCallback((equipo: 'A' | 'B') => {
+        const source = equipo === 'A' ? jugadoresEquipoA : jugadoresEquipoB
+        if (equipo === 'A') setPendingSelectionA([...source])
+        else setPendingSelectionB([...source])
+    }, [jugadoresEquipoA, jugadoresEquipoB])
+
+    const handleClearAllPending = useCallback((equipo: 'A' | 'B') => {
+        if (equipo === 'A') setPendingSelectionA([])
+        else setPendingSelectionB([])
+    }, [])
+
+    const hasPendingChanges = useCallback((equipo: 'A' | 'B') => {
+        const pending = equipo === 'A' ? pendingSelectionA : pendingSelectionB
+        const real = equipo === 'A' ? jugadoresParticipantesA : jugadoresParticipantesB
+        if (pending === null) return false
+        if (pending.length !== real.length) return true
+        const pendingIds = new Set(pending.map(p => p.id))
+        return real.some(p => !pendingIds.has(p.id)) || pending.some(p => !real.find(r => r.id === p.id))
+    }, [pendingSelectionA, pendingSelectionB, jugadoresParticipantesA, jugadoresParticipantesB])
+
+    const clearPending = useCallback((equipo: 'A' | 'B') => {
+        if (equipo === 'A') setPendingSelectionA(null)
+        else setPendingSelectionB(null)
+    }, [])
+
+    const applyPendingAndSave = useCallback(async (equipo: 'A' | 'B') => {
+        const pending = equipo === 'A' ? pendingSelectionA : pendingSelectionB
+        if (pending === null) return
+        if (equipo === 'A') {
+            setJugadoresParticipantesA([...pending])
+            setPendingSelectionA(null)
+        } else {
+            setJugadoresParticipantesB([...pending])
+            setPendingSelectionB(null)
+        }
+        await checkEstadoFinalizado(async () => {
+            try {
+                setIsSaving(true)
+                const encuentro = await getEncuentroActual()
+                if (!encuentro) return
+                const jugadoresData: NewJugadorParticipante[] = [
+                    ...(equipo === 'A' ? pending : jugadoresParticipantesA).map(j => ({
+                        encuentro_id: encuentro.id,
+                        jugador_id: j.id,
+                        equipo_tipo: 'local' as const
+                    })),
+                    ...(equipo === 'B' ? pending : jugadoresParticipantesB).map(j => ({
+                        encuentro_id: encuentro.id,
+                        jugador_id: j.id,
+                        equipo_tipo: 'visitante' as const
+                    }))
+                ]
+                await saveJugadoresParticipantesAction(encuentro.id, jugadoresData)
+            } catch (err) {
+                console.error('❌ Error al guardar jugadores participantes:', err)
+                throw err
+            } finally {
+                setIsSaving(false)
+            }
+        })
+    }, [pendingSelectionA, pendingSelectionB, jugadoresParticipantesA, jugadoresParticipantesB, checkEstadoFinalizado, getEncuentroActual])
 
     const handleAddTarjeta = useCallback(async () => {
         if (!torneoId || !equipoLocalIdNum || !equipoVisitanteIdNum || !jornadaNum) return
@@ -1489,6 +1576,15 @@ const GestionJugadoresProviderInner = ({ children }: { children: React.ReactNode
         handleTogglePlayerSelection,
         handleSelectAllPlayers,
         handleClearAllPlayers,
+        pendingSelectionA,
+        pendingSelectionB,
+        initPendingForModal,
+        handleTogglePendingSelection,
+        handleSelectAllPending,
+        handleClearAllPending,
+        hasPendingChanges,
+        clearPending,
+        applyPendingAndSave,
         handleAddTarjeta,
         handleDeleteTarjeta,
         handleQuickSanction,

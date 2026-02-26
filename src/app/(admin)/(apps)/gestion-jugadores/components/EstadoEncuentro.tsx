@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import './EstadoEncuentro.css'
-import { Button, Card, CardBody, Badge, Dropdown, DropdownButton } from 'react-bootstrap'
+import { Button, Card, CardBody, Badge } from 'react-bootstrap'
 import { LuPlay, LuPause, LuCheck, LuX, LuClock, LuSettings, LuHourglass } from 'react-icons/lu'
 import NotificationCard from '@/components/NotificationCard'
 import { updateEstadoEncuentro } from '../../torneos/actions'
@@ -217,42 +217,20 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
     return estados[estado] || estado
   }
 
+  const getEstadoConfig = (estado: string) => {
+    const config: Record<string, { variant: string; icon: React.ReactNode }> = {
+      programado: { variant: 'secondary', icon: <LuClock size={18} /> },
+      en_curso: { variant: 'warning', icon: <LuPlay size={18} /> },
+      finalizado: { variant: 'success', icon: <LuCheck size={18} /> },
+      cancelado: { variant: 'danger', icon: <LuX size={18} /> },
+      aplazado: { variant: 'info', icon: <LuPause size={18} /> },
+      pendiente: { variant: 'warning', icon: <LuHourglass size={18} /> }
+    }
+    return config[estado] || { variant: 'secondary', icon: <LuSettings size={18} /> }
+  }
+
   const getEstadoBadge = (estado: string) => {
-    const config: Record<string, { 
-      variant: string; 
-      icon: React.ReactNode;
-    }> = {
-      programado: { 
-        variant: 'secondary', 
-        icon: <LuClock size={16} />
-      },
-      en_curso: { 
-        variant: 'warning', 
-        icon: <LuPlay size={16} />
-      },
-      finalizado: { 
-        variant: 'success', 
-        icon: <LuCheck size={16} />
-      },
-      cancelado: { 
-        variant: 'danger', 
-        icon: <LuX size={16} />
-      },
-      aplazado: { 
-        variant: 'info', 
-        icon: <LuPause size={16} />
-      },
-      pendiente: { 
-        variant: 'warning', 
-        icon: <LuHourglass size={16} />
-      }
-    }
-    
-    const configItem = config[estado] || { 
-      variant: 'secondary', 
-      icon: <LuSettings size={16} />
-    }
-    
+    const configItem = getEstadoConfig(estado)
     return (
       <Badge bg={configItem.variant} className="d-flex align-items-center gap-1 estado-badge">
         {configItem.icon}
@@ -384,26 +362,30 @@ const EstadoEncuentro = ({ torneoId, equipoLocalId, equipoVisitanteId, jornada }
             </div>
           </div>
           
-          {/* Controles de acción */}
+          {/* Controles de acción: botones de estado (mejor en móvil que dropdown) */}
           <div className="estado-controles">
             {estadosDisponibles.length > 0 && (
-              <DropdownButton
-                title="Cambiar Estado"
-                variant="outline-primary"
-                size="sm"
-                disabled={updating}
-                className="estado-dropdown"
-              >
-                {estadosDisponibles.map(estado => (
-                  <Dropdown.Item
-                    key={estado}
-                    onClick={() => handleCambiarEstado(estado)}
-                    disabled={updating}
-                  >
-                    {getEstadoLabel(estado)}
-                  </Dropdown.Item>
-                ))}
-              </DropdownButton>
+              <div className="estado-buttons-wrapper">
+                <span className="estado-buttons-label d-block d-md-inline mb-1 mb-md-0 me-md-2">Cambiar a:</span>
+                <div className="estado-buttons-grid">
+                  {estadosDisponibles.map(estado => {
+                    const config = getEstadoConfig(estado)
+                    return (
+                      <Button
+                        key={estado}
+                        variant={`outline-${config.variant}`}
+                        size="sm"
+                        disabled={updating}
+                        className="estado-action-btn"
+                        onClick={() => handleCambiarEstado(estado)}
+                      >
+                        {config.icon}
+                        <span className="estado-action-label">{getEstadoLabel(estado)}</span>
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
             )}
 
             {/* Botones WO - Solo para administradores */}

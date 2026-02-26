@@ -51,10 +51,11 @@ export default async function EstadisticasPage({ params }: PageProps) {
 
   try {
     // Obtener datos del torneo y estadísticas
-    const [torneo, tablaPosiciones, tablaGoleadores, encuentros, descansosData, equiposTorneo] = await Promise.all([
+    const [torneo, tablaPosiciones, tablaGoleadores, tablaTarjetas, encuentros, descansosData, equiposTorneo] = await Promise.all([
       estadisticasQueries.getTorneoPublico(torneoId),
       estadisticasQueries.getTablaPosiciones(torneoId),
       estadisticasQueries.getTablaGoleadores(torneoId),
+      estadisticasQueries.getTablaTarjetas(torneoId),
       encuentroQueries.getByTorneoId(torneoId),
       equiposDescansanQueries.getByTorneoId(torneoId),
       equipoTorneoQueries.getByTorneoId(torneoId)
@@ -90,6 +91,7 @@ export default async function EstadisticasPage({ params }: PageProps) {
         torneo={torneo}
         tablaPosiciones={tablaPosiciones}
         tablaGoleadores={tablaGoleadores}
+        tablaTarjetas={tablaTarjetas}
         encuentros={encuentros}
         equiposDescansan={equiposDescansan}
         equiposMap={equiposMap}

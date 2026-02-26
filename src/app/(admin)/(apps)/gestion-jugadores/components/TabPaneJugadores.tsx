@@ -57,6 +57,7 @@ const TabPaneJugadores = () => {
         jugadorSale: string;
         jugadorEntra: string;
     } | null>(null);
+    const [showCloseSelectionConfirm, setShowCloseSelectionConfirm] = useState<'A' | 'B' | null>(null);
     const [searchFilterA, setSearchFilterA] = useState('');
     const [searchFilterB, setSearchFilterB] = useState('');
     const [jugadoresSancionados, setJugadoresSancionados] = useState<Record<string, { sancionado: boolean; razon: string; partidosPendientes: number }>>({});
@@ -77,6 +78,15 @@ const TabPaneJugadores = () => {
         handleTogglePlayerSelection,
         handleSelectAllPlayers,
         handleClearAllPlayers,
+        pendingSelectionA,
+        pendingSelectionB,
+        initPendingForModal,
+        handleTogglePendingSelection,
+        handleSelectAllPending,
+        handleClearAllPending,
+        hasPendingChanges,
+        clearPending,
+        applyPendingAndSave,
         handleQuickSanction,
         handleDesignarCapitan,
         handleQuickGoal,
@@ -134,6 +144,46 @@ const TabPaneJugadores = () => {
     // Jugadores filtrados para cada equipo
     const jugadoresFiltradosA = filterJugadores(jugadoresEquipoA, searchFilterA);
     const jugadoresFiltradosB = filterJugadores(jugadoresEquipoB, searchFilterB);
+
+    // En el modal de selección se usa la lista pendiente; la lista "de atrás" no cambia hasta Confirmar
+    const selectionListA = pendingSelectionA !== null ? pendingSelectionA : jugadoresParticipantesA;
+    const selectionListB = pendingSelectionB !== null ? pendingSelectionB : jugadoresParticipantesB;
+
+    useEffect(() => {
+        if (showSelectionModalA) initPendingForModal('A');
+    }, [showSelectionModalA, initPendingForModal]);
+    useEffect(() => {
+        if (showSelectionModalB) initPendingForModal('B');
+    }, [showSelectionModalB, initPendingForModal]);
+
+    const handleCloseSelectionModal = (equipo: 'A' | 'B') => {
+        if (hasPendingChanges(equipo)) {
+            setShowCloseSelectionConfirm(equipo);
+        } else {
+            if (equipo === 'A') {
+                setShowSelectionModalA(false);
+                setSearchFilterA('');
+            } else {
+                setShowSelectionModalB(false);
+                setSearchFilterB('');
+            }
+            setSaveMessage(null);
+            clearPending(equipo);
+        }
+    };
+
+    const handleConfirmCloseSelection = (equipo: 'A' | 'B') => {
+        clearPending(equipo);
+        setShowCloseSelectionConfirm(null);
+        if (equipo === 'A') {
+            setShowSelectionModalA(false);
+            setSearchFilterA('');
+        } else {
+            setShowSelectionModalB(false);
+            setSearchFilterB('');
+        }
+        setSaveMessage(null);
+    };
 
     const handleImageClick = (imageUrl: string) => {
         setSelectedImage(imageUrl);
@@ -345,15 +395,15 @@ const TabPaneJugadores = () => {
     const handleConfirmSave = async (equipo: 'A' | 'B') => {
         try {
             setSaveMessage(null);
-            await saveJugadoresParticipantes();
+            await applyPendingAndSave(equipo);
             setSaveMessage({ type: 'success', text: '✅ Jugadores guardados exitosamente' });
-            
-            // Cerrar el modal después de un breve delay
             setTimeout(() => {
                 if (equipo === 'A') {
                     setShowSelectionModalA(false);
+                    setSearchFilterA('');
                 } else {
                     setShowSelectionModalB(false);
+                    setSearchFilterB('');
                 }
                 setSaveMessage(null);
             }, 1500);
@@ -912,7 +962,7 @@ const TabPaneJugadores = () => {
             {/* Modal de Selección de Jugadores Equipo A */}
             <Modal 
                 show={showSelectionModalA} 
-                onHide={() => setShowSelectionModalA(false)} 
+                onHide={() => handleCloseSelectionModal('A')} 
                 size="xl"
                 centered
                 scrollable
@@ -937,7 +987,7 @@ const TabPaneJugadores = () => {
                             <Button 
                                 variant="outline-primary" 
                                 size="sm" 
-                                onClick={() => handleSelectAllPlayers('A')} 
+                                onClick={() => handleSelectAllPending('A')} 
                                 disabled={shouldDisableActions}
                             >
                                 <TbCheck className="me-1" />
@@ -946,7 +996,7 @@ const TabPaneJugadores = () => {
                             <Button 
                                 variant="outline-danger" 
                                 size="sm" 
-                                onClick={() => handleClearAllPlayers('A')} 
+                                onClick={() => handleClearAllPending('A')} 
                                 disabled={shouldDisableActions}
                             >
                                 <TbTrash className="me-1" />
@@ -976,9 +1026,9 @@ const TabPaneJugadores = () => {
                             return (
                             <div key={jugador.id} className="col-12 col-sm-6 col-lg-4">
                                 <div 
-                                    className={`card h-100 border-2 ${jugadoresParticipantesA.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : sancionado ? 'border-danger bg-danger-subtle' : 'border-light'} ${!shouldDisableActions && !deshabilitadoPorSancion ? 'cursor-pointer' : ''}`} 
+                                    className={`card h-100 border-2 ${selectionListA.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : sancionado ? 'border-danger bg-danger-subtle' : 'border-light'} ${!shouldDisableActions && !deshabilitadoPorSancion ? 'cursor-pointer' : ''}`} 
                                     style={{ overflow: 'hidden', cursor: shouldDisableActions || deshabilitadoPorSancion ? 'not-allowed' : 'pointer', opacity: deshabilitadoPorSancion ? 0.6 : 1 }}
-                                    onClick={() => !shouldDisableActions && !deshabilitadoPorSancion && handleTogglePlayerSelection(jugador, 'A')}
+                                    onClick={() => !shouldDisableActions && !deshabilitadoPorSancion && handleTogglePendingSelection(jugador, 'A')}
                                 >
                                     <div className="card-body p-3" style={{ overflow: 'hidden' }}>
                                         <div className="d-flex align-items-start" style={{ minWidth: 0 }}>
@@ -1035,7 +1085,7 @@ const TabPaneJugadores = () => {
                                                 )}
                                             </div>
                                             {/* Indicador visual de selección */}
-                                            {jugadoresParticipantesA.some(p => p.id === jugador.id) && (
+                                            {selectionListA.some(p => p.id === jugador.id) && (
                                                 <div className="ms-2">
                                                     <TbCheck className="text-primary" size={24} />
                                                 </div>
@@ -1077,11 +1127,7 @@ const TabPaneJugadores = () => {
                             className="me-auto"
                         />
                     )}
-                    <Button variant="secondary" onClick={() => {
-                        setShowSelectionModalA(false);
-                        setSaveMessage(null);
-                        setSearchFilterA('');
-                    }}>
+                    <Button variant="secondary" onClick={() => handleCloseSelectionModal('A')}>
                         Cerrar
                     </Button>
                     <Button 
@@ -1097,7 +1143,7 @@ const TabPaneJugadores = () => {
             {/* Modal de Selección de Jugadores Equipo B */}
             <Modal 
                 show={showSelectionModalB} 
-                onHide={() => setShowSelectionModalB(false)} 
+                onHide={() => handleCloseSelectionModal('B')} 
                 size="xl"
                 centered
                 scrollable
@@ -1122,7 +1168,7 @@ const TabPaneJugadores = () => {
                             <Button 
                                 variant="outline-primary" 
                                 size="sm" 
-                                onClick={() => handleSelectAllPlayers('B')} 
+                                onClick={() => handleSelectAllPending('B')} 
                                 disabled={shouldDisableActions}
                             >
                                 <TbCheck className="me-1" />
@@ -1131,7 +1177,7 @@ const TabPaneJugadores = () => {
                             <Button 
                                 variant="outline-danger" 
                                 size="sm" 
-                                onClick={() => handleClearAllPlayers('B')} 
+                                onClick={() => handleClearAllPending('B')} 
                                 disabled={shouldDisableActions}
                             >
                                 <TbTrash className="me-1" />
@@ -1161,9 +1207,9 @@ const TabPaneJugadores = () => {
                             return (
                             <div key={jugador.id} className="col-12 col-sm-6 col-lg-4">
                                 <div 
-                                    className={`card h-100 border-2 ${jugadoresParticipantesB.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : sancionado ? 'border-danger bg-danger-subtle' : 'border-light'} ${!shouldDisableActions && !deshabilitadoPorSancion ? 'cursor-pointer' : ''}`} 
+                                    className={`card h-100 border-2 ${selectionListB.some(p => p.id === jugador.id) ? 'border-primary bg-primary-subtle' : sancionado ? 'border-danger bg-danger-subtle' : 'border-light'} ${!shouldDisableActions && !deshabilitadoPorSancion ? 'cursor-pointer' : ''}`} 
                                     style={{ overflow: 'hidden', cursor: shouldDisableActions || deshabilitadoPorSancion ? 'not-allowed' : 'pointer', opacity: deshabilitadoPorSancion ? 0.6 : 1 }}
-                                    onClick={() => !shouldDisableActions && !deshabilitadoPorSancion && handleTogglePlayerSelection(jugador, 'B')}
+                                    onClick={() => !shouldDisableActions && !deshabilitadoPorSancion && handleTogglePendingSelection(jugador, 'B')}
                                 >
                                     <div className="card-body p-3" style={{ overflow: 'hidden' }}>
                                         <div className="d-flex align-items-start" style={{ minWidth: 0 }}>
@@ -1220,7 +1266,7 @@ const TabPaneJugadores = () => {
                                                 )}
                                             </div>
                                             {/* Indicador visual de selección */}
-                                            {jugadoresParticipantesB.some(p => p.id === jugador.id) && (
+                                            {selectionListB.some(p => p.id === jugador.id) && (
                                                 <div className="ms-2">
                                                     <TbCheck className="text-primary" size={24} />
                                                 </div>
@@ -1262,11 +1308,7 @@ const TabPaneJugadores = () => {
                             className="me-auto"
                         />
                     )}
-                    <Button variant="secondary" onClick={() => {
-                        setShowSelectionModalB(false);
-                        setSaveMessage(null);
-                        setSearchFilterB('');
-                    }}>
+                    <Button variant="secondary" onClick={() => handleCloseSelectionModal('B')}>
                         Cerrar
                     </Button>
                     <Button 
@@ -1278,6 +1320,18 @@ const TabPaneJugadores = () => {
                     </Button>
                 </ModalFooter>
             </Modal>
+
+            {/* Modal de confirmación al cerrar sin confirmar selección */}
+            <ConfirmationModal
+                show={showCloseSelectionConfirm !== null}
+                onHide={() => setShowCloseSelectionConfirm(null)}
+                onConfirm={() => showCloseSelectionConfirm && handleConfirmCloseSelection(showCloseSelectionConfirm)}
+                variant="warning"
+                modalTitle="Cambios sin confirmar"
+                confirmButtonText="Sí, cerrar"
+                cancelButtonText="No, seguir editando"
+                message="Hay jugadores seleccionados que no se han confirmado. Si cierra, los cambios no se aplicarán. ¿Desea cerrar de todos modos?"
+            />
 
             {/* Modal para ver imagen del jugador */}
             <Modal show={showImageModal} onHide={() => setShowImageModal(false)} centered size="lg">

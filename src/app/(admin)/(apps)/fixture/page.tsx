@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
-import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, FormSelect, FloatingLabel, Modal, ModalHeader, ModalBody, ModalFooter } from 'react-bootstrap'
+import { Button, Card, CardBody, CardHeader, Col, Container, Row, Alert, Badge, Modal, ModalHeader, ModalBody, ModalFooter } from 'react-bootstrap'
 import { LuTrophy, LuGamepad2, LuSettings, LuTrash, LuDownload, LuUsers } from 'react-icons/lu'
-import { getTorneoById, getEncuentrosByTorneo, deleteJornada, getEquiposDescansan, getTorneos, crearJornadaConEmparejamientos } from '../torneos/actions'
+import { getTorneoById, getEncuentrosByTorneo, deleteJornada, getEquiposDescansan, getTorneosTemporadasActivas, crearJornadaConEmparejamientos } from '../torneos/actions'
 import { confirmarJornada, confirmarRegeneracionJornada } from '../torneos/dynamic-actions'
 import type { TorneoWithRelations, EncuentroWithRelations } from '@/db/types'
 import type { JornadaPropuesta } from '@/lib/dynamic-fixture-generator'
@@ -34,10 +34,10 @@ const FixturePage = () => {
   const [jornadaDinamica, setJornadaDinamica] = useState<number>(1)
   const [jornadaAEliminar, setJornadaAEliminar] = useState<number>(1)
 
-  // Cargar lista de torneos
+  // Cargar lista de torneos (solo de temporadas activas)
   const loadTorneos = async () => {
     try {
-      const torneosData = await getTorneos()
+      const torneosData = await getTorneosTemporadasActivas()
       setTorneos(torneosData)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al cargar torneos')
@@ -249,39 +249,56 @@ const FixturePage = () => {
         </Alert>
       )}
 
-      {/* Selector de Torneo */}
+      {/* Selector de Torneo - Botones responsivos */}
       <Row className="mb-4">
         <Col>
-          <Card>
-            <CardHeader>
-              <h5 className="mb-0">
+          <Card className="shadow-sm border-0">
+            <CardHeader className="bg-light border-0 pt-3 pb-2">
+              <h5 className="mb-0 text-dark">
                 <LuTrophy className="me-2 text-primary" />
                 Seleccionar Torneo
               </h5>
             </CardHeader>
-            <CardBody>
-              <FloatingLabel label="Torneo">
-                <FormSelect
-                  value={selectedTorneoId || ''}
-                  onChange={(e) => setSelectedTorneoId(e.target.value ? parseInt(e.target.value) : null)}
-                >
-                  <option value="">Selecciona un torneo...</option>
-                  {torneos.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nombre} {t.categoria?.nombre && `- ${t.categoria.nombre}`}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FloatingLabel>
+            <CardBody className="pt-3">
+              {torneos.length === 0 ? (
+                <p className="text-muted mb-0">No hay torneos de temporadas activas.</p>
+              ) : (
+                <Row className="g-3">
+                  {torneos.map((t) => {
+                    const isSelected = selectedTorneoId === t.id
+                    return (
+                      <Col key={t.id} xs={12} sm={6} md={4} lg={3}>
+                        <Button
+                          variant={isSelected ? 'primary' : 'light'}
+                          className={`w-100 text-start d-flex align-items-center py-3 px-3 rounded-3 border transition shadow-sm ${isSelected ? '' : 'text-dark border'}`}
+                          style={{ minHeight: '4rem' }}
+                          onClick={() => setSelectedTorneoId(isSelected ? null : t.id)}
+                        >
+                          <LuTrophy className={`flex-shrink-0 me-2 ${isSelected ? 'text-white' : 'text-primary'}`} size={20} />
+                          <div className="flex-grow-1 min-w-0">
+                            <span className="fw-semibold d-block text-truncate">{t.nombre}</span>
+                            {t.categoria?.nombre && (
+                              <small className={`d-block mt-0 mt-1 ${isSelected ? 'opacity-90' : 'text-muted'}`}>
+                                {t.categoria.nombre}
+                              </small>
+                            )}
+                          </div>
+                        </Button>
+                      </Col>
+                    )
+                  })}
+                </Row>
+              )}
               {selectedTorneoId && torneo && (
-                <div className="mt-3">
-                  <Badge bg={torneo.estado === 'en_curso' ? 'success' : torneo.estado === 'finalizado' ? 'primary' : 'secondary'}>
+                <div className="mt-4 pt-3 border-top d-flex flex-wrap align-items-center gap-2">
+                  <Badge bg={torneo.estado === 'en_curso' ? 'success' : torneo.estado === 'finalizado' ? 'primary' : 'secondary'} className="px-2 py-2">
                     {torneo.estado === 'planificado' ? 'Planificado' : 
                      torneo.estado === 'en_curso' ? 'En Curso' : 
                      torneo.estado === 'finalizado' ? 'Finalizado' : 'Cancelado'}
                   </Badge>
-                  <span className="ms-2 text-muted">
-                    {equiposParticipantes.length} equipos • {encuentros.length} encuentros
+                  <span className="text-muted small">
+                    <LuUsers className="me-1 align-middle" size={14} />
+                    {equiposParticipantes.length} equipos · {encuentros.length} encuentros
                   </span>
                 </div>
               )}

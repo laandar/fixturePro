@@ -1,6 +1,6 @@
 import { db } from './index'
 import { eq, asc, count, and, desc, inArray, or } from 'drizzle-orm'
-import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles, equipoCategoria, jugadorEquipoCategoria, temporadas } from './schema'
+import { equipos, categorias, entrenadores, jugadores, torneos, equiposTorneo, encuentros, canchas, canchasCategorias, equiposDescansan, goles, tarjetas, equipoCategoria, jugadorEquipoCategoria, temporadas } from './schema'
 import type { NewEquipo, NewCategoria, NewEntrenador, NewJugador, NewTorneo, NewEquipoTorneo, NewEncuentro, NewCancha, NewTemporada } from './types'
 
 // ===== EQUIPOS =====
@@ -1251,6 +1251,62 @@ export const torneoQueries = {
     });
   },
 
+  // Obtener torneos con relaciones solo de temporadas activas (para página de fixture público)
+  getByTemporadasActivasWithRelations: async () => {
+    const idsActivas = await db
+      .select({ id: temporadas.id })
+      .from(temporadas)
+      .where(eq(temporadas.activa, true));
+    const ids = idsActivas.map((r) => r.id);
+    if (ids.length === 0) return [];
+    return await db.query.torneos.findMany({
+      where: inArray(torneos.temporada_id, ids),
+      with: {
+        categoria: true,
+        temporada: true,
+        equiposTorneo: {
+          with: {
+            equipo: {
+              with: {
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
+                entrenador: true,
+              },
+            },
+          },
+        },
+        encuentros: {
+          with: {
+            equipoLocal: {
+              with: {
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
+                entrenador: true,
+              },
+            },
+            equipoVisitante: {
+              with: {
+                equiposCategoria: {
+                  with: {
+                    categoria: true,
+                  },
+                },
+                entrenador: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [asc(torneos.nombre)],
+    });
+  },
+
   // Obtener torneo por ID
   getById: async (id: number) => {
     const result = await db.select().from(torneos).where(eq(torneos.id, id));
@@ -1990,21 +2046,22 @@ export const estadisticasQueries = {
     return estadisticasEquipos;
   },
 
-  // Obtener tabla de goleadores de un torneo
+  // Obtener tabla de goleadores de un torneo (solo goles de partidos finalizados)
   getTablaGoleadores: async (torneoId: number) => {
-    // Primero obtener todos los encuentros del torneo
-    const encuentrosTorneo = await db.query.encuentros.findMany({
-      where: eq(encuentros.torneo_id, torneoId),
+    const encuentrosFinalizados = await db.query.encuentros.findMany({
+      where: (encuentros, { and, eq }) => and(
+        eq(encuentros.torneo_id, torneoId),
+        eq(encuentros.estado, 'finalizado')
+      ),
       columns: { id: true }
     });
 
-    const encuentrosIds = encuentrosTorneo.map(e => e.id);
+    const encuentrosIds = encuentrosFinalizados.map(e => e.id);
 
     if (encuentrosIds.length === 0) {
       return [];
     }
 
-    // Luego obtener todos los goles de esos encuentros usando select directo
     const golesData = await db.select().from(goles).where(inArray(goles.encuentro_id, encuentrosIds));
     
     // Obtener información de jugadores por separado
@@ -2083,6 +2140,83 @@ export const estadisticasQueries = {
           goles: item.goles,
           penales: item.penales,
           totalGoles: item.totalGoles,
+        };
+      });
+  },
+
+  // Tabla de tarjetas (amarillas/rojas) del torneo - solo partidos finalizados, con jornada
+  getTablaTarjetas: async (torneoId: number) => {
+    const encuentrosFinalizados = await db.query.encuentros.findMany({
+      where: (encuentros, { and, eq }) => and(
+        eq(encuentros.torneo_id, torneoId),
+        eq(encuentros.estado, 'finalizado')
+      ),
+      columns: { id: true, jornada: true }
+    });
+    const encuentrosIds = encuentrosFinalizados.map(e => e.id);
+    const encuentroJornadaMap: Record<number, number | null> = {};
+    encuentrosFinalizados.forEach(e => { encuentroJornadaMap[e.id] = e.jornada ?? null; });
+    if (encuentrosIds.length === 0) return [];
+
+    const tarjetasData = await db.select().from(tarjetas).where(inArray(tarjetas.encuentro_id, encuentrosIds));
+    const jugadoresIds = [...new Set(tarjetasData.map(t => t.jugador_id))];
+    const jugadoresData = await db.query.jugadores.findMany({
+      where: inArray(jugadores.id, jugadoresIds),
+      with: {
+        jugadoresEquipoCategoria: {
+          with: {
+            equipoCategoria: {
+              with: {
+                equipo: { with: { entrenador: true } },
+                categoria: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Agrupar por (jugador_id, jornada)
+    const key = (jid: string, jor: number | null) => `${jid}|${jor ?? 'sin-jornada'}`;
+    const porJugadorJornada: Record<string, { jugador: any; jornada: number | null; amarillas: number; rojas: number }> = {};
+    tarjetasData.forEach(t => {
+      const jornada = encuentroJornadaMap[t.encuentro_id] ?? null;
+      const k = key(t.jugador_id, jornada);
+      if (!porJugadorJornada[k]) {
+        const jugador = jugadoresData.find(j => j.id === t.jugador_id);
+        porJugadorJornada[k] = { jugador: jugador || null, jornada, amarillas: 0, rojas: 0 };
+      }
+      if (t.tipo === 'amarilla') porJugadorJornada[k].amarillas++;
+      else if (t.tipo === 'roja') porJugadorJornada[k].rojas++;
+    });
+
+    return Object.values(porJugadorJornada)
+      .filter(item => item.jugador && (item.amarillas > 0 || item.rojas > 0))
+      .sort((a, b) => {
+        const jA = a.jornada ?? 9999;
+        const jB = b.jornada ?? 9999;
+        if (jA !== jB) return jA - jB;
+        const totalA = a.amarillas + a.rojas;
+        const totalB = b.amarillas + b.rojas;
+        if (totalB !== totalA) return totalB - totalA;
+        if (b.rojas !== a.rojas) return b.rojas - a.rojas;
+        return (a.jugador?.apellido_nombre ?? '').localeCompare(b.jugador?.apellido_nombre ?? '');
+      })
+      .map((item, index) => {
+        const equipoCategoria = item.jugador?.jugadoresEquipoCategoria?.[0]?.equipoCategoria;
+        const equipo = equipoCategoria?.equipo;
+        return {
+          posicion: index + 1,
+          jugador: {
+            id: item.jugador.id,
+            apellido_nombre: item.jugador.apellido_nombre,
+            foto: item.jugador.foto,
+            equipo: equipo ? { id: equipo.id, nombre: equipo.nombre, imagen_equipo: equipo.imagen_equipo } : null
+          },
+          jornada: item.jornada,
+          amarillas: item.amarillas,
+          rojas: item.rojas,
+          total: item.amarillas + item.rojas
         };
       });
   },

@@ -54,6 +54,17 @@ export async function getTorneos() {
 }
 
 /**
+ * Obtiene solo los torneos cuya temporada está activa (para página de fixture público/admin).
+ */
+export async function getTorneosTemporadasActivas() {
+  try {
+    return await torneoQueries.getByTemporadasActivasWithRelations()
+  } catch (error) {
+    throw new Error('Error al obtener torneos de temporadas activas')
+  }
+}
+
+/**
  * Obtiene todos los encuentros de todos los torneos con sus relaciones
  */
 export async function getAllEncuentrosTodosTorneos() {

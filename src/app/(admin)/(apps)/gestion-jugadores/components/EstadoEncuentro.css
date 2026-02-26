@@ -64,13 +64,70 @@
   }
 }
 
-.estado-dropdown {
+/* Botones de estado (reemplazo del dropdown, mejor en móvil) */
+.estado-buttons-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   width: 100%;
 }
 
+.estado-buttons-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.estado-buttons-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.estado-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 2rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  touch-action: manipulation;
+}
+
+.estado-action-btn:active {
+  transform: scale(0.98);
+}
+
+.estado-action-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .estado-buttons-grid {
+    flex-direction: column;
+  }
+  .estado-action-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 2.75rem;
+  }
+}
+
 @media (min-width: 768px) {
-  .estado-dropdown {
+  .estado-buttons-wrapper {
+    flex-direction: row;
+    align-items: center;
     width: auto;
+    flex-wrap: wrap;
+  }
+  .estado-buttons-grid {
+    flex: 0 1 auto;
+  }
+  .estado-action-btn {
+    flex: 0 1 auto;
   }
 }
 

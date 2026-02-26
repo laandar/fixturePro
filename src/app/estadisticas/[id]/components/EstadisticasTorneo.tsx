@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button, Nav, NavItem, NavLink, TabContent, TabPane } from 'react-bootstrap'
-import { LuTrendingUp, LuStar, LuGamepad2, LuUsers, LuCalendar, LuShare2, LuMonitor, LuSmartphone, LuArrowLeft } from 'react-icons/lu'
+import { LuTrendingUp, LuStar, LuGamepad2, LuUsers, LuCalendar, LuShare2, LuMonitor, LuSmartphone, LuArrowLeft, LuCreditCard } from 'react-icons/lu'
 import TablaPosiciones from './TablaPosiciones'
 import TablaGoleadores from './TablaGoleadores'
+import TablaTarjetas from './TablaTarjetas'
 import TablaFixture from './TablaFixture'
 import '@/styles/fifa-animations.css'
 import '@/styles/desktop-view-mobile.css'
@@ -60,18 +61,36 @@ interface Goleador {
   totalGoles: number
 }
 
+interface TarjetaJugador {
+  posicion: number
+  jugador: {
+    id: string
+    apellido_nombre: string
+    foto?: string | null
+    equipo?: {
+      id: number
+      nombre: string
+      imagen_equipo?: string | null
+    } | null
+  }
+  jornada: number | null
+  amarillas: number
+  rojas: number
+  total: number
+}
+
 interface EstadisticasTorneoProps {
   torneo: Torneo
   tablaPosiciones: PosicionEquipo[]
   tablaGoleadores: Goleador[]
+  tablaTarjetas?: TarjetaJugador[]
   encuentros?: any[]
   equiposDescansan?: Record<number, number[]>
   equiposMap?: Record<number, { id: number; nombre: string; imagen_equipo?: string | null }>
 }
 
-export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores, encuentros = [], equiposDescansan = {}, equiposMap = {} }: EstadisticasTorneoProps) {
-  // TODO: Bandera temporal - Cambiar a true para mostrar la tabla de goleadores
-  const SHOW_GOLEADORES = false
+export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGoleadores, tablaTarjetas = [], encuentros = [], equiposDescansan = {}, equiposMap = {} }: EstadisticasTorneoProps) {
+  const SHOW_GOLEADORES = true
   
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('posiciones')
@@ -460,6 +479,54 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
               )}
               <NavItem className="flex-fill">
                 <NavLink 
+                  eventKey="tarjetas" 
+                  className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
+                  style={{
+                    background: activeTab === 'tarjetas' 
+                      ? 'rgba(255, 255, 255, 0.2)' 
+                      : 'transparent',
+                    color: '#ffffff',
+                    borderRadius: activeTab === 'tarjetas' ? '15px 15px 0 0' : '0',
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontSize: '0.95rem',
+                    minHeight: '60px',
+                    textAlign: 'center',
+                    boxShadow: activeTab === 'tarjetas' 
+                      ? '0 4px 15px rgba(0, 0, 0, 0.2)' 
+                      : 'none',
+                    marginBottom: '1px'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== 'tarjetas') {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.2)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== 'tarjetas') {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }
+                  }}
+                >
+                  <LuCreditCard className="fs-4 fs-md-5" />
+                  <span className="fw-bold d-none d-lg-inline">Tarjetas</span>
+                  <span className="fw-bold d-inline d-lg-none">Tarjetas</span>
+                  {activeTab === 'tarjetas' && (
+                    <div className="position-absolute bottom-0 start-50 translate-middle-x" style={{
+                      width: '80px',
+                      height: '4px',
+                      background: 'linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%)',
+                      borderRadius: '2px',
+                      boxShadow: '0 2px 8px rgba(255, 255, 255, 0.3)'
+                    }} />
+                  )}
+                </NavLink>
+              </NavItem>
+              <NavItem className="flex-fill">
+                <NavLink 
                   eventKey="fixture" 
                   className="fw-bold px-3 px-md-4 py-2 py-md-2 border-0 position-relative d-flex align-items-center justify-content-center gap-1 gap-md-2"
                   style={{
@@ -527,6 +594,13 @@ export default function EstadisticasTorneo({ torneo, tablaPosiciones, tablaGolea
                   </div>
                 </TabPane>
               )}
+              <TabPane eventKey="tarjetas" active={activeTab === 'tarjetas'}>
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)'
+                }}>
+                  <TablaTarjetas tarjetas={tablaTarjetas} />
+                </div>
+              </TabPane>
               <TabPane eventKey="fixture" active={activeTab === 'fixture'}>
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.02)'

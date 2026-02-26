@@ -82,7 +82,6 @@ export default function TablaGoleadores({ goleadores }: TablaGoleadoresProps) {
               <th className="fw-bold py-2" style={{ fontSize: '1rem', color: '#ffffff' }}>Jugador</th>
               <th className="fw-bold py-2" style={{ fontSize: '1rem', color: '#ffffff' }}>Equipo</th>
               <th className="text-center fw-bold py-2" style={{ width: '80px', fontSize: '1rem', color: '#ffffff' }}>Goles</th>
-              <th className="text-center fw-bold py-2" style={{ width: '100px', fontSize: '1rem', color: '#ffffff' }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -139,19 +138,26 @@ export default function TablaGoleadores({ goleadores }: TablaGoleadoresProps) {
                 </td>
                 <td className="align-middle py-2">
                   {goleador.jugador.equipo ? (
-                    <div className="d-flex align-items-center gap-3">
-                      <img
-                        src={goleador.jugador.equipo.imagen_equipo || 'https://via.placeholder.com/32x32/fd7e14/ffffff?text=🏆'}
-                        alt={goleador.jugador.equipo.nombre}
-                        className="rounded-circle"
-                        width={32}
-                        height={32}
-                        style={{
-                          border: '2px solid rgba(255, 255, 255, 0.2)',
-                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
-                        }}
-                      />
-                            <span className="fw-bold fs-6 text-white">{goleador.jugador.equipo.nombre}</span>
+                    <div className="d-flex align-items-center gap-2">
+                      {goleador.jugador.equipo.imagen_equipo && goleador.jugador.equipo.imagen_equipo.trim() !== '' ? (
+                        <>
+                          <img
+                            src={goleador.jugador.equipo.imagen_equipo}
+                            alt={goleador.jugador.equipo.nombre}
+                            className="rounded-circle flex-shrink-0"
+                            width={32}
+                            height={32}
+                            style={{
+                              border: '2px solid rgba(255, 255, 255, 0.2)',
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                              objectFit: 'cover'
+                            }}
+                          />
+                          <span className="fw-bold fs-6 text-white">{goleador.jugador.equipo.nombre}</span>
+                        </>
+                      ) : (
+                        <span className="fw-bold fs-6 text-white">{goleador.jugador.equipo.nombre}</span>
+                      )}
                     </div>
                   ) : (
                     <span className="text-white-75 fs-6">Sin equipo</span>
@@ -162,19 +168,6 @@ export default function TablaGoleadores({ goleadores }: TablaGoleadoresProps) {
                     className="px-3 py-2 fw-bold fs-6"
                     style={{
                       background: '#666666',
-                      color: '#ffffff',
-                      border: 'none',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-                    }}
-                  >
-                    {goleador.goles}
-                  </Badge>
-                </td>
-                <td className="text-center align-middle py-2">
-                  <Badge 
-                    className="px-4 py-2 fw-bold fs-5"
-                    style={{
-                      background: '#4a4a4a',
                       color: '#ffffff',
                       border: 'none',
                       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'

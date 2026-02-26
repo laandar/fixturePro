@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, CardBody, CardHeader, Col, Container, Row, Badge, Table } from 'react-bootstrap'
@@ -53,17 +53,25 @@ const GoleadoresPage = () => {
     }
   }, [torneoId])
 
+  // Solo goles de partidos finalizados cuentan para estadísticas
+  const golesFinalizados = useMemo(() => {
+    const idsFinalizados = new Set(
+      encuentros.filter(e => e.estado === 'finalizado').map(e => e.id)
+    )
+    return goles.filter(g => idsFinalizados.has(g.encuentro_id))
+  }, [goles, encuentros])
+
   const getEstadisticasGoleadoresLocal = () => {
-    return getEstadisticasGoleadores(goles, todosJugadores)
+    return getEstadisticasGoleadores(golesFinalizados, todosJugadores)
   }
 
   const getEstadisticasDetalladasLocal = () => {
-    return getEstadisticasDetalladas(goles, encuentros)
+    return getEstadisticasDetalladas(golesFinalizados, encuentros)
   }
 
   const getGoleadoresPorEquipoLocal = () => {
     if (!torneo?.equiposTorneo) return []
-    return getGoleadoresPorEquipo(goles, torneo.equiposTorneo)
+    return getGoleadoresPorEquipo(golesFinalizados, torneo.equiposTorneo)
   }
 
   if (loading) {

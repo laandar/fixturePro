@@ -51,6 +51,15 @@ export interface GestionJugadoresState {
     handleTogglePlayerSelection: (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => void;
     handleSelectAllPlayers: (equipo: 'A' | 'B') => void;
     handleClearAllPlayers: (equipo: 'A' | 'B') => void;
+    pendingSelectionA: JugadorWithEquipo[] | null;
+    pendingSelectionB: JugadorWithEquipo[] | null;
+    initPendingForModal: (equipo: 'A' | 'B') => void;
+    handleTogglePendingSelection: (jugador: JugadorWithEquipo, equipo: 'A' | 'B') => void;
+    handleSelectAllPending: (equipo: 'A' | 'B') => void;
+    handleClearAllPending: (equipo: 'A' | 'B') => void;
+    hasPendingChanges: (equipo: 'A' | 'B') => boolean;
+    clearPending: (equipo: 'A' | 'B') => void;
+    applyPendingAndSave: (equipo: 'A' | 'B') => Promise<void>;
     handleAddTarjeta: () => void;
     handleDeleteTarjeta: (id: string) => void;
     handleQuickSanction: (jugador: JugadorWithEquipo, tipo: 'amarilla' | 'roja') => void;
