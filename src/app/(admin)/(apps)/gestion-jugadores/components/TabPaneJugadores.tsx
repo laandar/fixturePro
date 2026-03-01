@@ -637,7 +637,12 @@ const TabPaneJugadores = () => {
                                                     </div>
                                                 )}
                                                 <div className="text-danger small">
-                                                    <div className="fw-bold">{change.sale.apellido_nombre}</div>
+                                                    <div className="fw-bold">
+                                                        {typeof (change.sale as any).numero_jugador === 'number' && (
+                                                            <span className="me-1">Nº {(change.sale as any).numero_jugador} –</span>
+                                                        )}
+                                                        {change.sale.apellido_nombre}
+                                                    </div>
                                                     <div>SALE</div>
                                                 </div>
                                             </div>
@@ -662,7 +667,12 @@ const TabPaneJugadores = () => {
                                                     </div>
                                                 )}
                                                 <div className="text-success small">
-                                                    <div className="fw-bold">{change.entra.apellido_nombre}</div>
+                                                    <div className="fw-bold">
+                                                        {typeof (change.entra as any).numero_jugador === 'number' && (
+                                                            <span className="me-1">Nº {(change.entra as any).numero_jugador} –</span>
+                                                        )}
+                                                        {change.entra.apellido_nombre}
+                                                    </div>
                                                     <div>ENTRA</div>
                                                 </div>
                                             </div>
@@ -906,7 +916,12 @@ const TabPaneJugadores = () => {
                                                     </div>
                                                 )}
                                                 <div className="text-danger small">
-                                                    <div className="fw-bold">{change.sale.apellido_nombre}</div>
+                                                    <div className="fw-bold">
+                                                        {typeof (change.sale as any).numero_jugador === 'number' && (
+                                                            <span className="me-1">Nº {(change.sale as any).numero_jugador} –</span>
+                                                        )}
+                                                        {change.sale.apellido_nombre}
+                                                    </div>
                                                     <div>SALE</div>
                                                 </div>
                                             </div>
@@ -931,7 +946,12 @@ const TabPaneJugadores = () => {
                                                     </div>
                                                 )}
                                                 <div className="text-success small">
-                                                    <div className="fw-bold">{change.entra.apellido_nombre}</div>
+                                                    <div className="fw-bold">
+                                                        {typeof (change.entra as any).numero_jugador === 'number' && (
+                                                            <span className="me-1">Nº {(change.entra as any).numero_jugador} –</span>
+                                                        )}
+                                                        {change.entra.apellido_nombre}
+                                                    </div>
                                                     <div>ENTRA</div>
                                                 </div>
                                             </div>
@@ -1344,7 +1364,7 @@ const TabPaneJugadores = () => {
             <Modal show={showChangeModal} onHide={() => setShowChangeModal(false)} size="lg">
                 <ModalHeader closeButton>
                     <ModalTitle>
-                        Cambiar Jugador - {selectedPlayerForChange?.apellido_nombre}
+                        Cambiar Jugador – {selectedPlayerForChange && typeof (selectedPlayerForChange as any).numero_jugador === 'number' ? `Nº ${(selectedPlayerForChange as any).numero_jugador} ` : ''}{selectedPlayerForChange?.apellido_nombre}
                     </ModalTitle>
                 </ModalHeader>
                 <ModalBody>
@@ -1352,7 +1372,7 @@ const TabPaneJugadores = () => {
                         <div>
                             <InlineNotification
                                 type="info"
-                                message={`Jugador que sale: ${selectedPlayerForChange.apellido_nombre} (${selectedPlayerForChange.cedula})`}
+                                message={`Jugador que sale: ${typeof (selectedPlayerForChange as any).numero_jugador === 'number' ? `Nº ${(selectedPlayerForChange as any).numero_jugador} – ` : ''}${selectedPlayerForChange.apellido_nombre} (${selectedPlayerForChange.cedula})`}
                                 className="mb-4"
                                 size="lg"
                             />
