@@ -4,12 +4,22 @@ import { TbSoccerField, TbPlus, TbTrash, TbTrophy } from 'react-icons/tb'
 import { useGestionJugadores } from './GestionJugadoresContext'
 import { useState, useEffect } from 'react'
 const TabPaneGoles = () => {
-    const { goles, setShowGolModal, handleDeleteGol, estadoEncuentro, isAdmin, torneoId, equipoLocalId, equipoVisitanteId, jornada, nombreEquipoA, nombreEquipoB, getEncuentroActual } = useGestionJugadores()
+    const { goles, setShowGolModal, handleDeleteGol, estadoEncuentro, isAdmin, torneoId, equipoLocalId, equipoVisitanteId, jornada, nombreEquipoA, nombreEquipoB, getEncuentroActual, jugadoresParticipantesA, jugadoresParticipantesB } = useGestionJugadores()
     const [encuentro, setEncuentro] = useState<any>(null)
     const [isWO, setIsWO] = useState(false)
     
     const isEncuentroFinalizado = estadoEncuentro === 'finalizado';
     const shouldDisableActions = isEncuentroFinalizado && !isAdmin();
+
+    // Resolver nombre y número del jugador por ID (g.jugador es jugador_id en el contexto)
+    const getJugadorDisplay = (jugadorId: string) => {
+        const allJugadores = [...jugadoresParticipantesA, ...jugadoresParticipantesB]
+        const jugador = allJugadores.find(j => j.id.toString() === jugadorId)
+        if (!jugador) return `Jugador ${jugadorId}`
+        const num = (jugador as { numero_jugador?: number }).numero_jugador
+        if (typeof num === 'number') return `Nº ${num} – ${jugador.apellido_nombre}`
+        return jugador.apellido_nombre
+    }
 
     // Cargar datos del encuentro
     useEffect(() => {
@@ -92,7 +102,7 @@ const TabPaneGoles = () => {
                         <tbody>
                             {goles.map(g => (
                                 <tr key={g.id}>
-                                    <td>{g.jugador}</td>
+                                    <td>{getJugadorDisplay(g.jugador)}</td>
                                     <td>{g.equipo}</td>
                                     <td>
                                         <Badge bg={g.tipo === 'autogol' ? 'dark' : 'success'}>

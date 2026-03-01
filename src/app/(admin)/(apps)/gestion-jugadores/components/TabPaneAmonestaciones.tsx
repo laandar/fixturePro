@@ -16,6 +16,14 @@ const TabPaneAmonestaciones = () => {
         return jugador ? jugador.apellido_nombre : `Jugador ${jugadorId}`
     }
 
+    // Función para obtener el número del jugador por ID
+    const getJugadorNumero = (jugadorId: string): number | null => {
+        const allJugadores = [...jugadoresParticipantesA, ...jugadoresParticipantesB]
+        const jugador = allJugadores.find(j => j.id.toString() === jugadorId)
+        const num = (jugador as { numero_jugador?: number } | undefined)?.numero_jugador
+        return typeof num === 'number' ? num : null
+    }
+
     // Función para obtener el equipo del jugador por ID
     const getJugadorEquipo = (jugadorId: string) => {
         const jugadorA = jugadoresParticipantesA.find(j => j.id.toString() === jugadorId)
@@ -75,7 +83,12 @@ const TabPaneAmonestaciones = () => {
                                     })
                                     .map(t => (
                                     <tr key={t.id}>
-                                        <td>{getJugadorNombre(t.jugador)}</td>
+                                        <td>
+                                            {(() => {
+                                                const num = getJugadorNumero(t.jugador)
+                                                return num != null ? `Nº ${num} – ${getJugadorNombre(t.jugador)}` : getJugadorNombre(t.jugador)
+                                            })()}
+                                        </td>
                                         <td>{getJugadorEquipo(t.jugador)}</td>
                                         <td>
                                             <Badge bg={t.tipo === 'amarilla' ? 'warning' : 'danger'}>
